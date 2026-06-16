@@ -10,6 +10,7 @@ docs/Agile_Scrum_Passive_Network_Asset_Discovery.md
 .idea/
 *.swp
 *.swo
+.codex/
 
 # Environment and secrets
 .env
