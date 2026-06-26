@@ -1,0 +1,4 @@
+interface:
+  display_name: "Passive Asset Discovery Planning"
+  short_description: "Turn project goals into scoped delivery slices"
+  default_prompt: "Use $passive-asset-discovery-planning to plan the next project increment."
