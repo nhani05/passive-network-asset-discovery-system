@@ -1,4 +1,0 @@
-interface:
-  display_name: "Passive Asset Discovery Operations"
-  short_description: "Operate, diagnose, and maintain deployed software"
-  default_prompt: "Use $passive-asset-discovery-operations to diagnose this runtime issue."

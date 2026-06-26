@@ -1,4 +1,0 @@
-interface:
-  display_name: "Passive Asset Discovery Git Workflow"
-  short_description: "Create small, clear Conventional Commits"
-  default_prompt: "Use $passive-asset-discovery-git-workflow to prepare a focused commit."

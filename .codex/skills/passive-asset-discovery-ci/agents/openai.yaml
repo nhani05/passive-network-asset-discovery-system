@@ -1,4 +1,0 @@
-interface:
-  display_name: "Passive Asset Discovery CI"
-  short_description: "Design reliable build and test automation"
-  default_prompt: "Use $passive-asset-discovery-ci to add or improve CI checks."

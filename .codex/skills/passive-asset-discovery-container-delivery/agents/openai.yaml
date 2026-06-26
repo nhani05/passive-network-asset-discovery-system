@@ -1,4 +1,0 @@
-interface:
-  display_name: "Passive Asset Discovery Container Delivery"
-  short_description: "Package and run the system with Docker"
-  default_prompt: "Use $passive-asset-discovery-container-delivery to package this release."
