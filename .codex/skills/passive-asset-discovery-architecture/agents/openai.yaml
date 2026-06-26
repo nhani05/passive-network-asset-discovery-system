@@ -1,0 +1,4 @@
+interface:
+  display_name: "Passive Asset Discovery Architecture"
+  short_description: "Design maintainable system boundaries and data flow"
+  default_prompt: "Use $passive-asset-discovery-architecture to design this system change."

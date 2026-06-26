@@ -1,0 +1,4 @@
+interface:
+  display_name: "Passive Asset Discovery Requirements"
+  short_description: "Define verifiable behavior and acceptance criteria"
+  default_prompt: "Use $passive-asset-discovery-requirements to refine this feature request."

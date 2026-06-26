@@ -1,0 +1,4 @@
+interface:
+  display_name: "Passive Asset Discovery Testing"
+  short_description: "Build deterministic tests for capture and parsing"
+  default_prompt: "Use $passive-asset-discovery-testing to test this change."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Passive Asset Discovery Code Review"
+  short_description: "Review correctness, safety, and delivery impact"
+  default_prompt: "Use $passive-asset-discovery-code-review to review these changes."
