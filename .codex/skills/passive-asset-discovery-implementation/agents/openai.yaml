@@ -1,4 +1,0 @@
-interface:
-  display_name: "Passive Asset Discovery Implementation"
-  short_description: "Implement focused C++17 feature increments safely"
-  default_prompt: "Use $passive-asset-discovery-implementation to implement this change."

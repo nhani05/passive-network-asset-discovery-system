@@ -1,4 +1,0 @@
-interface:
-  display_name: "Passive Asset Discovery Documentation"
-  short_description: "Keep design, build, and demo docs accurate"
-  default_prompt: "Use $passive-asset-discovery-documentation to document this change."
