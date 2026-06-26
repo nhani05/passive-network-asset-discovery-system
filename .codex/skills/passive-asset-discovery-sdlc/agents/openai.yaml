@@ -1,0 +1,4 @@
+interface:
+  display_name: "Passive Asset Discovery SDLC"
+  short_description: "Build and evolve the passive asset discovery system"
+  default_prompt: "Use $passive-asset-discovery-sdlc to plan and implement the next project increment."
