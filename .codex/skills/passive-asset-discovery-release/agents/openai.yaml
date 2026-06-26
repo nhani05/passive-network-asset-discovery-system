@@ -1,0 +1,4 @@
+interface:
+  display_name: "Passive Asset Discovery Release"
+  short_description: "Verify a reproducible project release"
+  default_prompt: "Use $passive-asset-discovery-release to prepare a release candidate."
