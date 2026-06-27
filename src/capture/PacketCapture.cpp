@@ -1,5 +1,9 @@
 #include "capture/PacketCapture.hpp"
 
+#ifndef ASSET_DISCOVERY_HAS_PCAP
+#define ASSET_DISCOVERY_HAS_PCAP 0
+#endif
+
 namespace asset_discovery::capture {
 
 bool PacketCaptureBackend::pcapAvailable() const
