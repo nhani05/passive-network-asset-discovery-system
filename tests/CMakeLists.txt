@@ -8,6 +8,24 @@ add_executable(table-renderer-tests
 target_link_libraries(table-renderer-tests PRIVATE asset_discovery_output)
 add_test(NAME table-renderer-tests COMMAND table-renderer-tests)
 
+add_executable(ethernet-frame-tests
+    EthernetFrameTests.cpp
+)
+target_link_libraries(ethernet-frame-tests PRIVATE asset_discovery_parser)
+add_test(NAME ethernet-frame-tests COMMAND ethernet-frame-tests)
+
+add_executable(arp-packet-tests
+    ArpPacketTests.cpp
+)
+target_link_libraries(arp-packet-tests PRIVATE asset_discovery_parser)
+add_test(NAME arp-packet-tests COMMAND arp-packet-tests)
+
+add_executable(asset-store-tests
+    AssetStoreTests.cpp
+)
+target_link_libraries(asset-store-tests PRIVATE asset_discovery_asset)
+add_test(NAME asset-store-tests COMMAND asset-store-tests)
+
 if(PCAP_FOUND)
     set(EMPTY_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcap")
     add_custom_command(

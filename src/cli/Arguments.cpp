@@ -39,7 +39,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--pcap") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--pcap requires a file path"};
+                return {options, "--pcap cần đường dẫn file"};
             }
             options.pcapPath = args[++i];
             continue;
@@ -47,7 +47,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--interface") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--interface requires an interface name"};
+                return {options, "--interface cần tên interface"};
             }
             options.interfaceName = args[++i];
             continue;
@@ -55,11 +55,11 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--duration") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--duration requires a positive number of seconds"};
+                return {options, "--duration cần số giây dương"};
             }
             const auto parsed = parsePositiveInteger(args[++i]);
             if (!parsed.has_value()) {
-                return {options, "--duration must be a positive integer"};
+                return {options, "--duration phải là số nguyên dương"};
             }
             options.durationSeconds = *parsed;
             continue;
@@ -67,7 +67,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--output") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--output requires one of: table, json"};
+                return {options, "--output cần một trong các giá trị: table, json"};
             }
             const auto value = args[++i];
             if (value == "table") {
@@ -75,20 +75,20 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             } else if (value == "json") {
                 options.outputFormat = OutputFormat::Json;
             } else {
-                return {options, "unsupported output format '" + value + "'; expected one of: table, json"};
+                return {options, "định dạng xuất '" + value + "' không được hỗ trợ; cần một trong các giá trị: table, json"};
             }
             continue;
         }
 
-        return {options, "unknown argument '" + arg + "'"};
+        return {options, "tham số không xác định '" + arg + "'"};
     }
 
     if (options.pcapPath.has_value() == options.interfaceName.has_value()) {
-        return {options, "provide exactly one input source: --pcap <file> or --interface <name>"};
+        return {options, "chỉ cung cấp đúng một nguồn đầu vào: --pcap <file> hoặc --interface <name>"};
     }
 
     if (options.interfaceName.has_value() && !options.durationSeconds.has_value()) {
-        return {options, "--interface requires --duration <seconds>"};
+        return {options, "--interface cần --duration <seconds>"};
     }
 
     return {options, std::nullopt};
@@ -97,15 +97,15 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
-    output << "Usage:\n"
+    output << "Cách dùng:\n"
            << "  " << executableName << " --pcap <file> [--output table|json]\n"
            << "  " << executableName << " --interface <name> --duration <seconds> [--output table|json]\n"
-           << "\nOptions:\n"
-           << "  --pcap <file>              Read packets from a PCAP file.\n"
-           << "  --interface <name>         Capture packets from a live interface.\n"
-           << "  --duration <seconds>       Live capture duration; required with --interface.\n"
-           << "  --output table|json        Output format. Defaults to table.\n"
-           << "  -h, --help                 Show this help text.\n";
+           << "\nTùy chọn:\n"
+           << "  --pcap <file>              Đọc packet từ file PCAP.\n"
+           << "  --interface <name>         Capture packet từ interface đang chạy.\n"
+           << "  --duration <seconds>       Thời lượng capture packet; bắt buộc khi dùng --interface.\n"
+           << "  --output table|json        Định dạng xuất. Mặc định là table.\n"
+           << "  -h, --help                 Hiển thị hướng dẫn này.\n";
     return output.str();
 }
 
