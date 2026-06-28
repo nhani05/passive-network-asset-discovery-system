@@ -80,11 +80,34 @@ int main(int argc, char* argv[])
             return 1;
         }
     } else if (result.options.interfaceName.has_value()) {
-        std::cout << "mode=interface name=" << *result.options.interfaceName;
-        if (result.options.durationSeconds.has_value()) {
-            std::cout << " duration=" << *result.options.durationSeconds;
+        asset_discovery::asset::AssetStore store;
+        const auto error = backend.captureLive(
+            *result.options.interfaceName,
+            result.options.durationSeconds,
+            [&store](const asset_discovery::capture::OfflinePacket& packet) {
+                if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
+                    return;
+                }
+                const auto observations = asset_discovery::parser::parseEthernetObservations(
+                    packet.bytes,
+                    toObservationTimestamp(packet.timestamp));
+                for (const auto& observation : observations) {
+                    store.applyObservation(observation);
+                }
+            }
+        );
+
+        if (error.has_value()) {
+            std::cerr << "lỗi: " << *error << "\n";
+            return 1;
         }
-        std::cout << "\n";
+
+        if (result.options.outputFormat == asset_discovery::cli::OutputFormat::Table) {
+            std::cout << asset_discovery::output::renderAssetTable(store.assets());
+        } else {
+            std::cerr << "error: JSON output is not implemented yet\n";
+            return 1;
+        }
     }
 
     return 0;

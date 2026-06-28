@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -40,6 +41,14 @@ public:
 
     // Đọc toàn bộ file PCAP; lỗi được trả về thay vì ném exception.
     PcapReadResult readPcapFile(const std::string& path) const;
+
+    using LiveCaptureCallback = std::function<void(const OfflinePacket&)>;
+
+    // Lấy gói tin streaming trực tiếp từ interface.
+    std::optional<std::string> captureLive(
+        const std::string& interfaceName,
+        std::optional<int> durationSeconds,
+        LiveCaptureCallback callback) const;
 };
 
 std::string linkTypeName(LinkType linkType);
