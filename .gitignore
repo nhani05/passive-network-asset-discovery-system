@@ -13,7 +13,8 @@ openspec/
 *.swo
 .codex/
 .agents/
-
+.codex/
+.github/
 # Environment and secrets
 .env
 .env.*
