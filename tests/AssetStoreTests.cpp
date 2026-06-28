@@ -17,7 +17,7 @@ int failures = 0;
 void expect(bool condition, const std::string& message)
 {
     if (!condition) {
-        std::cerr << "FAIL: " << message << "\n";
+        std::cerr << "THẤT BẠI: " << message << "\n";
         ++failures;
     }
 }
@@ -42,16 +42,16 @@ void createsNewAsset()
 
     const auto assets = store.assets();
 
-    expect(assets.size() == 1, "first observation should create one asset");
+    expect(assets.size() == 1, "observation đầu tiên phải tạo một asset");
     if (assets.empty()) {
         return;
     }
 
-    expect(assets.front().macAddress == "02:42:ac:11:00:02", "asset MAC should be normalized");
-    expect(assets.front().ipAddresses.count("192.168.1.10") == 1, "asset should contain observed IP");
-    expect(assets.front().firstSeen.seconds == 10, "first_seen seconds should come from first observation");
-    expect(assets.front().lastSeen.seconds == 10, "last_seen seconds should come from first observation");
-    expect(assets.front().sources.count(ObservationSource::Arp) == 1, "asset should contain ARP source");
+    expect(assets.front().macAddress == "02:42:ac:11:00:02", "MAC asset phải được chuẩn hóa");
+    expect(assets.front().ipAddresses.count("192.168.1.10") == 1, "asset phải chứa IP từ observation");
+    expect(assets.front().firstSeen.seconds == 10, "giây first_seen phải đến từ observation đầu tiên");
+    expect(assets.front().lastSeen.seconds == 10, "giây last_seen phải đến từ observation đầu tiên");
+    expect(assets.front().sources.count(ObservationSource::Arp) == 1, "asset phải chứa source ARP");
 }
 
 void repeatedObservationUpdatesLastSeen()
@@ -62,15 +62,15 @@ void repeatedObservationUpdatesLastSeen()
 
     const auto assets = store.assets();
 
-    expect(assets.size() == 1, "same MAC should still be one asset");
+    expect(assets.size() == 1, "cùng MAC vẫn phải là một asset");
     if (assets.empty()) {
         return;
     }
 
-    expect(assets.front().firstSeen.seconds == 10, "first_seen should preserve earliest observation");
-    expect(assets.front().firstSeen.microseconds == 100, "first_seen microseconds should preserve earliest observation");
-    expect(assets.front().lastSeen.seconds == 12, "last_seen should update to latest observation");
-    expect(assets.front().lastSeen.microseconds == 200, "last_seen microseconds should update to latest observation");
+    expect(assets.front().firstSeen.seconds == 10, "first_seen phải giữ observation sớm nhất");
+    expect(assets.front().firstSeen.microseconds == 100, "micro giây first_seen phải giữ observation sớm nhất");
+    expect(assets.front().lastSeen.seconds == 12, "last_seen phải cập nhật theo observation mới nhất");
+    expect(assets.front().lastSeen.microseconds == 200, "micro giây last_seen phải cập nhật theo observation mới nhất");
 }
 
 void outOfOrderTimestampsPreserveBounds()
@@ -82,15 +82,15 @@ void outOfOrderTimestampsPreserveBounds()
 
     const auto assets = store.assets();
 
-    expect(assets.size() == 1, "out-of-order observations should merge into one asset");
+    expect(assets.size() == 1, "observation lệch thứ tự phải được gộp vào một asset");
     if (assets.empty()) {
         return;
     }
 
-    expect(assets.front().firstSeen.seconds == 10, "out-of-order first_seen should be earliest seconds");
-    expect(assets.front().firstSeen.microseconds == 999999, "out-of-order first_seen should keep earliest microseconds");
-    expect(assets.front().lastSeen.seconds == 25, "out-of-order last_seen should be latest seconds");
-    expect(assets.front().lastSeen.microseconds == 1, "out-of-order last_seen should keep latest microseconds");
+    expect(assets.front().firstSeen.seconds == 10, "first_seen lệch thứ tự phải là giây sớm nhất");
+    expect(assets.front().firstSeen.microseconds == 999999, "first_seen lệch thứ tự phải giữ micro giây sớm nhất");
+    expect(assets.front().lastSeen.seconds == 25, "last_seen lệch thứ tự phải là giây mới nhất");
+    expect(assets.front().lastSeen.microseconds == 1, "last_seen lệch thứ tự phải giữ micro giây mới nhất");
 }
 
 void mergesDistinctIpAddresses()
@@ -101,14 +101,14 @@ void mergesDistinctIpAddresses()
 
     const auto assets = store.assets();
 
-    expect(assets.size() == 1, "new IP for same MAC should not create another asset");
+    expect(assets.size() == 1, "IP mới của cùng MAC không được tạo asset khác");
     if (assets.empty()) {
         return;
     }
 
-    expect(assets.front().ipAddresses.size() == 2, "asset should contain both distinct IP addresses");
-    expect(assets.front().ipAddresses.count("192.168.1.10") == 1, "asset should keep original IP");
-    expect(assets.front().ipAddresses.count("192.168.1.11") == 1, "asset should add new IP");
+    expect(assets.front().ipAddresses.size() == 2, "asset phải chứa cả hai địa chỉ IP khác nhau");
+    expect(assets.front().ipAddresses.count("192.168.1.10") == 1, "asset phải giữ IP ban đầu");
+    expect(assets.front().ipAddresses.count("192.168.1.11") == 1, "asset phải thêm IP mới");
 }
 
 void ignoresDuplicateIpAddress()
@@ -119,19 +119,19 @@ void ignoresDuplicateIpAddress()
 
     const auto assets = store.assets();
 
-    expect(assets.size() == 1, "duplicate IP observation should still be one asset");
+    expect(assets.size() == 1, "observation IP trùng lặp vẫn phải là một asset");
     if (assets.empty()) {
         return;
     }
 
-    expect(assets.front().ipAddresses.size() == 1, "duplicate IP should not be stored twice");
+    expect(assets.front().ipAddresses.size() == 1, "IP trùng lặp không được lưu hai lần");
 }
 
 void comparesTimestampsBySecondsThenMicroseconds()
 {
-    expect(timestampLess({1, 0}, {1, 1}), "timestamp comparison should use microseconds within same second");
-    expect(timestampLess({1, 999999}, {2, 0}), "timestamp comparison should use seconds first");
-    expect(!timestampLess({2, 0}, {1, 999999}), "later seconds should not be less than earlier seconds");
+    expect(timestampLess({1, 0}, {1, 1}), "so sánh timestamp phải dùng micro giây trong cùng một giây");
+    expect(timestampLess({1, 999999}, {2, 0}), "so sánh timestamp phải ưu tiên giây trước");
+    expect(!timestampLess({2, 0}, {1, 999999}), "giây muộn hơn không được nhỏ hơn giây sớm hơn");
 }
 
 } // namespace
@@ -146,7 +146,7 @@ int main()
     comparesTimestampsBySecondsThenMicroseconds();
 
     if (failures > 0) {
-        std::cerr << failures << " asset store test expectation(s) failed\n";
+        std::cerr << failures << " kỳ vọng test asset store thất bại\n";
         return 1;
     }
 

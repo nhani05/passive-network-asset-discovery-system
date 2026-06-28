@@ -112,17 +112,17 @@ std::string arpDecodeErrorName(ArpDecodeError error)
 {
     switch (error) {
     case ArpDecodeError::TruncatedPacket:
-        return "truncated ARP packet";
+        return "ARP packet bị thiếu dữ liệu";
     case ArpDecodeError::UnsupportedHardwareType:
-        return "unsupported ARP hardware type";
+        return "loại phần cứng ARP không được hỗ trợ";
     case ArpDecodeError::UnsupportedProtocolType:
-        return "unsupported ARP protocol type";
+        return "loại giao thức ARP không được hỗ trợ";
     case ArpDecodeError::UnsupportedHardwareLength:
-        return "unsupported ARP hardware length";
+        return "độ dài phần cứng ARP không được hỗ trợ";
     case ArpDecodeError::UnsupportedProtocolLength:
-        return "unsupported ARP protocol length";
+        return "độ dài giao thức ARP không được hỗ trợ";
     }
-    return "unknown ARP decode error";
+    return "lỗi giải mã ARP không xác định";
 }
 
 } // namespace asset_discovery::parser
