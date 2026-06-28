@@ -12,6 +12,7 @@ openspec/
 *.swp
 *.swo
 .codex/
+.agents/
 
 # Environment and secrets
 .env

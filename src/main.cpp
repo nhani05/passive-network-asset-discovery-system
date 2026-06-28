@@ -34,7 +34,18 @@ int main(int argc, char* argv[])
     }
 
     if (result.options.pcapPath.has_value()) {
-        std::cout << "mode=pcap path=" << *result.options.pcapPath << "\n";
+        const auto pcapResult = backend.readPcapFile(*result.options.pcapPath);
+        if (pcapResult.error.has_value()) {
+            std::cerr << "error: " << *pcapResult.error << "\n";
+            return 1;
+        }
+
+        std::cout << "mode=pcap path=" << *result.options.pcapPath << "\n"
+                  << "packets=" << pcapResult.packets.size() << "\n";
+        if (!pcapResult.packets.empty()) {
+            std::cout << "link_type="
+                      << asset_discovery::capture::linkTypeName(pcapResult.packets.front().linkType) << "\n";
+        }
     } else if (result.options.interfaceName.has_value()) {
         std::cout << "mode=interface name=" << *result.options.interfaceName;
         if (result.options.durationSeconds.has_value()) {
