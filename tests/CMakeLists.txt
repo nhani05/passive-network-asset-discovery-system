@@ -2,6 +2,12 @@ add_test(NAME asset-discovery-help COMMAND asset-discovery --help)
 add_test(NAME asset-discovery-missing-input COMMAND asset-discovery)
 set_tests_properties(asset-discovery-missing-input PROPERTIES WILL_FAIL TRUE)
 
+add_executable(ethernet-frame-tests
+    EthernetFrameTests.cpp
+)
+target_link_libraries(ethernet-frame-tests PRIVATE asset_discovery_parser)
+add_test(NAME ethernet-frame-tests COMMAND ethernet-frame-tests)
+
 if(PCAP_FOUND)
     add_test(
         NAME asset-discovery-pcap-sample

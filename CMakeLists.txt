@@ -8,6 +8,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ASSET_DISCOVERY_REQUIRE_PCAP "Fail configuration when libpcap is unavailable" OFF)
 
+add_library(asset_discovery_parser
+    src/parser/EthernetFrame.cpp
+)
+
+target_include_directories(asset_discovery_parser PUBLIC include)
+
 add_executable(asset-discovery
     src/main.cpp
     src/capture/PacketCapture.cpp
@@ -15,6 +21,7 @@ add_executable(asset-discovery
 )
 
 target_include_directories(asset-discovery PRIVATE include)
+target_link_libraries(asset-discovery PRIVATE asset_discovery_parser)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
