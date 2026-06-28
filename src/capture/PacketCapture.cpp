@@ -116,10 +116,6 @@ PcapReadResult PacketCaptureBackend::readPcapFile(const std::string& path) const
 
     closeHandle(handle);
 
-    if (packets.empty()) {
-        return {{}, "file PCAP '" + path + "' không có packet"};
-    }
-
     return {std::move(packets), std::nullopt};
 #else
     return {{}, "không thể đọc file PCAP '" + path + "': backend libpcap không có trong bản build này"};

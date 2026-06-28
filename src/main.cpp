@@ -1,11 +1,10 @@
 #include "asset/AssetStore.hpp"
 #include "capture/PacketCapture.hpp"
 #include "cli/Arguments.hpp"
-#include "parser/ArpPacket.hpp"
+#include "output/TableRenderer.hpp"
+#include "parser/PacketParsers.hpp"
 
 #include <iostream>
-#include <iterator>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -17,48 +16,23 @@ asset_discovery::parser::ObservationTimestamp toObservationTimestamp(
     return {timestamp.seconds, timestamp.microseconds};
 }
 
-std::vector<asset_discovery::parser::AssetObservation> collectArpObservations(
+asset_discovery::asset::AssetStore buildAssetStore(
     const std::vector<asset_discovery::capture::OfflinePacket>& packets)
 {
-    std::vector<asset_discovery::parser::AssetObservation> observations;
+    asset_discovery::asset::AssetStore store;
     for (const auto& packet : packets) {
         if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
             continue;
         }
 
-        auto packetObservations = asset_discovery::parser::parseArpObservationsFromEthernetFrame(
+        const auto observations = asset_discovery::parser::parseEthernetObservations(
             packet.bytes,
             toObservationTimestamp(packet.timestamp));
-        observations.insert(
-            observations.end(),
-            std::make_move_iterator(packetObservations.begin()),
-            std::make_move_iterator(packetObservations.end()));
-    }
-    return observations;
-}
-
-std::string joinIpAddresses(const std::set<std::string>& ipAddresses)
-{
-    std::string output;
-    for (const auto& ipAddress : ipAddresses) {
-        if (!output.empty()) {
-            output += ",";
+        for (const auto& observation : observations) {
+            store.applyObservation(observation);
         }
-        output += ipAddress;
     }
-    return output;
-}
-
-std::string joinSources(const std::set<asset_discovery::parser::ObservationSource>& sources)
-{
-    std::string output;
-    for (const auto& source : sources) {
-        if (!output.empty()) {
-            output += ",";
-        }
-        output += asset_discovery::parser::observationSourceName(source);
-    }
-    return output;
+    return store;
 }
 
 } // namespace
@@ -98,39 +72,12 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        std::cout << "mode=pcap path=" << *result.options.pcapPath << "\n"
-                  << "packets=" << pcapResult.packets.size() << "\n";
-        if (!pcapResult.packets.empty()) {
-            std::cout << "link_type="
-                      << asset_discovery::capture::linkTypeName(pcapResult.packets.front().linkType) << "\n";
-        }
-
-        const auto observations = collectArpObservations(pcapResult.packets);
-        std::cout << "observations=" << observations.size() << "\n";
-        for (const auto& observation : observations) {
-            std::cout << "observation source="
-                      << asset_discovery::parser::observationSourceName(observation.source)
-                      << " mac=" << observation.macAddress;
-            if (observation.ipAddress.has_value()) {
-                std::cout << " ip=" << *observation.ipAddress;
-            }
-            std::cout << " timestamp=" << observation.timestamp.seconds << "."
-                      << observation.timestamp.microseconds << "\n";
-        }
-
-        asset_discovery::asset::AssetStore assetStore;
-        for (const auto& observation : observations) {
-            assetStore.applyObservation(observation);
-        }
-
-        const auto assets = assetStore.assets();
-        std::cout << "assets=" << assets.size() << "\n";
-        for (const auto& asset : assets) {
-            std::cout << "asset mac=" << asset.macAddress
-                      << " ips=" << joinIpAddresses(asset.ipAddresses)
-                      << " first_seen=" << asset_discovery::asset::formatTimestamp(asset.firstSeen)
-                      << " last_seen=" << asset_discovery::asset::formatTimestamp(asset.lastSeen)
-                      << " sources=" << joinSources(asset.sources) << "\n";
+        const auto assetStore = buildAssetStore(pcapResult.packets);
+        if (result.options.outputFormat == asset_discovery::cli::OutputFormat::Table) {
+            std::cout << asset_discovery::output::renderAssetTable(assetStore.assets());
+        } else {
+            std::cerr << "error: JSON output is not implemented yet\n";
+            return 1;
         }
     } else if (result.options.interfaceName.has_value()) {
         std::cout << "mode=interface name=" << *result.options.interfaceName;
@@ -140,6 +87,5 @@ int main(int argc, char* argv[])
         std::cout << "\n";
     }
 
-    std::cout << "output=" << asset_discovery::cli::outputFormatName(result.options.outputFormat) << "\n";
     return 0;
 }
