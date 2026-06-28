@@ -14,13 +14,19 @@ add_executable(arp-packet-tests
 target_link_libraries(arp-packet-tests PRIVATE asset_discovery_parser)
 add_test(NAME arp-packet-tests COMMAND arp-packet-tests)
 
+add_executable(asset-store-tests
+    AssetStoreTests.cpp
+)
+target_link_libraries(asset-store-tests PRIVATE asset_discovery_asset)
+add_test(NAME asset-store-tests COMMAND asset-store-tests)
+
 if(PCAP_FOUND)
     add_test(
         NAME asset-discovery-pcap-sample
         COMMAND asset-discovery --pcap "${PROJECT_SOURCE_DIR}/samples/arp.pcap"
     )
     set_tests_properties(asset-discovery-pcap-sample PROPERTIES
-        PASS_REGULAR_EXPRESSION "mac=02:42:ac:11:00:02 ip=192.168.1.10"
+        PASS_REGULAR_EXPRESSION "asset mac=02:42:ac:11:00:02 ips=192.168.1.10"
     )
 
     add_test(
