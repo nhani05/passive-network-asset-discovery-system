@@ -8,13 +8,19 @@ add_executable(ethernet-frame-tests
 target_link_libraries(ethernet-frame-tests PRIVATE asset_discovery_parser)
 add_test(NAME ethernet-frame-tests COMMAND ethernet-frame-tests)
 
+add_executable(arp-packet-tests
+    ArpPacketTests.cpp
+)
+target_link_libraries(arp-packet-tests PRIVATE asset_discovery_parser)
+add_test(NAME arp-packet-tests COMMAND arp-packet-tests)
+
 if(PCAP_FOUND)
     add_test(
         NAME asset-discovery-pcap-sample
         COMMAND asset-discovery --pcap "${PROJECT_SOURCE_DIR}/samples/arp.pcap"
     )
     set_tests_properties(asset-discovery-pcap-sample PROPERTIES
-        PASS_REGULAR_EXPRESSION "packets=1"
+        PASS_REGULAR_EXPRESSION "mac=02:42:ac:11:00:02 ip=192.168.1.10"
     )
 
     add_test(

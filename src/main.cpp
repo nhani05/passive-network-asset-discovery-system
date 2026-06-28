@@ -1,9 +1,41 @@
 #include "capture/PacketCapture.hpp"
 #include "cli/Arguments.hpp"
+#include "parser/ArpPacket.hpp"
 
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
+
+namespace {
+
+asset_discovery::parser::ObservationTimestamp toObservationTimestamp(
+    const asset_discovery::capture::PacketTimestamp& timestamp)
+{
+    return {timestamp.seconds, timestamp.microseconds};
+}
+
+std::vector<asset_discovery::parser::AssetObservation> collectArpObservations(
+    const std::vector<asset_discovery::capture::OfflinePacket>& packets)
+{
+    std::vector<asset_discovery::parser::AssetObservation> observations;
+    for (const auto& packet : packets) {
+        if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
+            continue;
+        }
+
+        auto packetObservations = asset_discovery::parser::parseArpObservationsFromEthernetFrame(
+            packet.bytes,
+            toObservationTimestamp(packet.timestamp));
+        observations.insert(
+            observations.end(),
+            std::make_move_iterator(packetObservations.begin()),
+            std::make_move_iterator(packetObservations.end()));
+    }
+    return observations;
+}
+
+} // namespace
 
 int main(int argc, char* argv[])
 {
@@ -45,6 +77,19 @@ int main(int argc, char* argv[])
         if (!pcapResult.packets.empty()) {
             std::cout << "link_type="
                       << asset_discovery::capture::linkTypeName(pcapResult.packets.front().linkType) << "\n";
+        }
+
+        const auto observations = collectArpObservations(pcapResult.packets);
+        std::cout << "observations=" << observations.size() << "\n";
+        for (const auto& observation : observations) {
+            std::cout << "observation source="
+                      << asset_discovery::parser::observationSourceName(observation.source)
+                      << " mac=" << observation.macAddress;
+            if (observation.ipAddress.has_value()) {
+                std::cout << " ip=" << *observation.ipAddress;
+            }
+            std::cout << " timestamp=" << observation.timestamp.seconds << "."
+                      << observation.timestamp.microseconds << "\n";
         }
     } else if (result.options.interfaceName.has_value()) {
         std::cout << "mode=interface name=" << *result.options.interfaceName;

@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(ASSET_DISCOVERY_REQUIRE_PCAP "Fail configuration when libpcap is unavailable" OFF)
 
 add_library(asset_discovery_parser
+    src/parser/ArpPacket.cpp
+    src/parser/AssetObservation.cpp
     src/parser/EthernetFrame.cpp
 )
 
