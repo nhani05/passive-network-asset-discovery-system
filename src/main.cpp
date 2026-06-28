@@ -1,6 +1,7 @@
 #include "asset/AssetStore.hpp"
 #include "capture/PacketCapture.hpp"
 #include "cli/Arguments.hpp"
+#include "output/JsonRenderer.hpp"
 #include "output/TableRenderer.hpp"
 #include "parser/PacketParsers.hpp"
 
@@ -76,8 +77,7 @@ int main(int argc, char* argv[])
         if (result.options.outputFormat == asset_discovery::cli::OutputFormat::Table) {
             std::cout << asset_discovery::output::renderAssetTable(assetStore.assets());
         } else {
-            std::cerr << "error: JSON output is not implemented yet\n";
-            return 1;
+            std::cout << asset_discovery::output::renderAssetJson(assetStore.assets());
         }
     } else if (result.options.interfaceName.has_value()) {
         asset_discovery::asset::AssetStore store;
@@ -105,8 +105,7 @@ int main(int argc, char* argv[])
         if (result.options.outputFormat == asset_discovery::cli::OutputFormat::Table) {
             std::cout << asset_discovery::output::renderAssetTable(store.assets());
         } else {
-            std::cerr << "error: JSON output is not implemented yet\n";
-            return 1;
+            std::cout << asset_discovery::output::renderAssetJson(store.assets());
         }
     }
 

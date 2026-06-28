@@ -25,6 +25,7 @@ target_include_directories(asset_discovery_asset PUBLIC include)
 target_link_libraries(asset_discovery_asset PUBLIC asset_discovery_parser)
 
 add_library(asset_discovery_output
+    src/output/JsonRenderer.cpp
     src/output/TableRenderer.cpp
 )
 

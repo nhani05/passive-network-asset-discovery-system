@@ -8,6 +8,12 @@ add_executable(table-renderer-tests
 target_link_libraries(table-renderer-tests PRIVATE asset_discovery_output)
 add_test(NAME table-renderer-tests COMMAND table-renderer-tests)
 
+add_executable(json-renderer-tests
+    JsonRendererTests.cpp
+)
+target_link_libraries(json-renderer-tests PRIVATE asset_discovery_output)
+add_test(NAME json-renderer-tests COMMAND json-renderer-tests)
+
 add_executable(ethernet-frame-tests
     EthernetFrameTests.cpp
 )
@@ -73,4 +79,15 @@ if(PCAP_FOUND)
             "-DPCAP_PATH=${PROJECT_SOURCE_DIR}/samples/missing.pcap"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectFailureContains.cmake"
     )
+
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_FOUND)
+        add_test(
+            NAME asset-discovery-pcap-json
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateJsonOutput.py"
+                "$<TARGET_FILE:asset-discovery>"
+                "${PROJECT_SOURCE_DIR}/samples/arp.pcap"
+        )
+    endif()
 endif()
