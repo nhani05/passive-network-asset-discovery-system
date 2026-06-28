@@ -97,6 +97,9 @@ std::string renderAssetJson(const std::vector<asset::Asset>& assets)
         output << "    \"ip_addresses\": ";
         appendStringArray(output, asset.ipAddresses);
         output << ",\n";
+        if (asset.hostname.has_value()) {
+            output << "    \"hostname\": \"" << escapeJsonString(*asset.hostname) << "\",\n";
+        }
         output << "    \"first_seen\": \"" << escapeJsonString(asset::formatTimestamp(asset.firstSeen)) << "\",\n";
         output << "    \"last_seen\": \"" << escapeJsonString(asset::formatTimestamp(asset.lastSeen)) << "\",\n";
         output << "    \"discovery_sources\": ";

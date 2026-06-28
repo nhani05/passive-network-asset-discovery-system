@@ -49,6 +49,9 @@ void AssetStore::applyObservation(const parser::AssetObservation& observation)
         if (observation.ipAddress.has_value()) {
             asset.ipAddresses.insert(*observation.ipAddress);
         }
+        if (observation.hostname.has_value() && !observation.hostname->empty()) {
+            asset.hostname = *observation.hostname;
+        }
         asset.sources.insert(observation.source);
         assetsByMac_.emplace(macAddress, std::move(asset));
         return;
@@ -63,6 +66,9 @@ void AssetStore::applyObservation(const parser::AssetObservation& observation)
     }
     if (observation.ipAddress.has_value()) {
         asset.ipAddresses.insert(*observation.ipAddress);
+    }
+    if (observation.hostname.has_value() && !observation.hostname->empty()) {
+        asset.hostname = *observation.hostname;
     }
     asset.sources.insert(observation.source);
 }

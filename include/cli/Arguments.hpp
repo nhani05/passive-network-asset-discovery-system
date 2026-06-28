@@ -9,6 +9,7 @@ namespace asset_discovery::cli {
 enum class OutputFormat {
     Table,
     Json,
+    Csv,
 };
 
 // Tùy chọn CLI sau khi đã kiểm tra quan hệ giữa các tham số.
@@ -16,6 +17,7 @@ struct Options {
     std::optional<std::string> pcapPath;
     std::optional<std::string> interfaceName;
     std::optional<int> durationSeconds;
+    std::optional<std::string> databaseUrl;
     OutputFormat outputFormat = OutputFormat::Table;
     bool helpRequested = false;
 };

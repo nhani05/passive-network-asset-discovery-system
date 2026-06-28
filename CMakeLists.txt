@@ -25,12 +25,20 @@ target_include_directories(asset_discovery_asset PUBLIC include)
 target_link_libraries(asset_discovery_asset PUBLIC asset_discovery_parser)
 
 add_library(asset_discovery_output
+    src/output/CsvRenderer.cpp
     src/output/JsonRenderer.cpp
     src/output/TableRenderer.cpp
 )
 
 target_include_directories(asset_discovery_output PUBLIC include)
 target_link_libraries(asset_discovery_output PUBLIC asset_discovery_asset)
+
+add_library(asset_discovery_storage
+    src/storage/PostgresWriter.cpp
+)
+
+target_include_directories(asset_discovery_storage PUBLIC include)
+target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_asset)
 
 add_executable(asset-discovery
     src/main.cpp
@@ -39,7 +47,7 @@ add_executable(asset-discovery
 )
 
 target_include_directories(asset-discovery PRIVATE include)
-target_link_libraries(asset-discovery PRIVATE asset_discovery_output asset_discovery_asset asset_discovery_parser)
+target_link_libraries(asset-discovery PRIVATE asset_discovery_output asset_discovery_storage asset_discovery_asset asset_discovery_parser)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)

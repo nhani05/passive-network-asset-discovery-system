@@ -67,16 +67,30 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--output") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--output cần một trong các giá trị: table, json"};
+                return {options, "--output cần một trong các giá trị: table, json, csv"};
             }
             const auto value = args[++i];
             if (value == "table") {
                 options.outputFormat = OutputFormat::Table;
             } else if (value == "json") {
                 options.outputFormat = OutputFormat::Json;
+            } else if (value == "csv") {
+                options.outputFormat = OutputFormat::Csv;
             } else {
-                return {options, "định dạng xuất '" + value + "' không được hỗ trợ; cần một trong các giá trị: table, json"};
+                return {options, "định dạng xuất '" + value + "' không được hỗ trợ; cần một trong các giá trị: table, json, csv"};
             }
+            continue;
+        }
+
+        if (arg == "--db-url") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--db-url cần PostgreSQL connection string"};
+            }
+            const auto value = args[++i];
+            if (value.empty()) {
+                return {options, "--db-url không được rỗng; hãy dùng DATABASE_URL trong .env hoặc truyền connection string hợp lệ"};
+            }
+            options.databaseUrl = value;
             continue;
         }
 
@@ -98,13 +112,14 @@ std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
     output << "Cách dùng:\n"
-           << "  " << executableName << " --pcap <file> [--output table|json]\n"
-           << "  " << executableName << " --interface <name> --duration <seconds> [--output table|json]\n"
+           << "  " << executableName << " --pcap <file> [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --interface <name> --duration <seconds> [--output table|json|csv] [--db-url <url>]\n"
            << "\nTùy chọn:\n"
            << "  --pcap <file>              Đọc packet từ file PCAP.\n"
            << "  --interface <name>         Capture packet từ interface đang chạy.\n"
            << "  --duration <seconds>       Thời lượng capture packet; bắt buộc khi dùng --interface.\n"
-           << "  --output table|json        Định dạng xuất. Mặc định là table.\n"
+           << "  --output table|json|csv    Định dạng xuất. Mặc định là table.\n"
+           << "  --db-url <url>             Ghi asset vào PostgreSQL bằng psql client.\n"
            << "  -h, --help                 Hiển thị hướng dẫn này.\n";
     return output.str();
 }
@@ -116,6 +131,8 @@ std::string outputFormatName(OutputFormat format)
         return "table";
     case OutputFormat::Json:
         return "json";
+    case OutputFormat::Csv:
+        return "csv";
     }
     return "table";
 }

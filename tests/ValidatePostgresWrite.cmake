@@ -1,0 +1,66 @@
+if(NOT DEFINED ASSET_DISCOVERY_EXE)
+    message(FATAL_ERROR "ASSET_DISCOVERY_EXE is required")
+endif()
+
+if(NOT DEFINED PCAP_PATH)
+    message(FATAL_ERROR "PCAP_PATH is required")
+endif()
+
+if(NOT DEFINED WORK_DIR)
+    message(FATAL_ERROR "WORK_DIR is required")
+endif()
+
+set(STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/psql-stub")
+file(MAKE_DIRECTORY "${STUB_DIR}")
+file(MAKE_DIRECTORY "${WORK_DIR}")
+
+set(STUB_PSQL "${STUB_DIR}/psql")
+file(WRITE "${STUB_PSQL}" "#!/bin/sh\nset -eu\nlog=\"${WORK_DIR}/postgres-write.log\"\nprintf '%s\\n' \"\$0\" \"\$@\" >> \"\$log\"\nwhile [ \"\$#\" -gt 0 ]; do\n  if [ \"\$1\" = \"-f\" ]; then\n    shift\n    cat \"\$1\" >> \"\$log\"\n    exit 0\n  fi\n  shift\ndone\nexit 0\n")
+file(CHMOD "${STUB_PSQL}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+
+set(ENV_PATH "${STUB_DIR}:$ENV{PATH}")
+file(WRITE "${WORK_DIR}/.env" "PGHOST=localhost\nPGPORT=5432\nPGDATABASE=asset_discovery\nPGUSER=asset_discovery\nPGPASSWORD=asset_discovery\n")
+file(REMOVE "${WORK_DIR}/postgres-write.log")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env
+        "PATH=${ENV_PATH}"
+        "DATABASE_URL="
+        "PGHOST="
+        "PGPORT="
+        "PGDATABASE="
+        "PGUSER="
+        "PGPASSWORD="
+        "PGSERVICE="
+        "${ASSET_DISCOVERY_EXE}"
+        --pcap "${PCAP_PATH}"
+        --output json
+    WORKING_DIRECTORY "${WORK_DIR}"
+    RESULT_VARIABLE command_result
+    OUTPUT_VARIABLE command_output
+    ERROR_VARIABLE command_error
+)
+
+if(NOT command_result EQUAL 0)
+    message(FATAL_ERROR "Expected command to succeed, got ${command_result}: ${command_output}${command_error}")
+endif()
+
+file(READ "${WORK_DIR}/postgres-write.log" logged_sql)
+string(FIND "${logged_sql}" "CREATE TABLE IF NOT EXISTS assets" schema_position)
+if(schema_position EQUAL -1)
+    message(FATAL_ERROR "Expected PostgreSQL schema SQL in log, got: ${logged_sql}")
+endif()
+
+string(FIND "${logged_sql}" "postgresql://" url_position)
+if(url_position GREATER -1)
+    message(FATAL_ERROR "Expected command line to avoid embedded connection strings, got: ${logged_sql}")
+endif()
+
+string(FIND "${logged_sql}" "INSERT INTO assets" insert_position)
+if(insert_position EQUAL -1)
+    message(FATAL_ERROR "Expected INSERT SQL in log, got: ${logged_sql}")
+endif()
+
+string(FIND "${command_output}" "\"mac_address\": \"02:42:ac:11:00:02\"" output_position)
+if(output_position EQUAL -1)
+    message(FATAL_ERROR "Expected JSON output to contain MAC address, got: ${command_output}${command_error}")
+endif()
