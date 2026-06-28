@@ -3,8 +3,8 @@
 Thumbs.db
 Desktop.ini
 
-docs/Agile_Scrum_Passive_Network_Asset_Discovery.md
-docs/
+docs/*
+!docs/table-output-guide.md
 openspec/
 # Editor and IDE files
 .vscode/

@@ -12,5 +12,5 @@
 Use it as the first deterministic input for PCAP reader and ARP parser work:
 
 ```powershell
-.\build-npcap\Debug\asset-discovery.exe --pcap samples\arp.pcap
+.\build-npcap\Debug\asset-discovery.exe --pcap samples\arp.pcap --output table
 ```
