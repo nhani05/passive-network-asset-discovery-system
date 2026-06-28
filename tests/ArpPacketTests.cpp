@@ -19,7 +19,7 @@ int failures = 0;
 void expect(bool condition, const std::string& message)
 {
     if (!condition) {
-        std::cerr << "FAIL: " << message << "\n";
+        std::cerr << "THẤT BẠI: " << message << "\n";
         ++failures;
     }
 }
@@ -56,17 +56,17 @@ void decodesValidArpRequest()
 {
     const auto result = decodeArpPacket(arpRequestPayloadFixture());
 
-    expect(result.ok(), "valid ARP request should decode successfully");
-    expect(result.packet.has_value(), "valid ARP request should produce packet data");
+    expect(result.ok(), "ARP request hợp lệ phải giải mã thành công");
+    expect(result.packet.has_value(), "ARP request hợp lệ phải tạo dữ liệu packet");
     if (!result.packet.has_value()) {
         return;
     }
 
-    expect(result.packet->operation == 1, "ARP operation should decode as request");
-    expect(result.packet->senderMac == "02:42:ac:11:00:02", "sender MAC should decode");
-    expect(result.packet->senderIp == "192.168.1.10", "sender IP should decode");
-    expect(result.packet->targetMac == "00:00:00:00:00:00", "target MAC should decode");
-    expect(result.packet->targetIp == "192.168.1.1", "target IP should decode");
+    expect(result.packet->operation == 1, "operation ARP phải được giải mã là request");
+    expect(result.packet->senderMac == "02:42:ac:11:00:02", "MAC gửi phải được giải mã");
+    expect(result.packet->senderIp == "192.168.1.10", "IP gửi phải được giải mã");
+    expect(result.packet->targetMac == "00:00:00:00:00:00", "MAC đích phải được giải mã");
+    expect(result.packet->targetIp == "192.168.1.1", "IP đích phải được giải mã");
 }
 
 void emitsSenderObservation()
@@ -74,16 +74,16 @@ void emitsSenderObservation()
     const ObservationTimestamp timestamp{123, 456};
     const auto observations = parseArpObservationsFromEthernetFrame(ethernetFrameWithEtherType(0x0806), timestamp);
 
-    expect(observations.size() == 1, "valid ARP Ethernet frame should emit one observation");
+    expect(observations.size() == 1, "frame Ethernet ARP hợp lệ phải sinh một observation");
     if (observations.empty()) {
         return;
     }
 
-    expect(observations.front().source == ObservationSource::Arp, "observation source should be ARP");
-    expect(observations.front().macAddress == "02:42:ac:11:00:02", "observation MAC should use sender MAC");
-    expect(observations.front().ipAddress == "192.168.1.10", "observation IP should use sender IP");
-    expect(observations.front().timestamp.seconds == 123, "observation seconds should preserve packet timestamp");
-    expect(observations.front().timestamp.microseconds == 456, "observation microseconds should preserve packet timestamp");
+    expect(observations.front().source == ObservationSource::Arp, "source của observation phải là ARP");
+    expect(observations.front().macAddress == "02:42:ac:11:00:02", "MAC observation phải dùng MAC gửi");
+    expect(observations.front().ipAddress == "192.168.1.10", "IP observation phải dùng IP gửi");
+    expect(observations.front().timestamp.seconds == 123, "giây của observation phải giữ timestamp packet");
+    expect(observations.front().timestamp.microseconds == 456, "micro giây của observation phải giữ timestamp packet");
 }
 
 void rejectsTruncatedArpPayload()
@@ -91,9 +91,9 @@ void rejectsTruncatedArpPayload()
     const std::vector<std::uint8_t> payload(arpEthernetIpv4Length - 1, 0x00);
     const auto result = decodeArpPacket(payload);
 
-    expect(!result.ok(), "truncated ARP payload should not decode successfully");
-    expect(!result.packet.has_value(), "truncated ARP payload should not produce packet data");
-    expect(result.error == ArpDecodeError::TruncatedPacket, "truncated ARP payload should return controlled error");
+    expect(!result.ok(), "payload ARP thiếu dữ liệu không được giải mã thành công");
+    expect(!result.packet.has_value(), "payload ARP thiếu dữ liệu không được tạo dữ liệu packet");
+    expect(result.error == ArpDecodeError::TruncatedPacket, "payload ARP thiếu dữ liệu phải trả về lỗi có kiểm soát");
 }
 
 void rejectsMalformedArpMetadata()
@@ -103,15 +103,15 @@ void rejectsMalformedArpMetadata()
 
     const auto result = decodeArpPacket(payload);
 
-    expect(!result.ok(), "unsupported ARP hardware length should not decode successfully");
-    expect(result.error == ArpDecodeError::UnsupportedHardwareLength, "unsupported hardware length should be explicit");
+    expect(!result.ok(), "độ dài phần cứng ARP chưa hỗ trợ không được giải mã thành công");
+    expect(result.error == ArpDecodeError::UnsupportedHardwareLength, "độ dài phần cứng chưa hỗ trợ phải được báo rõ");
 }
 
 void skipsNonArpEthernetFrame()
 {
     const auto observations = parseArpObservationsFromEthernetFrame(ethernetFrameWithEtherType(0x0800), {});
 
-    expect(observations.empty(), "non-ARP Ethernet frame should not emit ARP observations");
+    expect(observations.empty(), "frame Ethernet không phải ARP không được sinh observation ARP");
 }
 
 } // namespace
@@ -125,7 +125,7 @@ int main()
     skipsNonArpEthernetFrame();
 
     if (failures > 0) {
-        std::cerr << failures << " ARP packet test expectation(s) failed\n";
+        std::cerr << failures << " kỳ vọng test ARP packet thất bại\n";
         return 1;
     }
 

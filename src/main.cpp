@@ -80,21 +80,21 @@ int main(int argc, char* argv[])
     }
 
     if (result.error.has_value()) {
-        std::cerr << "error: " << *result.error << "\n\n"
+        std::cerr << "lỗi: " << *result.error << "\n\n"
                   << asset_discovery::cli::usageText(executableName);
         return 2;
     }
 
     const asset_discovery::capture::PacketCaptureBackend backend;
     if (!backend.pcapAvailable()) {
-        std::cerr << "warning: " << backend.backendName()
-                  << " backend is not available in this build; capture implementation will be enabled when libpcap is installed.\n";
+        std::cerr << "cảnh báo: backend " << backend.backendName()
+                  << " không có trong bản build này; chức năng capture packet sẽ hoạt động khi cài libpcap.\n";
     }
 
     if (result.options.pcapPath.has_value()) {
         const auto pcapResult = backend.readPcapFile(*result.options.pcapPath);
         if (pcapResult.error.has_value()) {
-            std::cerr << "error: " << *pcapResult.error << "\n";
+            std::cerr << "lỗi: " << *pcapResult.error << "\n";
             return 1;
         }
 
