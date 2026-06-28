@@ -1,9 +1,41 @@
+#include "asset/AssetStore.hpp"
 #include "capture/PacketCapture.hpp"
 #include "cli/Arguments.hpp"
+#include "output/TableRenderer.hpp"
+#include "parser/PacketParsers.hpp"
 
 #include <iostream>
 #include <string>
 #include <vector>
+
+namespace {
+
+asset_discovery::parser::ObservationTimestamp toObservationTimestamp(
+    const asset_discovery::capture::PacketTimestamp& timestamp)
+{
+    return {timestamp.seconds, timestamp.microseconds};
+}
+
+asset_discovery::asset::AssetStore buildAssetStore(
+    const std::vector<asset_discovery::capture::OfflinePacket>& packets)
+{
+    asset_discovery::asset::AssetStore store;
+    for (const auto& packet : packets) {
+        if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
+            continue;
+        }
+
+        const auto observations = asset_discovery::parser::parseEthernetObservations(
+            packet.bytes,
+            toObservationTimestamp(packet.timestamp));
+        for (const auto& observation : observations) {
+            store.applyObservation(observation);
+        }
+    }
+    return store;
+}
+
+} // namespace
 
 int main(int argc, char* argv[])
 {
@@ -40,11 +72,12 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        std::cout << "mode=pcap path=" << *result.options.pcapPath << "\n"
-                  << "packets=" << pcapResult.packets.size() << "\n";
-        if (!pcapResult.packets.empty()) {
-            std::cout << "link_type="
-                      << asset_discovery::capture::linkTypeName(pcapResult.packets.front().linkType) << "\n";
+        const auto assetStore = buildAssetStore(pcapResult.packets);
+        if (result.options.outputFormat == asset_discovery::cli::OutputFormat::Table) {
+            std::cout << asset_discovery::output::renderAssetTable(assetStore.assets());
+        } else {
+            std::cerr << "error: JSON output is not implemented yet\n";
+            return 1;
         }
     } else if (result.options.interfaceName.has_value()) {
         std::cout << "mode=interface name=" << *result.options.interfaceName;
@@ -54,6 +87,5 @@ int main(int argc, char* argv[])
         std::cout << "\n";
     }
 
-    std::cout << "output=" << asset_discovery::cli::outputFormatName(result.options.outputFormat) << "\n";
     return 0;
 }
