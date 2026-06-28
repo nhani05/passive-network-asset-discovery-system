@@ -1,4 +1,0 @@
-interface:
-  display_name: "Write Clear Comments"
-  short_description: "Write clean, useful code comments"
-  default_prompt: "Use $write-clear-comments to improve code comments for clarity and maintainability."
