@@ -1,9 +1,11 @@
+#include "asset/AssetStore.hpp"
 #include "capture/PacketCapture.hpp"
 #include "cli/Arguments.hpp"
 #include "parser/ArpPacket.hpp"
 
 #include <iostream>
 #include <iterator>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -33,6 +35,30 @@ std::vector<asset_discovery::parser::AssetObservation> collectArpObservations(
             std::make_move_iterator(packetObservations.end()));
     }
     return observations;
+}
+
+std::string joinIpAddresses(const std::set<std::string>& ipAddresses)
+{
+    std::string output;
+    for (const auto& ipAddress : ipAddresses) {
+        if (!output.empty()) {
+            output += ",";
+        }
+        output += ipAddress;
+    }
+    return output;
+}
+
+std::string joinSources(const std::set<asset_discovery::parser::ObservationSource>& sources)
+{
+    std::string output;
+    for (const auto& source : sources) {
+        if (!output.empty()) {
+            output += ",";
+        }
+        output += asset_discovery::parser::observationSourceName(source);
+    }
+    return output;
 }
 
 } // namespace
@@ -90,6 +116,21 @@ int main(int argc, char* argv[])
             }
             std::cout << " timestamp=" << observation.timestamp.seconds << "."
                       << observation.timestamp.microseconds << "\n";
+        }
+
+        asset_discovery::asset::AssetStore assetStore;
+        for (const auto& observation : observations) {
+            assetStore.applyObservation(observation);
+        }
+
+        const auto assets = assetStore.assets();
+        std::cout << "assets=" << assets.size() << "\n";
+        for (const auto& asset : assets) {
+            std::cout << "asset mac=" << asset.macAddress
+                      << " ips=" << joinIpAddresses(asset.ipAddresses)
+                      << " first_seen=" << asset_discovery::asset::formatTimestamp(asset.firstSeen)
+                      << " last_seen=" << asset_discovery::asset::formatTimestamp(asset.lastSeen)
+                      << " sources=" << joinSources(asset.sources) << "\n";
         }
     } else if (result.options.interfaceName.has_value()) {
         std::cout << "mode=interface name=" << *result.options.interfaceName;

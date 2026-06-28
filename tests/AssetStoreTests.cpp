@@ -1,0 +1,154 @@
+#include "asset/AssetStore.hpp"
+
+#include <iostream>
+#include <string>
+#include <utility>
+
+namespace {
+
+using asset_discovery::asset::AssetStore;
+using asset_discovery::asset::timestampLess;
+using asset_discovery::parser::AssetObservation;
+using asset_discovery::parser::ObservationSource;
+using asset_discovery::parser::ObservationTimestamp;
+
+int failures = 0;
+
+void expect(bool condition, const std::string& message)
+{
+    if (!condition) {
+        std::cerr << "FAIL: " << message << "\n";
+        ++failures;
+    }
+}
+
+AssetObservation arpObservation(
+    std::string macAddress,
+    std::string ipAddress,
+    ObservationTimestamp timestamp)
+{
+    AssetObservation observation;
+    observation.macAddress = std::move(macAddress);
+    observation.ipAddress = std::move(ipAddress);
+    observation.source = ObservationSource::Arp;
+    observation.timestamp = timestamp;
+    return observation;
+}
+
+void createsNewAsset()
+{
+    AssetStore store;
+    store.applyObservation(arpObservation("02:42:AC:11:00:02", "192.168.1.10", {10, 100}));
+
+    const auto assets = store.assets();
+
+    expect(assets.size() == 1, "first observation should create one asset");
+    if (assets.empty()) {
+        return;
+    }
+
+    expect(assets.front().macAddress == "02:42:ac:11:00:02", "asset MAC should be normalized");
+    expect(assets.front().ipAddresses.count("192.168.1.10") == 1, "asset should contain observed IP");
+    expect(assets.front().firstSeen.seconds == 10, "first_seen seconds should come from first observation");
+    expect(assets.front().lastSeen.seconds == 10, "last_seen seconds should come from first observation");
+    expect(assets.front().sources.count(ObservationSource::Arp) == 1, "asset should contain ARP source");
+}
+
+void repeatedObservationUpdatesLastSeen()
+{
+    AssetStore store;
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {10, 100}));
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {12, 200}));
+
+    const auto assets = store.assets();
+
+    expect(assets.size() == 1, "same MAC should still be one asset");
+    if (assets.empty()) {
+        return;
+    }
+
+    expect(assets.front().firstSeen.seconds == 10, "first_seen should preserve earliest observation");
+    expect(assets.front().firstSeen.microseconds == 100, "first_seen microseconds should preserve earliest observation");
+    expect(assets.front().lastSeen.seconds == 12, "last_seen should update to latest observation");
+    expect(assets.front().lastSeen.microseconds == 200, "last_seen microseconds should update to latest observation");
+}
+
+void outOfOrderTimestampsPreserveBounds()
+{
+    AssetStore store;
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {20, 0}));
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {10, 999999}));
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {25, 1}));
+
+    const auto assets = store.assets();
+
+    expect(assets.size() == 1, "out-of-order observations should merge into one asset");
+    if (assets.empty()) {
+        return;
+    }
+
+    expect(assets.front().firstSeen.seconds == 10, "out-of-order first_seen should be earliest seconds");
+    expect(assets.front().firstSeen.microseconds == 999999, "out-of-order first_seen should keep earliest microseconds");
+    expect(assets.front().lastSeen.seconds == 25, "out-of-order last_seen should be latest seconds");
+    expect(assets.front().lastSeen.microseconds == 1, "out-of-order last_seen should keep latest microseconds");
+}
+
+void mergesDistinctIpAddresses()
+{
+    AssetStore store;
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {10, 0}));
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.11", {11, 0}));
+
+    const auto assets = store.assets();
+
+    expect(assets.size() == 1, "new IP for same MAC should not create another asset");
+    if (assets.empty()) {
+        return;
+    }
+
+    expect(assets.front().ipAddresses.size() == 2, "asset should contain both distinct IP addresses");
+    expect(assets.front().ipAddresses.count("192.168.1.10") == 1, "asset should keep original IP");
+    expect(assets.front().ipAddresses.count("192.168.1.11") == 1, "asset should add new IP");
+}
+
+void ignoresDuplicateIpAddress()
+{
+    AssetStore store;
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {10, 0}));
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.10", {11, 0}));
+
+    const auto assets = store.assets();
+
+    expect(assets.size() == 1, "duplicate IP observation should still be one asset");
+    if (assets.empty()) {
+        return;
+    }
+
+    expect(assets.front().ipAddresses.size() == 1, "duplicate IP should not be stored twice");
+}
+
+void comparesTimestampsBySecondsThenMicroseconds()
+{
+    expect(timestampLess({1, 0}, {1, 1}), "timestamp comparison should use microseconds within same second");
+    expect(timestampLess({1, 999999}, {2, 0}), "timestamp comparison should use seconds first");
+    expect(!timestampLess({2, 0}, {1, 999999}), "later seconds should not be less than earlier seconds");
+}
+
+} // namespace
+
+int main()
+{
+    createsNewAsset();
+    repeatedObservationUpdatesLastSeen();
+    outOfOrderTimestampsPreserveBounds();
+    mergesDistinctIpAddresses();
+    ignoresDuplicateIpAddress();
+    comparesTimestampsBySecondsThenMicroseconds();
+
+    if (failures > 0) {
+        std::cerr << failures << " asset store test expectation(s) failed\n";
+        return 1;
+    }
+
+    return 0;
+}
