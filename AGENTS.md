@@ -20,7 +20,7 @@ Keep code in standard C++17 with CMake target-based dependencies. Use 4-space in
 
 ## Language Guidelines
 
-User-facing documentation and CLI output must be written in Vietnamese. This applies to files such as `README.md`, content under `docs/`, sample/demo instructions, help text, warnings, errors, and status messages. Internal contributor guidance such as this `AGENTS.md` may remain in English. Technical system terms may stay untranslated when that is clearer, for example `asset`, `capture`, `packet`, `parser`, `PCAP`, `CLI`, `backend`, and `renderer`.
+Documentation must be written in Vietnamese. This applies to files such as `README.md`, content under `docs/`, sample/demo instructions, build/deploy guides, and sprint notes. Code comments, CLI help text, warnings, errors, status messages, tests, commit messages, and internal contributor guidance such as this `AGENTS.md` should be written in English. Technical system terms may stay untranslated in Vietnamese docs when that is clearer, for example `asset`, `capture`, `packet`, `parser`, `PCAP`, `CLI`, `backend`, and `renderer`.
 
 ## Testing Guidelines
 

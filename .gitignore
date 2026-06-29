@@ -6,7 +6,11 @@ Desktop.ini
 docs/*
 !docs/SPRINT2.md
 !docs/SPRINT3.md
+!docs/SPRINT4.md
 !docs/asset-output-contract.md
+!docs/build-deploy-demo-guide.md
+!docs/final-submission-checklist.md
+!docs/system-design.md
 openspec/
 # Editor and IDE files
 .vscode/
