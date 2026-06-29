@@ -4,10 +4,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <unistd.h>
 #include <fstream>
 #include <set>
 #include <sstream>
+#include <thread>
 
 namespace asset_discovery::storage {
 namespace {
@@ -75,6 +77,22 @@ std::string tempSqlPath()
     return path;
 }
 
+bool runPsqlCommandWithRetries(const std::string& command)
+{
+    constexpr int maxAttempts = 10;
+    constexpr auto retryDelay = std::chrono::seconds(2);
+
+    for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
+        if (std::system(command.c_str()) == 0) {
+            return true;
+        }
+        if (attempt < maxAttempts) {
+            std::this_thread::sleep_for(retryDelay);
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 std::string postgresSchemaSql()
@@ -126,9 +144,9 @@ std::optional<std::string> writeAssetsToPostgres(
         command += " " + quoteShellString(*databaseUrl);
     }
     command += " -f " + quoteShellString(path);
-    const int result = std::system(command.c_str());
+    const bool success = runPsqlCommandWithRetries(command);
     std::remove(path.c_str());
-    if (result != 0) {
+    if (!success) {
         return "ghi PostgreSQL thất bại bằng psql";
     }
     return std::nullopt;

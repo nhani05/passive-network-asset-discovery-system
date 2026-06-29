@@ -40,7 +40,9 @@ public:
     std::string backendName() const;
 
     // Đọc toàn bộ file PCAP; lỗi được trả về thay vì ném exception.
-    PcapReadResult readPcapFile(const std::string& path) const;
+    PcapReadResult readPcapFile(
+        const std::string& path,
+        std::optional<std::string> packetFilter = std::nullopt) const;
 
     using LiveCaptureCallback = std::function<void(const OfflinePacket&)>;
 
@@ -48,6 +50,7 @@ public:
     std::optional<std::string> captureLive(
         const std::string& interfaceName,
         std::optional<int> durationSeconds,
+        std::optional<std::string> packetFilter,
         LiveCaptureCallback callback) const;
 };
 

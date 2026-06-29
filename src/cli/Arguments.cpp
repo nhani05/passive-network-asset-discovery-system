@@ -65,6 +65,18 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
+        if (arg == "--filter") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--filter cần biểu thức BPF"};
+            }
+            const auto value = args[++i];
+            if (value.empty()) {
+                return {options, "--filter không được rỗng"};
+            }
+            options.packetFilter = value;
+            continue;
+        }
+
         if (arg == "--output") {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--output cần một trong các giá trị: table, json, csv"};
@@ -112,12 +124,13 @@ std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
     output << "Cách dùng:\n"
-           << "  " << executableName << " --pcap <file> [--output table|json|csv] [--db-url <url>]\n"
-           << "  " << executableName << " --interface <name> --duration <seconds> [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --pcap <file> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --interface <name> --duration <seconds> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
            << "\nTùy chọn:\n"
            << "  --pcap <file>              Đọc packet từ file PCAP.\n"
            << "  --interface <name>         Capture packet từ interface đang chạy.\n"
            << "  --duration <seconds>       Thời lượng capture packet; bắt buộc khi dùng --interface.\n"
+           << "  --filter <bpf>             Lọc packet bằng biểu thức BPF, ví dụ: arp or udp port 67 or udp port 68.\n"
            << "  --output table|json|csv    Định dạng xuất. Mặc định là table.\n"
            << "  --db-url <url>             Ghi asset vào PostgreSQL bằng psql client.\n"
            << "  -h, --help                 Hiển thị hướng dẫn này.\n";

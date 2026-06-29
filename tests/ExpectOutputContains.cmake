@@ -10,8 +10,14 @@ if(NOT DEFINED PCAP_PATH)
     message(FATAL_ERROR "PCAP_PATH is required")
 endif()
 
+set(command_args "${ASSET_DISCOVERY_EXE}" --pcap "${PCAP_PATH}")
+if(DEFINED FILTER)
+    list(APPEND command_args --filter "${FILTER}")
+endif()
+list(APPEND command_args --output table)
+
 execute_process(
-    COMMAND "${ASSET_DISCOVERY_EXE}" --pcap "${PCAP_PATH}" --output table
+    COMMAND ${command_args}
     RESULT_VARIABLE command_result
     OUTPUT_VARIABLE command_output
     ERROR_VARIABLE command_error

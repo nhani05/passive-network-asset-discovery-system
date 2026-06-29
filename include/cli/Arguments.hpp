@@ -17,6 +17,7 @@ struct Options {
     std::optional<std::string> pcapPath;
     std::optional<std::string> interfaceName;
     std::optional<int> durationSeconds;
+    std::optional<std::string> packetFilter;
     std::optional<std::string> databaseUrl;
     OutputFormat outputFormat = OutputFormat::Table;
     bool helpRequested = false;

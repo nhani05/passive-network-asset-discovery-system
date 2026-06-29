@@ -19,6 +19,33 @@ namespace {
 #if ASSET_DISCOVERY_HAS_PCAP == 1
 constexpr int ethernetDatalink = DLT_EN10MB;
 
+std::optional<std::string> applyPacketFilter(
+    pcap_t* handle,
+    const std::string& sourceName,
+    const std::optional<std::string>& packetFilter)
+{
+    if (!packetFilter.has_value()) {
+        return std::nullopt;
+    }
+
+    bpf_program compiledFilter = {};
+    if (pcap_compile(handle, &compiledFilter, packetFilter->c_str(), 1, PCAP_NETMASK_UNKNOWN) != 0) {
+        std::ostringstream output;
+        output << "filter BPF không hợp lệ cho '" << sourceName << "': " << pcap_geterr(handle);
+        return output.str();
+    }
+
+    if (pcap_setfilter(handle, &compiledFilter) != 0) {
+        std::ostringstream output;
+        output << "không áp dụng được filter BPF cho '" << sourceName << "': " << pcap_geterr(handle);
+        pcap_freecode(&compiledFilter);
+        return output.str();
+    }
+
+    pcap_freecode(&compiledFilter);
+    return std::nullopt;
+}
+
 std::optional<LinkType> normalizeDatalink(int datalink)
 {
     // Giữ giá trị datalink riêng của libpcap bên ngoài model capture công khai.
@@ -48,7 +75,9 @@ std::string PacketCaptureBackend::backendName() const
     return ASSET_DISCOVERY_HAS_PCAP == 1 ? "libpcap" : "libpcap-unavailable";
 }
 
-PcapReadResult PacketCaptureBackend::readPcapFile(const std::string& path) const
+PcapReadResult PacketCaptureBackend::readPcapFile(
+    const std::string& path,
+    std::optional<std::string> packetFilter) const
 {
 #if ASSET_DISCOVERY_HAS_PCAP == 1
     // libpcap sở hữu handle; mọi nhánh thoát sau đây đều phải đóng handle.
@@ -75,6 +104,12 @@ PcapReadResult PacketCaptureBackend::readPcapFile(const std::string& path) const
         const auto error = unsupportedLinkTypeError(path, datalink);
         closeHandle(handle);
         return {{}, error};
+    }
+
+    const auto filterError = applyPacketFilter(handle, path, packetFilter);
+    if (filterError.has_value()) {
+        closeHandle(handle);
+        return {{}, *filterError};
     }
 
     std::vector<OfflinePacket> packets;
@@ -126,6 +161,7 @@ PcapReadResult PacketCaptureBackend::readPcapFile(const std::string& path) const
 std::optional<std::string> PacketCaptureBackend::captureLive(
     const std::string& interfaceName,
     std::optional<int> durationSeconds,
+    std::optional<std::string> packetFilter,
     LiveCaptureCallback callback) const
 {
 #if ASSET_DISCOVERY_HAS_PCAP == 1
@@ -153,6 +189,12 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
         const auto error = unsupportedLinkTypeError(interfaceName, datalink);
         closeHandle(handle);
         return error;
+    }
+
+    const auto filterError = applyPacketFilter(handle, interfaceName, packetFilter);
+    if (filterError.has_value()) {
+        closeHandle(handle);
+        return filterError;
     }
 
     auto startTime = std::chrono::steady_clock::now();

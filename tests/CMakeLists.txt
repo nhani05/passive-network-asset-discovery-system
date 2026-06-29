@@ -98,6 +98,16 @@ if(PCAP_FOUND)
     )
 
     add_test(
+        NAME asset-discovery-pcap-filter-arp
+        COMMAND "${CMAKE_COMMAND}"
+            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
+            "-DPCAP_PATH=${PROJECT_SOURCE_DIR}/samples/arp.pcap"
+            "-DFILTER=arp"
+            "-DEXPECTED_OUTPUT=02:42:ac:11:00:02"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectOutputContains.cmake"
+    )
+
+    add_test(
         NAME asset-discovery-pcap-empty-table
         COMMAND "${CMAKE_COMMAND}"
             "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
@@ -129,6 +139,14 @@ if(PCAP_FOUND)
                 "${CMAKE_CURRENT_SOURCE_DIR}/ValidateDhcpJsonOutput.py"
                 "$<TARGET_FILE:asset-discovery>"
                 "${DHCP_PCAP_PATH}"
+        )
+
+        add_test(
+            NAME asset-discovery-pcap-multi-asset-json
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateMultiAssetJsonOutput.py"
+                "$<TARGET_FILE:asset-discovery>"
+                "${PROJECT_SOURCE_DIR}/samples/multi-asset.pcap"
         )
     endif()
 

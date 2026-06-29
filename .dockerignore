@@ -1,0 +1,12 @@
+.git
+.agents
+.codex
+.github
+build
+build-*
+*.log
+.env
+.env.*
+!/.env.example
+__pycache__
+*.pyc
