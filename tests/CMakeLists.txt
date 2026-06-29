@@ -14,6 +14,12 @@ add_executable(json-renderer-tests
 target_link_libraries(json-renderer-tests PRIVATE asset_discovery_output)
 add_test(NAME json-renderer-tests COMMAND json-renderer-tests)
 
+add_executable(csv-renderer-tests
+    CsvRendererTests.cpp
+)
+target_link_libraries(csv-renderer-tests PRIVATE asset_discovery_output)
+add_test(NAME csv-renderer-tests COMMAND csv-renderer-tests)
+
 add_executable(ethernet-frame-tests
     EthernetFrameTests.cpp
 )
@@ -26,11 +32,24 @@ add_executable(arp-packet-tests
 target_link_libraries(arp-packet-tests PRIVATE asset_discovery_parser)
 add_test(NAME arp-packet-tests COMMAND arp-packet-tests)
 
+add_executable(packet-parser-tests
+    PacketParserTests.cpp
+)
+target_link_libraries(packet-parser-tests PRIVATE asset_discovery_parser)
+add_test(NAME packet-parser-tests COMMAND packet-parser-tests)
+
 add_executable(asset-store-tests
     AssetStoreTests.cpp
 )
 target_link_libraries(asset-store-tests PRIVATE asset_discovery_asset)
 add_test(NAME asset-store-tests COMMAND asset-store-tests)
+
+add_executable(arguments-tests
+    ArgumentsTests.cpp
+    ../src/cli/Arguments.cpp
+)
+target_include_directories(arguments-tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
+add_test(NAME arguments-tests COMMAND arguments-tests)
 
 if(PCAP_FOUND)
     set(EMPTY_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcap")
@@ -44,6 +63,21 @@ if(PCAP_FOUND)
     )
     add_custom_target(empty-pcap-fixture DEPENDS "${EMPTY_PCAP_PATH}")
     add_dependencies(asset-discovery empty-pcap-fixture)
+
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_FOUND)
+        set(DHCP_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/dhcp.pcap")
+        add_custom_command(
+            OUTPUT "${DHCP_PCAP_PATH}"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/GenerateDhcpPcap.py"
+                "${DHCP_PCAP_PATH}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateDhcpPcap.py"
+            VERBATIM
+        )
+        add_custom_target(dhcp-pcap-fixture DEPENDS "${DHCP_PCAP_PATH}")
+        add_dependencies(asset-discovery dhcp-pcap-fixture)
+    endif()
 
     add_test(
         NAME asset-discovery-pcap-sample-mac
@@ -80,7 +114,6 @@ if(PCAP_FOUND)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectFailureContains.cmake"
     )
 
-    find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_FOUND)
         add_test(
             NAME asset-discovery-pcap-json
@@ -89,5 +122,22 @@ if(PCAP_FOUND)
                 "$<TARGET_FILE:asset-discovery>"
                 "${PROJECT_SOURCE_DIR}/samples/arp.pcap"
         )
+
+        add_test(
+            NAME asset-discovery-pcap-dhcp-json
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateDhcpJsonOutput.py"
+                "$<TARGET_FILE:asset-discovery>"
+                "${DHCP_PCAP_PATH}"
+        )
     endif()
+
+    add_test(
+        NAME asset-discovery-postgres-write
+        COMMAND "${CMAKE_COMMAND}"
+            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
+            "-DPCAP_PATH=${PROJECT_SOURCE_DIR}/samples/arp.pcap"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/dotenv-postgres-write"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/ValidatePostgresWrite.cmake"
+    )
 endif()

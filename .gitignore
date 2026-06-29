@@ -4,7 +4,8 @@ Thumbs.db
 Desktop.ini
 
 docs/*
-!docs/table-output-guide.md
+!docs/SPRINT2.md
+!docs/asset-output-contract.md
 openspec/
 # Editor and IDE files
 .vscode/

@@ -1,15 +1,127 @@
 #include "asset/AssetStore.hpp"
 #include "capture/PacketCapture.hpp"
 #include "cli/Arguments.hpp"
+#include "output/CsvRenderer.hpp"
 #include "output/JsonRenderer.hpp"
 #include "output/TableRenderer.hpp"
 #include "parser/PacketParsers.hpp"
+#include "storage/PostgresWriter.hpp"
 
 #include <iostream>
+#include <cstdlib>
+#include <cctype>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
 namespace {
+
+std::string trimWhitespace(std::string value)
+{
+    const auto isSpace = [](unsigned char character) {
+        return std::isspace(character) != 0;
+    };
+
+    while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) {
+        value.erase(value.begin());
+    }
+    while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) {
+        value.pop_back();
+    }
+    return value;
+}
+
+std::string unquoteDotEnvValue(std::string value)
+{
+    if (value.size() >= 2) {
+        const char first = value.front();
+        const char last = value.back();
+        if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+            value = value.substr(1, value.size() - 2);
+        }
+    }
+    return value;
+}
+
+bool setEnvironmentValue(const std::string& key, const std::string& value)
+{
+    if (key.empty() || value.empty()) {
+        return false;
+    }
+
+#if defined(_WIN32)
+    return _putenv_s(key.c_str(), value.c_str()) == 0;
+#else
+    return setenv(key.c_str(), value.c_str(), 1) == 0;
+#endif
+}
+
+void loadDotEnvFile(const std::string& path)
+{
+    std::ifstream file(path);
+    if (!file) {
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        line = trimWhitespace(line);
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        if (line.rfind("export ", 0) == 0) {
+            line = trimWhitespace(line.substr(7));
+        }
+
+        const auto separator = line.find('=');
+        if (separator == std::string::npos) {
+            continue;
+        }
+
+        const auto key = trimWhitespace(line.substr(0, separator));
+        auto value = trimWhitespace(line.substr(separator + 1));
+        value = unquoteDotEnvValue(value);
+        const char* existing = std::getenv(key.c_str());
+        if (existing == nullptr || *existing == '\0') {
+            setEnvironmentValue(key, value);
+        }
+    }
+}
+
+std::optional<std::string> resolveDatabaseUrl(const asset_discovery::cli::Options& options)
+{
+    if (options.databaseUrl.has_value()) {
+        return options.databaseUrl;
+    }
+
+    const char* value = std::getenv("DATABASE_URL");
+    if (value != nullptr && *value != '\0') {
+        return std::string(value);
+    }
+
+    return std::nullopt;
+}
+
+bool hasPostgresConnectionEnvironment()
+{
+    static const char* const names[] = {
+        "PGHOST",
+        "PGPORT",
+        "PGDATABASE",
+        "PGUSER",
+        "PGPASSWORD",
+        "PGSERVICE",
+    };
+
+    for (const char* name : names) {
+        const char* value = std::getenv(name);
+        if (value != nullptr && *value != '\0') {
+            return true;
+        }
+    }
+    return false;
+}
 
 asset_discovery::parser::ObservationTimestamp toObservationTimestamp(
     const asset_discovery::capture::PacketTimestamp& timestamp)
@@ -36,10 +148,39 @@ asset_discovery::asset::AssetStore buildAssetStore(
     return store;
 }
 
+int writeDatabaseIfRequested(
+    const std::optional<std::string>& databaseUrl,
+    const std::vector<asset_discovery::asset::Asset>& assets)
+{
+    const auto error = asset_discovery::storage::writeAssetsToPostgres(databaseUrl, assets);
+    if (error.has_value()) {
+        std::cerr << "lỗi: " << *error << "\n";
+        return 1;
+    }
+    return 0;
+}
+
+std::string renderAssets(
+    const std::vector<asset_discovery::asset::Asset>& assets,
+    asset_discovery::cli::OutputFormat format)
+{
+    switch (format) {
+    case asset_discovery::cli::OutputFormat::Table:
+        return asset_discovery::output::renderAssetTable(assets);
+    case asset_discovery::cli::OutputFormat::Json:
+        return asset_discovery::output::renderAssetJson(assets);
+    case asset_discovery::cli::OutputFormat::Csv:
+        return asset_discovery::output::renderAssetCsv(assets);
+    }
+    return asset_discovery::output::renderAssetTable(assets);
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
 {
+    loadDotEnvFile(".env");
+
     std::vector<std::string> args;
     args.reserve(static_cast<std::size_t>(argc > 0 ? argc - 1 : 0));
     for (int i = 1; i < argc; ++i) {
@@ -74,11 +215,15 @@ int main(int argc, char* argv[])
         }
 
         const auto assetStore = buildAssetStore(pcapResult.packets);
-        if (result.options.outputFormat == asset_discovery::cli::OutputFormat::Table) {
-            std::cout << asset_discovery::output::renderAssetTable(assetStore.assets());
-        } else {
-            std::cout << asset_discovery::output::renderAssetJson(assetStore.assets());
+        const auto assets = assetStore.assets();
+        const auto databaseUrl = resolveDatabaseUrl(result.options);
+        if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
+            const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
+            if (dbResult != 0) {
+                return dbResult;
+            }
         }
+        std::cout << renderAssets(assets, result.options.outputFormat);
     } else if (result.options.interfaceName.has_value()) {
         asset_discovery::asset::AssetStore store;
         const auto error = backend.captureLive(
@@ -102,11 +247,15 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        if (result.options.outputFormat == asset_discovery::cli::OutputFormat::Table) {
-            std::cout << asset_discovery::output::renderAssetTable(store.assets());
-        } else {
-            std::cout << asset_discovery::output::renderAssetJson(store.assets());
+        const auto assets = store.assets();
+        const auto databaseUrl = resolveDatabaseUrl(result.options);
+        if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
+            const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
+            if (dbResult != 0) {
+                return dbResult;
+            }
         }
+        std::cout << renderAssets(assets, result.options.outputFormat);
     }
 
     return 0;

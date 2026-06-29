@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ using parser::ObservationTimestamp;
 struct Asset {
     std::string macAddress;
     std::set<std::string> ipAddresses;
+    std::optional<std::string> hostname;
     ObservationTimestamp firstSeen;
     ObservationTimestamp lastSeen;
     std::set<parser::ObservationSource> sources;

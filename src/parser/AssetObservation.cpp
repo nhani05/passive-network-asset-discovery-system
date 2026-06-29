@@ -7,6 +7,8 @@ std::string observationSourceName(ObservationSource source)
     switch (source) {
     case ObservationSource::Arp:
         return "arp";
+    case ObservationSource::Dhcp:
+        return "dhcp";
     }
     return "unknown";
 }

@@ -35,3 +35,59 @@ Sinh viên cần cung cấp:
 - demo hoạt động của hệ thống.
 
 ---
+
+# Cách build và kiểm thử hiện tại
+
+```sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+# Ví dụ chạy
+
+Table output:
+
+```sh
+./build/asset-discovery --pcap samples/arp.pcap --output table
+```
+
+JSON output:
+
+```sh
+./build/asset-discovery --pcap samples/arp.pcap --output json
+```
+
+CSV output:
+
+```sh
+./build/asset-discovery --pcap samples/arp.pcap --output csv
+```
+
+Ghi PostgreSQL khi đã có database và `psql` trong `PATH`:
+
+```sh
+psql -f db/schema.sql
+./build/asset-discovery --pcap samples/arp.pcap --output json
+```
+
+Tạo `.env` trong thư mục hiện tại:
+
+```env
+PGHOST=localhost
+PGPORT=5432
+PGDATABASE=asset_discovery
+PGUSER=postgres
+PGPASSWORD=change-me
+```
+
+Sau đó chỉ cần:
+
+```sh
+./build/asset-discovery --pcap samples/arp.pcap --output json
+```
+
+Tài liệu Sprint 2 và output contract nằm ở:
+
+- `docs/SPRINT2.md`
+- `docs/asset-output-contract.md`

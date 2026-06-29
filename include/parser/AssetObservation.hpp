@@ -13,11 +13,13 @@ struct ObservationTimestamp {
 
 enum class ObservationSource {
     Arp,
+    Dhcp,
 };
 
 struct AssetObservation {
     std::string macAddress;
     std::optional<std::string> ipAddress;
+    std::optional<std::string> hostname;
     ObservationSource source = ObservationSource::Arp;
     ObservationTimestamp timestamp;
 };
