@@ -38,6 +38,7 @@ void preservesArbitrarySourcesInSql()
     const auto sql = postgresAssetsSql({asset});
 
     expect(contains(sql, "CREATE TABLE IF NOT EXISTS assets"), "SQL helper should include schema");
+    expect(contains(sql, "SET client_min_messages TO warning"), "SQL helper should suppress expected schema notices");
     expect(contains(sql, "INSERT INTO assets"), "SQL helper should include asset insert");
     expect(contains(sql, "ARRAY['arp','dns']::text[]"), "SQL helper should preserve arbitrary source ids");
 }
