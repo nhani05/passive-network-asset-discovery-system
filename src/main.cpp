@@ -7,6 +7,8 @@
 #include "application/parser/PacketParserFacade.hpp"
 #include "infrastructure/storage/PostgresWriter.hpp"
 
+#include <atomic>
+#include <csignal>
 #include <iostream>
 #include <cstdlib>
 #include <cctype>
@@ -16,6 +18,13 @@
 #include <vector>
 
 namespace {
+
+volatile std::sig_atomic_t liveCaptureInterrupted = 0;
+
+void handleLiveCaptureSignal(int)
+{
+    liveCaptureInterrupted = 1;
+}
 
 std::string trimWhitespace(std::string value)
 {
@@ -199,6 +208,22 @@ std::string renderAssets(
     return asset_discovery::output::renderAssetTable(assets);
 }
 
+int writeAndRenderAssets(
+    const asset_discovery::cli::Options& options,
+    const std::vector<asset_discovery::asset::Asset>& assets)
+{
+    const auto databaseUrl = resolveDatabaseUrl(options);
+    if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
+        const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
+        if (dbResult != 0) {
+            return dbResult;
+        }
+    }
+
+    std::cout << renderAssets(assets, options.outputFormat);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -232,7 +257,8 @@ int main(int argc, char* argv[])
                   << " is not available in this build; packet capture will work after libpcap is installed.\n";
     }
 
-    if (result.options.pcapPath.has_value()) {
+    const auto captureMode = *result.options.captureMode;
+    if (captureMode == asset_discovery::cli::CaptureMode::PcapOffline) {
         const auto pcapResult = backend.readPcapFile(
             *result.options.pcapPath,
             result.options.packetFilter);
@@ -243,21 +269,31 @@ int main(int argc, char* argv[])
 
         const auto assetStore = buildAssetStore(pcapResult.packets);
         const auto assets = assetStore.assets();
-        const auto databaseUrl = resolveDatabaseUrl(result.options);
-        if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
-            const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
-            if (dbResult != 0) {
-                return dbResult;
-            }
-        }
-        std::cout << renderAssets(assets, result.options.outputFormat);
-    } else if (result.options.interfaceName.has_value()) {
+        return writeAndRenderAssets(result.options, assets);
+    } else if (captureMode == asset_discovery::cli::CaptureMode::LiveTimed
+        || captureMode == asset_discovery::cli::CaptureMode::LiveInfinite) {
         asset_discovery::asset::AssetStore store;
+        std::atomic_bool stopRequested(false);
+
+        asset_discovery::capture::LiveCaptureOptions liveOptions;
+        liveOptions.durationSeconds = result.options.durationSeconds;
+        if (captureMode == asset_discovery::cli::CaptureMode::LiveInfinite) {
+            liveOptions.idleTimeoutSeconds = result.options.idleTimeoutSeconds;
+        }
+
+        liveCaptureInterrupted = 0;
+        liveOptions.stopRequested = [&stopRequested]() {
+            return liveCaptureInterrupted != 0 || stopRequested.load();
+        };
+
+        using SignalHandler = void (*)(int);
+        const SignalHandler previousSignalHandler = std::signal(SIGINT, handleLiveCaptureSignal);
+
         const auto error = backend.captureLive(
             *result.options.interfaceName,
-            result.options.durationSeconds,
+            liveOptions,
             result.options.packetFilter,
-            [&store](const asset_discovery::capture::OfflinePacket& packet) {
+            [&store, &result, &stopRequested](const asset_discovery::capture::OfflinePacket& packet) {
                 if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
                     return;
                 }
@@ -267,8 +303,17 @@ int main(int argc, char* argv[])
                 for (const auto& observation : observations) {
                     store.applyObservation(observation);
                 }
+
+                if (result.options.maxAssets.has_value()
+                    && store.size() >= static_cast<std::size_t>(*result.options.maxAssets)) {
+                    stopRequested.store(true);
+                }
             }
         );
+
+        if (previousSignalHandler != SIG_ERR) {
+            std::signal(SIGINT, previousSignalHandler);
+        }
 
         if (error.has_value()) {
             std::cerr << "error: " << *error << "\n";
@@ -276,14 +321,7 @@ int main(int argc, char* argv[])
         }
 
         const auto assets = store.assets();
-        const auto databaseUrl = resolveDatabaseUrl(result.options);
-        if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
-            const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
-            if (dbResult != 0) {
-                return dbResult;
-            }
-        }
-        std::cout << renderAssets(assets, result.options.outputFormat);
+        return writeAndRenderAssets(result.options, assets);
     }
 
     return 0;

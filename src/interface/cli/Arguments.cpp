@@ -65,6 +65,35 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
+        if (arg == "--live") {
+            options.captureMode = CaptureMode::LiveInfinite;
+            continue;
+        }
+
+        if (arg == "--idle-timeout") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--idle-timeout requires a positive number of seconds"};
+            }
+            const auto parsed = parsePositiveInteger(args[++i]);
+            if (!parsed.has_value()) {
+                return {options, "--idle-timeout must be a positive integer"};
+            }
+            options.idleTimeoutSeconds = *parsed;
+            continue;
+        }
+
+        if (arg == "--max-assets") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--max-assets requires a positive asset count"};
+            }
+            const auto parsed = parsePositiveInteger(args[++i]);
+            if (!parsed.has_value()) {
+                return {options, "--max-assets must be a positive integer"};
+            }
+            options.maxAssets = *parsed;
+            continue;
+        }
+
         if (arg == "--filter") {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--filter requires a BPF expression"};
@@ -113,8 +142,43 @@ ParseResult parseArguments(const std::vector<std::string>& args)
         return {options, "provide exactly one input source: --pcap <file> or --interface <name>"};
     }
 
-    if (options.interfaceName.has_value() && !options.durationSeconds.has_value()) {
-        return {options, "--interface requires --duration <seconds>"};
+    const bool liveRequested = options.captureMode == CaptureMode::LiveInfinite;
+
+    if (options.pcapPath.has_value()) {
+        if (options.durationSeconds.has_value()) {
+            return {options, "--duration is only valid with --interface <name>"};
+        }
+        if (liveRequested) {
+            return {options, "--live is only valid with --interface <name>"};
+        }
+        if (options.idleTimeoutSeconds.has_value()) {
+            return {options, "--idle-timeout is only valid with --interface <name> --live"};
+        }
+        if (options.maxAssets.has_value()) {
+            return {options, "--max-assets is only valid with --interface <name> --live"};
+        }
+        options.captureMode = CaptureMode::PcapOffline;
+        return {options, std::nullopt};
+    }
+
+    if (options.durationSeconds.has_value() && liveRequested) {
+        return {options, "choose either --duration <seconds> or --live with --interface, not both"};
+    }
+
+    if (!options.durationSeconds.has_value() && !liveRequested) {
+        return {options, "--interface requires either --duration <seconds> or --live"};
+    }
+
+    if (!liveRequested) {
+        if (options.idleTimeoutSeconds.has_value()) {
+            return {options, "--idle-timeout is only valid with --interface <name> --live"};
+        }
+        if (options.maxAssets.has_value()) {
+            return {options, "--max-assets is only valid with --interface <name> --live"};
+        }
+        options.captureMode = CaptureMode::LiveTimed;
+    } else {
+        options.captureMode = CaptureMode::LiveInfinite;
     }
 
     return {options, std::nullopt};
@@ -126,10 +190,14 @@ std::string usageText(const std::string& executableName)
     output << "Usage:\n"
            << "  " << executableName << " --pcap <file> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
            << "  " << executableName << " --interface <name> --duration <seconds> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --interface <name> --live [--idle-timeout <seconds>] [--max-assets <count>] [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
            << "\nOptions:\n"
            << "  --pcap <file>              Read packets from a PCAP file.\n"
            << "  --interface <name>         Capture packets from a live interface.\n"
-           << "  --duration <seconds>       Capture duration; required with --interface.\n"
+           << "  --duration <seconds>       Live timed capture duration.\n"
+           << "  --live                     Capture until stopped by Ctrl+C or a live stop condition.\n"
+           << "  --idle-timeout <seconds>   In --live mode, stop after no accepted packet is seen for this many seconds.\n"
+           << "  --max-assets <count>       In --live mode, stop after discovering this many assets.\n"
            << "  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.\n"
            << "  --output table|json|csv    Output format. Defaults to table.\n"
            << "  --db-url <url>             Write assets to PostgreSQL with the psql client.\n"

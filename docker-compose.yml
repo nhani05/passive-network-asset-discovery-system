@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: db
     environment:
       POSTGRES_DB: asset_discovery
       POSTGRES_USER: postgres
@@ -15,44 +14,40 @@ services:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     networks:
       - default
 
   pcap-demo:
     build: .
-    container_name: pcap-demo
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: asset_discovery
-      DB_USER: postgres
-      DB_PASSWORD: 123456
+      PGHOST: ${PGHOST}
+      PGPORT: ${PGPORT:-5432}
+      PGDATABASE: ${PGDATABASE}
+      PGUSER: ${PGUSER}
+      PGPASSWORD: ${PGPASSWORD}
+      PGSSLMODE: ${PGSSLMODE:-require}
     volumes:
       - ./samples:/samples:ro
-    networks:
-      - default
     entrypoint:
       - /bin/sh
       - -c
     command:
       - |
-        for attempt in $$(seq 1 60); do
-          if pg_isready -h db -p 5432 -U postgres -d asset_discovery >/dev/null 2>&1; then
+        for attempt in $$(seq 1 30); do
+          if pg_isready -h "$${PGHOST}" -p "$${PGPORT}" -U "$${PGUSER}" -d "$${PGDATABASE}" >/dev/null 2>&1; then
             asset-discovery --pcap /samples/multi-asset.pcap --filter "arp or udp port 67 or udp port 68" --output table
             status=$$?
             if [ "$$status" -ne 0 ]; then
               exit "$$status"
             fi
-            echo "pcap-demo completed; keeping the container alive for DNS/DB inspection."
+            echo "pcap-demo completed; keeping the container alive for inspection."
             tail -f /dev/null
           fi
-          echo "waiting for PostgreSQL to become ready ($$attempt/60)..."
+          echo "waiting for PostgreSQL to become ready ($$attempt/30)..."
           sleep 2
         done
-        echo "error: PostgreSQL was not ready after 120 seconds" >&2
+        echo "error: PostgreSQL was not ready after 60 seconds" >&2
         exit 1
 
   live-capture:
@@ -60,18 +55,34 @@ services:
     build: .
     user: "0:0"
     network_mode: host
+    entrypoint:
+      - /bin/sh
+      - -c
+    environment:
+      CAPTURE_INTERFACE: ${CAPTURE_INTERFACE:-eth0}
+      CAPTURE_MODE: ${CAPTURE_MODE:-timed}
+      CAPTURE_DURATION: ${CAPTURE_DURATION:-60}
+      CAPTURE_IDLE_TIMEOUT: ${CAPTURE_IDLE_TIMEOUT:-}
+      CAPTURE_MAX_ASSETS: ${CAPTURE_MAX_ASSETS:-}
+      CAPTURE_FILTER: ${CAPTURE_FILTER:-arp or udp port 67 or udp port 68}
     cap_add:
       - NET_ADMIN
       - NET_RAW
     command:
-      - --interface
-      - ${CAPTURE_INTERFACE:-eth0}
-      - --duration
-      - ${CAPTURE_DURATION:-60}
-      - --filter
-      - ${CAPTURE_FILTER:-arp or udp port 67 or udp port 68}
-      - --output
-      - table
+      - |
+        set -eu
+        if [ "$${CAPTURE_MODE:-timed}" = "live" ]; then
+          set -- --interface "$${CAPTURE_INTERFACE}" --live
+          if [ -n "$${CAPTURE_IDLE_TIMEOUT:-}" ]; then
+            set -- "$$@" --idle-timeout "$${CAPTURE_IDLE_TIMEOUT}"
+          fi
+          if [ -n "$${CAPTURE_MAX_ASSETS:-}" ]; then
+            set -- "$$@" --max-assets "$${CAPTURE_MAX_ASSETS}"
+          fi
+        else
+          set -- --interface "$${CAPTURE_INTERFACE}" --duration "$${CAPTURE_DURATION}"
+        fi
+        exec asset-discovery "$$@" --filter "$${CAPTURE_FILTER}" --output table
 
 networks:
   default:

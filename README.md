@@ -80,6 +80,18 @@ sudo ./build/asset-discovery --interface eth0 --duration 60 \
   --output table
 ```
 
+Live capture không giới hạn thời gian, dừng khi không có packet phù hợp trong 30 giây, đủ 10 asset, hoặc khi nhấn Ctrl+C:
+
+```sh
+sudo ./build/asset-discovery --interface eth0 --live \
+  --idle-timeout 30 \
+  --max-assets 10 \
+  --filter "arp or udp port 67 or udp port 68" \
+  --output table
+```
+
+Trong live infinite mode, `--idle-timeout` tính theo packet được libpcap chấp nhận sau BPF filter; traffic bị filter loại ra sẽ không reset bộ đếm idle. Ctrl+C dừng capture theo hướng graceful, sau đó chương trình vẫn render kết quả cuối và ghi PostgreSQL nếu đã cấu hình.
+
 Ghi PostgreSQL bằng database từ Docker Compose khi `psql` có trong `PATH`:
 
 ```sh
@@ -159,10 +171,27 @@ docker run --rm --user 0:0 --net=host --cap-add=NET_ADMIN --cap-add=NET_RAW \
   --output table
 ```
 
+Live infinite trong Docker:
+
+```sh
+docker run --rm --user 0:0 --net=host --cap-add=NET_ADMIN --cap-add=NET_RAW \
+  passive-asset-discovery \
+  --interface eth0 --live --idle-timeout 30 --max-assets 10 \
+  --filter "arp or udp port 67 or udp port 68" \
+  --output table
+```
+
 Có thể dùng Compose profile cho live capture:
 
 ```sh
 CAPTURE_INTERFACE=eth0 CAPTURE_DURATION=60 docker compose --profile live run --rm live-capture
+```
+
+Compose profile mặc định chạy live timed. Để chạy live infinite:
+
+```sh
+CAPTURE_MODE=live CAPTURE_IDLE_TIMEOUT=30 CAPTURE_MAX_ASSETS=10 \
+  docker compose --profile live run --rm live-capture
 ```
 
 Tài liệu Sprint và output contract nằm ở:
