@@ -39,7 +39,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--pcap") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--pcap cần đường dẫn file"};
+                return {options, "--pcap requires a file path"};
             }
             options.pcapPath = args[++i];
             continue;
@@ -47,7 +47,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--interface") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--interface cần tên interface"};
+                return {options, "--interface requires an interface name"};
             }
             options.interfaceName = args[++i];
             continue;
@@ -55,19 +55,31 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 
         if (arg == "--duration") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--duration cần số giây dương"};
+                return {options, "--duration requires a positive number of seconds"};
             }
             const auto parsed = parsePositiveInteger(args[++i]);
             if (!parsed.has_value()) {
-                return {options, "--duration phải là số nguyên dương"};
+                return {options, "--duration must be a positive integer"};
             }
             options.durationSeconds = *parsed;
             continue;
         }
 
+        if (arg == "--filter") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--filter requires a BPF expression"};
+            }
+            const auto value = args[++i];
+            if (value.empty()) {
+                return {options, "--filter cannot be empty"};
+            }
+            options.packetFilter = value;
+            continue;
+        }
+
         if (arg == "--output") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--output cần một trong các giá trị: table, json, csv"};
+                return {options, "--output requires one of: table, json, csv"};
             }
             const auto value = args[++i];
             if (value == "table") {
@@ -77,32 +89,32 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             } else if (value == "csv") {
                 options.outputFormat = OutputFormat::Csv;
             } else {
-                return {options, "định dạng xuất '" + value + "' không được hỗ trợ; cần một trong các giá trị: table, json, csv"};
+                return {options, "output format '" + value + "' is not supported; expected one of: table, json, csv"};
             }
             continue;
         }
 
         if (arg == "--db-url") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--db-url cần PostgreSQL connection string"};
+                return {options, "--db-url requires a PostgreSQL connection string"};
             }
             const auto value = args[++i];
             if (value.empty()) {
-                return {options, "--db-url không được rỗng; hãy dùng DATABASE_URL trong .env hoặc truyền connection string hợp lệ"};
+                return {options, "--db-url cannot be empty; use DATABASE_URL in .env or pass a valid connection string"};
             }
             options.databaseUrl = value;
             continue;
         }
 
-        return {options, "tham số không xác định '" + arg + "'"};
+        return {options, "unknown argument '" + arg + "'"};
     }
 
     if (options.pcapPath.has_value() == options.interfaceName.has_value()) {
-        return {options, "chỉ cung cấp đúng một nguồn đầu vào: --pcap <file> hoặc --interface <name>"};
+        return {options, "provide exactly one input source: --pcap <file> or --interface <name>"};
     }
 
     if (options.interfaceName.has_value() && !options.durationSeconds.has_value()) {
-        return {options, "--interface cần --duration <seconds>"};
+        return {options, "--interface requires --duration <seconds>"};
     }
 
     return {options, std::nullopt};
@@ -111,16 +123,17 @@ ParseResult parseArguments(const std::vector<std::string>& args)
 std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
-    output << "Cách dùng:\n"
-           << "  " << executableName << " --pcap <file> [--output table|json|csv] [--db-url <url>]\n"
-           << "  " << executableName << " --interface <name> --duration <seconds> [--output table|json|csv] [--db-url <url>]\n"
-           << "\nTùy chọn:\n"
-           << "  --pcap <file>              Đọc packet từ file PCAP.\n"
-           << "  --interface <name>         Capture packet từ interface đang chạy.\n"
-           << "  --duration <seconds>       Thời lượng capture packet; bắt buộc khi dùng --interface.\n"
-           << "  --output table|json|csv    Định dạng xuất. Mặc định là table.\n"
-           << "  --db-url <url>             Ghi asset vào PostgreSQL bằng psql client.\n"
-           << "  -h, --help                 Hiển thị hướng dẫn này.\n";
+    output << "Usage:\n"
+           << "  " << executableName << " --pcap <file> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --interface <name> --duration <seconds> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
+           << "\nOptions:\n"
+           << "  --pcap <file>              Read packets from a PCAP file.\n"
+           << "  --interface <name>         Capture packets from a live interface.\n"
+           << "  --duration <seconds>       Capture duration; required with --interface.\n"
+           << "  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.\n"
+           << "  --output table|json|csv    Output format. Defaults to table.\n"
+           << "  --db-url <url>             Write assets to PostgreSQL with the psql client.\n"
+           << "  -h, --help                 Show this help text.\n";
     return output.str();
 }
 

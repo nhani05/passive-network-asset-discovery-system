@@ -57,6 +57,30 @@ bool setEnvironmentValue(const std::string& key, const std::string& value)
 #endif
 }
 
+void setPostgresEnvironmentFromAlias(const char* aliasName, const char* postgresName)
+{
+    const char* postgresValue = std::getenv(postgresName);
+    if (postgresValue != nullptr && *postgresValue != '\0') {
+        return;
+    }
+
+    const char* aliasValue = std::getenv(aliasName);
+    if (aliasValue == nullptr || *aliasValue == '\0') {
+        return;
+    }
+
+    setEnvironmentValue(postgresName, aliasValue);
+}
+
+void applyPostgresAliasEnvironment()
+{
+    setPostgresEnvironmentFromAlias("DB_HOST", "PGHOST");
+    setPostgresEnvironmentFromAlias("DB_PORT", "PGPORT");
+    setPostgresEnvironmentFromAlias("DB_NAME", "PGDATABASE");
+    setPostgresEnvironmentFromAlias("DB_USER", "PGUSER");
+    setPostgresEnvironmentFromAlias("DB_PASSWORD", "PGPASSWORD");
+}
+
 void loadDotEnvFile(const std::string& path)
 {
     std::ifstream file(path);
@@ -154,7 +178,7 @@ int writeDatabaseIfRequested(
 {
     const auto error = asset_discovery::storage::writeAssetsToPostgres(databaseUrl, assets);
     if (error.has_value()) {
-        std::cerr << "lỗi: " << *error << "\n";
+        std::cerr << "error: " << *error << "\n";
         return 1;
     }
     return 0;
@@ -180,6 +204,7 @@ std::string renderAssets(
 int main(int argc, char* argv[])
 {
     loadDotEnvFile(".env");
+    applyPostgresAliasEnvironment();
 
     std::vector<std::string> args;
     args.reserve(static_cast<std::size_t>(argc > 0 ? argc - 1 : 0));
@@ -196,21 +221,23 @@ int main(int argc, char* argv[])
     }
 
     if (result.error.has_value()) {
-        std::cerr << "lỗi: " << *result.error << "\n\n"
+        std::cerr << "error: " << *result.error << "\n\n"
                   << asset_discovery::cli::usageText(executableName);
         return 2;
     }
 
     const asset_discovery::capture::PacketCaptureBackend backend;
     if (!backend.pcapAvailable()) {
-        std::cerr << "cảnh báo: backend " << backend.backendName()
-                  << " không có trong bản build này; chức năng capture packet sẽ hoạt động khi cài libpcap.\n";
+        std::cerr << "warning: backend " << backend.backendName()
+                  << " is not available in this build; packet capture will work after libpcap is installed.\n";
     }
 
     if (result.options.pcapPath.has_value()) {
-        const auto pcapResult = backend.readPcapFile(*result.options.pcapPath);
+        const auto pcapResult = backend.readPcapFile(
+            *result.options.pcapPath,
+            result.options.packetFilter);
         if (pcapResult.error.has_value()) {
-            std::cerr << "lỗi: " << *pcapResult.error << "\n";
+            std::cerr << "error: " << *pcapResult.error << "\n";
             return 1;
         }
 
@@ -229,6 +256,7 @@ int main(int argc, char* argv[])
         const auto error = backend.captureLive(
             *result.options.interfaceName,
             result.options.durationSeconds,
+            result.options.packetFilter,
             [&store](const asset_discovery::capture::OfflinePacket& packet) {
                 if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
                     return;
@@ -243,7 +271,7 @@ int main(int argc, char* argv[])
         );
 
         if (error.has_value()) {
-            std::cerr << "lỗi: " << *error << "\n";
+            std::cerr << "error: " << *error << "\n";
             return 1;
         }
 

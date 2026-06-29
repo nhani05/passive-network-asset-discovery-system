@@ -52,9 +52,9 @@ std::string ethernetDecodeErrorName(EthernetDecodeError error)
 {
     switch (error) {
     case EthernetDecodeError::TruncatedFrame:
-        return "frame Ethernet bị thiếu dữ liệu";
+        return "truncated Ethernet frame";
     }
-    return "lỗi giải mã Ethernet không xác định";
+    return "unknown Ethernet decode error";
 }
 
 } // namespace asset_discovery::parser

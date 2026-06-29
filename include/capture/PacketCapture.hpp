@@ -12,13 +12,13 @@ enum class LinkType {
     Ethernet,
 };
 
-// Timestamp được giữ nguyên từ nguồn packet, không chuyển đổi timezone.
+// Timestamp is preserved from the packet source without timezone conversion.
 struct PacketTimestamp {
     std::int64_t seconds = 0;
     std::int64_t microseconds = 0;
 };
 
-// Dữ liệu packet thô do backend capture trả về.
+// Raw packet data returned by the capture backend.
 struct OfflinePacket {
     PacketTimestamp timestamp;
     LinkType linkType = LinkType::Ethernet;
@@ -27,7 +27,7 @@ struct OfflinePacket {
     std::vector<std::uint8_t> bytes;
 };
 
-// Reader chỉ nên điền một trong hai trường: packets hoặc error.
+// Readers should fill only one of packets or error.
 struct PcapReadResult {
     std::vector<OfflinePacket> packets;
     std::optional<std::string> error;
@@ -35,19 +35,22 @@ struct PcapReadResult {
 
 class PacketCaptureBackend {
 public:
-    // Báo bản build hiện tại có liên kết backend libpcap dùng được hay không.
+    // Reports whether this build has a usable linked libpcap backend.
     bool pcapAvailable() const;
     std::string backendName() const;
 
-    // Đọc toàn bộ file PCAP; lỗi được trả về thay vì ném exception.
-    PcapReadResult readPcapFile(const std::string& path) const;
+    // Reads the full PCAP file; errors are returned instead of thrown.
+    PcapReadResult readPcapFile(
+        const std::string& path,
+        std::optional<std::string> packetFilter = std::nullopt) const;
 
     using LiveCaptureCallback = std::function<void(const OfflinePacket&)>;
 
-    // Lấy gói tin streaming trực tiếp từ interface.
+    // Streams packets directly from an interface.
     std::optional<std::string> captureLive(
         const std::string& interfaceName,
         std::optional<int> durationSeconds,
+        std::optional<std::string> packetFilter,
         LiveCaptureCallback callback) const;
 };
 

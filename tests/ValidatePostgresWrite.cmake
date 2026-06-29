@@ -15,12 +15,13 @@ file(MAKE_DIRECTORY "${STUB_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")
 
 set(STUB_PSQL "${STUB_DIR}/psql")
-file(WRITE "${STUB_PSQL}" "#!/bin/sh\nset -eu\nlog=\"${WORK_DIR}/postgres-write.log\"\nprintf '%s\\n' \"\$0\" \"\$@\" >> \"\$log\"\nwhile [ \"\$#\" -gt 0 ]; do\n  if [ \"\$1\" = \"-f\" ]; then\n    shift\n    cat \"\$1\" >> \"\$log\"\n    exit 0\n  fi\n  shift\ndone\nexit 0\n")
+file(WRITE "${STUB_PSQL}" "#!/bin/sh\nset -eu\nlog=\"${WORK_DIR}/postgres-write.log\"\nattempt_file=\"${WORK_DIR}/postgres-write-attempts\"\nif [ -f \"\$attempt_file\" ]; then\n  attempts=\$(cat \"\$attempt_file\")\nelse\n  attempts=0\nfi\nattempts=\$((attempts + 1))\nprintf '%s' \"\$attempts\" > \"\$attempt_file\"\nprintf '%s\\n' \"\$0\" \"\$@\" >> \"\$log\"\nif [ \"\$attempts\" -eq 1 ]; then\n  echo 'psql: error: could not translate host name \"db\" to address: Temporary failure in name resolution' >&2\n  exit 2\nfi\nwhile [ \"\$#\" -gt 0 ]; do\n  if [ \"\$1\" = \"-f\" ]; then\n    shift\n    cat \"\$1\" >> \"\$log\"\n    exit 0\n  fi\n  shift\ndone\nexit 0\n")
 file(CHMOD "${STUB_PSQL}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 
 set(ENV_PATH "${STUB_DIR}:$ENV{PATH}")
-file(WRITE "${WORK_DIR}/.env" "PGHOST=localhost\nPGPORT=5432\nPGDATABASE=asset_discovery\nPGUSER=asset_discovery\nPGPASSWORD=asset_discovery\n")
+file(WRITE "${WORK_DIR}/.env" "DB_HOST=localhost\nDB_PORT=5432\nDB_NAME=asset_discovery\nDB_USER=postgres\nDB_PASSWORD=123456\n")
 file(REMOVE "${WORK_DIR}/postgres-write.log")
+file(REMOVE "${WORK_DIR}/postgres-write-attempts")
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env
         "PATH=${ENV_PATH}"
@@ -45,6 +46,11 @@ if(NOT command_result EQUAL 0)
 endif()
 
 file(READ "${WORK_DIR}/postgres-write.log" logged_sql)
+file(READ "${WORK_DIR}/postgres-write-attempts" write_attempts)
+if(NOT write_attempts STREQUAL "2")
+    message(FATAL_ERROR "Expected PostgreSQL write to retry once, got ${write_attempts} attempt(s)")
+endif()
+
 string(FIND "${logged_sql}" "CREATE TABLE IF NOT EXISTS assets" schema_position)
 if(schema_position EQUAL -1)
     message(FATAL_ERROR "Expected PostgreSQL schema SQL in log, got: ${logged_sql}")

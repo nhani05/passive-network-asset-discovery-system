@@ -89,13 +89,14 @@ PGHOST=localhost
 PGPORT=5432
 PGDATABASE=asset_discovery
 PGUSER=postgres
-PGPASSWORD=change-me
+PGPASSWORD=123456
 ```
 
 Truy vấn asset đã lưu:
 
 ```sh
-psql -c "SELECT mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources FROM assets;"
+psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
+  -c "SELECT mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources FROM assets;"
 ```
 
 Phần triển khai dùng client dòng lệnh `psql`, nên `psql` phải được cài đặt và nằm trong `PATH`.
