@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstring>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 #ifndef ASSET_DISCOVERY_HAS_PCAP
@@ -160,7 +161,7 @@ PcapReadResult PacketCaptureBackend::readPcapFile(
 
 std::optional<std::string> PacketCaptureBackend::captureLive(
     const std::string& interfaceName,
-    std::optional<int> durationSeconds,
+    const LiveCaptureOptions& options,
     std::optional<std::string> packetFilter,
     LiveCaptureCallback callback) const
 {
@@ -197,15 +198,37 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
         return filterError;
     }
 
-    auto startTime = std::chrono::steady_clock::now();
+    if (pcap_setnonblock(handle, 1, errorBuffer) == -1) {
+        std::ostringstream output;
+        output << "could not enable non-blocking capture for '" << interfaceName << "'";
+        if (std::strlen(errorBuffer) > 0) {
+            output << ": " << errorBuffer;
+        }
+        closeHandle(handle);
+        return output.str();
+    }
+
+    const auto startTime = std::chrono::steady_clock::now();
+    auto lastAcceptedPacketTime = startTime;
 
     pcap_pkthdr* header = nullptr;
     const unsigned char* data = nullptr;
     while (true) {
-        if (durationSeconds.has_value()) {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
-            if (elapsed >= *durationSeconds) {
+        if (options.stopRequested && options.stopRequested()) {
+            break;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (options.durationSeconds.has_value()) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
+            if (elapsed >= *options.durationSeconds) {
+                break;
+            }
+        }
+
+        if (options.idleTimeoutSeconds.has_value()) {
+            const auto idleElapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastAcceptedPacketTime).count();
+            if (idleElapsed >= *options.idleTimeoutSeconds) {
                 break;
             }
         }
@@ -225,12 +248,14 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
             packet.originalLength = header->len;
             packet.bytes.assign(data, data + header->caplen);
 
+            lastAcceptedPacketTime = std::chrono::steady_clock::now();
             callback(packet);
             continue;
         }
 
         if (status == 0) {
-            // Packet read timeout; continue so the duration check can run.
+            // Non-blocking read found no packet; avoid a hot loop while stop policy checks continue to run.
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
 
@@ -251,6 +276,9 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
     closeHandle(handle);
     return std::nullopt;
 #else
+    (void)options;
+    (void)packetFilter;
+    (void)callback;
     return "cannot run live capture on '" + interfaceName + "': libpcap backend is not available in this build";
 #endif
 }

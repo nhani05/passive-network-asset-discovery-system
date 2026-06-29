@@ -102,6 +102,7 @@ std::string postgresAssetsSql(const std::vector<asset::Asset>& assets)
 {
     std::ostringstream sql;
     sql << "\\set ON_ERROR_STOP on\n";
+    sql << "SET client_min_messages TO warning;\n";
     sql << postgresSchemaSql();
     for (const auto& asset : assets) {
         sql << "INSERT INTO assets (mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources, updated_at) VALUES ("
@@ -135,7 +136,7 @@ std::optional<std::string> writeAssetsToPostgres(
         sql << postgresAssetsSql(assets);
     }
 
-    std::string command = "psql";
+    std::string command = "psql -q";
     if (databaseUrl.has_value()) {
         command += " " + quoteShellString(*databaseUrl);
     }
