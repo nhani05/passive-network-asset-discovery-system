@@ -12,7 +12,7 @@ enum class OutputFormat {
     Csv,
 };
 
-// Tùy chọn CLI sau khi đã kiểm tra quan hệ giữa các tham số.
+// CLI options after validating relationships between arguments.
 struct Options {
     std::optional<std::string> pcapPath;
     std::optional<std::string> interfaceName;
@@ -23,13 +23,13 @@ struct Options {
     bool helpRequested = false;
 };
 
-// Lỗi parse được trả về dạng text để main quyết định cách hiển thị.
+// Parse errors are returned as text so main can choose how to display them.
 struct ParseResult {
     Options options;
     std::optional<std::string> error;
 };
 
-// Parse danh sách tham số kiểu argv, không gồm tên executable.
+// Parse argv-style arguments, excluding the executable name.
 ParseResult parseArguments(const std::vector<std::string>& args);
 std::string usageText(const std::string& executableName);
 std::string outputFormatName(OutputFormat format);

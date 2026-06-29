@@ -16,7 +16,7 @@ int failures = 0;
 void expect(bool condition, const std::string& message)
 {
     if (!condition) {
-        std::cerr << "THẤT BẠI: " << message << "\n";
+        std::cerr << "FAIL: " << message << "\n";
         ++failures;
     }
 }
@@ -35,18 +35,18 @@ void decodesArpEthernetFrame()
 {
     const auto result = decodeEthernetFrame(arpEthernetFrameFixture());
 
-    expect(result.ok(), "frame Ethernet ARP phải giải mã thành công");
-    expect(result.frame.has_value(), "frame Ethernet ARP phải tạo ra frame");
+    expect(result.ok(), "ARP Ethernet frame should decode successfully");
+    expect(result.frame.has_value(), "ARP Ethernet frame should produce a frame");
     if (!result.frame.has_value()) {
         return;
     }
 
-    expect(result.frame->destinationMac == "ff:ff:ff:ff:ff:ff", "MAC đích phải được giải mã");
-    expect(result.frame->sourceMac == "02:42:ac:11:00:02", "MAC nguồn phải được giải mã");
-    expect(result.frame->etherType == 0x0806, "EtherType phải được giải mã là ARP");
-    expect(result.frame->payload.size() == 6, "payload phải bắt đầu sau header Ethernet");
-    expect(result.frame->payload.front() == 0x00, "byte đầu của payload phải được giữ nguyên");
-    expect(result.frame->payload.back() == 0x04, "byte cuối của payload phải được giữ nguyên");
+    expect(result.frame->destinationMac == "ff:ff:ff:ff:ff:ff", "destination MAC should decode");
+    expect(result.frame->sourceMac == "02:42:ac:11:00:02", "source MAC should decode");
+    expect(result.frame->etherType == 0x0806, "EtherType should decode as ARP");
+    expect(result.frame->payload.size() == 6, "payload should begin after the Ethernet header");
+    expect(result.frame->payload.front() == 0x00, "first payload byte should be preserved");
+    expect(result.frame->payload.back() == 0x04, "last payload byte should be preserved");
 }
 
 void rejectsTruncatedFrame()
@@ -54,9 +54,9 @@ void rejectsTruncatedFrame()
     const std::vector<std::uint8_t> frame(ethernetHeaderLength - 1, 0x00);
     const auto result = decodeEthernetFrame(frame);
 
-    expect(!result.ok(), "frame thiếu dữ liệu không được giải mã thành công");
-    expect(!result.frame.has_value(), "frame thiếu dữ liệu không được tạo ra frame");
-    expect(result.error == EthernetDecodeError::TruncatedFrame, "frame thiếu dữ liệu phải trả về lỗi có kiểm soát");
+    expect(!result.ok(), "truncated frame should not decode successfully");
+    expect(!result.frame.has_value(), "truncated frame should not produce a frame");
+    expect(result.error == EthernetDecodeError::TruncatedFrame, "truncated frame should return a controlled error");
 }
 
 void decodesUnsupportedEtherType()
@@ -67,16 +67,16 @@ void decodesUnsupportedEtherType()
 
     const auto result = decodeEthernetFrame(frame);
 
-    expect(result.ok(), "EtherType chưa hỗ trợ vẫn phải giải mã được lớp Ethernet");
-    expect(result.frame.has_value(), "EtherType chưa hỗ trợ vẫn phải tạo ra frame");
+    expect(result.ok(), "unsupported EtherType should still decode the Ethernet layer");
+    expect(result.frame.has_value(), "unsupported EtherType should still produce a frame");
     if (!result.frame.has_value()) {
         return;
     }
 
-    expect(result.frame->sourceMac == "02:42:ac:11:00:02", "EtherType chưa hỗ trợ vẫn giữ MAC nguồn");
-    expect(result.frame->destinationMac == "ff:ff:ff:ff:ff:ff", "EtherType chưa hỗ trợ vẫn giữ MAC đích");
-    expect(result.frame->etherType == 0x88b5, "giá trị EtherType chưa hỗ trợ phải được giữ nguyên");
-    expect(result.frame->payload.size() == 6, "payload của EtherType chưa hỗ trợ phải được giữ nguyên");
+    expect(result.frame->sourceMac == "02:42:ac:11:00:02", "unsupported EtherType should preserve source MAC");
+    expect(result.frame->destinationMac == "ff:ff:ff:ff:ff:ff", "unsupported EtherType should preserve destination MAC");
+    expect(result.frame->etherType == 0x88b5, "unsupported EtherType value should be preserved");
+    expect(result.frame->payload.size() == 6, "unsupported EtherType payload should be preserved");
 }
 
 void decodesHeaderOnlyFrame()
@@ -89,16 +89,16 @@ void decodesHeaderOnlyFrame()
 
     const auto result = decodeEthernetFrame(frame);
 
-    expect(result.ok(), "frame Ethernet chỉ có header phải giải mã thành công");
-    expect(result.frame.has_value(), "frame Ethernet chỉ có header phải tạo ra frame");
+    expect(result.ok(), "header-only Ethernet frame should decode successfully");
+    expect(result.frame.has_value(), "header-only Ethernet frame should produce a frame");
     if (!result.frame.has_value()) {
         return;
     }
 
-    expect(result.frame->destinationMac == "01:02:03:04:05:06", "MAC đích của frame chỉ có header phải được giải mã");
-    expect(result.frame->sourceMac == "0a:0b:0c:0d:0e:0f", "MAC nguồn của frame chỉ có header phải được giải mã");
-    expect(result.frame->etherType == 0x0800, "EtherType của frame chỉ có header phải được giải mã");
-    expect(result.frame->payload.empty(), "frame Ethernet chỉ có header phải có payload rỗng");
+    expect(result.frame->destinationMac == "01:02:03:04:05:06", "header-only frame destination MAC should decode");
+    expect(result.frame->sourceMac == "0a:0b:0c:0d:0e:0f", "header-only frame source MAC should decode");
+    expect(result.frame->etherType == 0x0800, "header-only frame EtherType should decode");
+    expect(result.frame->payload.empty(), "header-only Ethernet frame should have an empty payload");
 }
 
 } // namespace
@@ -111,7 +111,7 @@ int main()
     decodesHeaderOnlyFrame();
 
     if (failures > 0) {
-        std::cerr << failures << " kỳ vọng test Ethernet frame thất bại\n";
+        std::cerr << failures << " Ethernet frame test expectation(s) failed\n";
         return 1;
     }
 

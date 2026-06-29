@@ -46,13 +46,13 @@ services:
             if [ "$$status" -ne 0 ]; then
               exit "$$status"
             fi
-            echo "pcap-demo đã chạy xong; giữ container sống để kiểm tra DNS/DB."
+            echo "pcap-demo completed; keeping the container alive for DNS/DB inspection."
             tail -f /dev/null
           fi
-          echo "đang chờ PostgreSQL sẵn sàng ($$attempt/60)..."
+          echo "waiting for PostgreSQL to become ready ($$attempt/60)..."
           sleep 2
         done
-        echo "lỗi: PostgreSQL chưa sẵn sàng sau 120 giây" >&2
+        echo "error: PostgreSQL was not ready after 120 seconds" >&2
         exit 1
 
   live-capture:

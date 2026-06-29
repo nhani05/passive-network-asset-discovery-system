@@ -30,7 +30,7 @@ void rejectsEmptyDatabaseUrl()
     const auto result = parseArguments(args);
     expect(result.error.has_value(), "empty --db-url should be rejected");
     if (result.error.has_value()) {
-        expect(result.error->find("--db-url không được rỗng") != std::string::npos,
+        expect(result.error->find("--db-url cannot be empty") != std::string::npos,
             "error should explain that --db-url cannot be empty");
     }
 }
@@ -77,7 +77,7 @@ void rejectsEmptyPacketFilter()
     const auto result = parseArguments(args);
     expect(result.error.has_value(), "empty --filter should be rejected");
     if (result.error.has_value()) {
-        expect(result.error->find("--filter không được rỗng") != std::string::npos,
+        expect(result.error->find("--filter cannot be empty") != std::string::npos,
             "error should explain that --filter cannot be empty");
     }
 }

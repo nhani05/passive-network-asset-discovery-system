@@ -31,13 +31,13 @@ std::optional<std::string> applyPacketFilter(
     bpf_program compiledFilter = {};
     if (pcap_compile(handle, &compiledFilter, packetFilter->c_str(), 1, PCAP_NETMASK_UNKNOWN) != 0) {
         std::ostringstream output;
-        output << "filter BPF không hợp lệ cho '" << sourceName << "': " << pcap_geterr(handle);
+        output << "invalid BPF filter for '" << sourceName << "': " << pcap_geterr(handle);
         return output.str();
     }
 
     if (pcap_setfilter(handle, &compiledFilter) != 0) {
         std::ostringstream output;
-        output << "không áp dụng được filter BPF cho '" << sourceName << "': " << pcap_geterr(handle);
+        output << "could not apply BPF filter for '" << sourceName << "': " << pcap_geterr(handle);
         pcap_freecode(&compiledFilter);
         return output.str();
     }
@@ -48,7 +48,7 @@ std::optional<std::string> applyPacketFilter(
 
 std::optional<LinkType> normalizeDatalink(int datalink)
 {
-    // Giữ giá trị datalink riêng của libpcap bên ngoài model capture công khai.
+    // Keep libpcap-specific datalink values out of the public capture model.
     if (datalink == ethernetDatalink) {
         return LinkType::Ethernet;
     }
@@ -59,7 +59,7 @@ std::optional<LinkType> normalizeDatalink(int datalink)
 std::string unsupportedLinkTypeError(const std::string& path, int datalink)
 {
     std::ostringstream output;
-    output << "loại liên kết PCAP " << datalink << " trong '" << path << "' không được hỗ trợ";
+    output << "PCAP link type " << datalink << " in '" << path << "' is not supported";
     return output.str();
 }
 
@@ -80,12 +80,12 @@ PcapReadResult PacketCaptureBackend::readPcapFile(
     std::optional<std::string> packetFilter) const
 {
 #if ASSET_DISCOVERY_HAS_PCAP == 1
-    // libpcap sở hữu handle; mọi nhánh thoát sau đây đều phải đóng handle.
+    // libpcap owns the handle; every exit path below must close it.
     char errorBuffer[PCAP_ERRBUF_SIZE] = {};
     pcap_t* handle = pcap_open_offline(path.c_str(), errorBuffer);
     if (handle == nullptr) {
         std::ostringstream output;
-        output << "không mở được file PCAP '" << path << "'";
+        output << "could not open PCAP file '" << path << "'";
         if (std::strlen(errorBuffer) > 0) {
             output << ": " << errorBuffer;
         }
@@ -118,10 +118,10 @@ PcapReadResult PacketCaptureBackend::readPcapFile(
     while (true) {
         const int status = pcap_next_ex(handle, &header, &data);
         if (status == 1) {
-            // Kiểm tra phòng thủ: libpcap đọc thành công phải trả về đủ hai con trỏ.
+            // Defensive check: successful libpcap reads must return both pointers.
             if (header == nullptr || data == nullptr) {
                 closeHandle(handle);
-                return {{}, "không đọc được file PCAP '" + path + "': libpcap trả về packet rỗng"};
+                return {{}, "could not read PCAP file '" + path + "': libpcap returned an empty packet"};
             }
 
             OfflinePacket packet;
@@ -135,13 +135,13 @@ PcapReadResult PacketCaptureBackend::readPcapFile(
             continue;
         }
 
-        // pcap_next_ex trả -2 khi offline EOF; trạng thái không thành công khác là lỗi.
+        // pcap_next_ex returns -2 for offline EOF; other non-success states are errors.
         if (status == -2) {
             break;
         }
 
         std::ostringstream output;
-        output << "không đọc được file PCAP '" << path << "'";
+        output << "could not read PCAP file '" << path << "'";
         const char* pcapError = pcap_geterr(handle);
         if (pcapError != nullptr && std::strlen(pcapError) > 0) {
             output << ": " << pcapError;
@@ -154,7 +154,7 @@ PcapReadResult PacketCaptureBackend::readPcapFile(
 
     return {std::move(packets), std::nullopt};
 #else
-    return {{}, "không thể đọc file PCAP '" + path + "': backend libpcap không có trong bản build này"};
+    return {{}, "cannot read PCAP file '" + path + "': libpcap backend is not available in this build"};
 #endif
 }
 
@@ -166,11 +166,11 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
 {
 #if ASSET_DISCOVERY_HAS_PCAP == 1
     char errorBuffer[PCAP_ERRBUF_SIZE] = {};
-    // Mở interface, snaplen 65535, promiscuous mode = 1, timeout = 1000ms
+    // Open the interface with snaplen 65535, promiscuous mode = 1, timeout = 1000ms.
     pcap_t* handle = pcap_open_live(interfaceName.c_str(), 65535, 1, 1000, errorBuffer);
     if (handle == nullptr) {
         std::ostringstream output;
-        output << "không mở được interface '" << interfaceName << "'";
+        output << "could not open interface '" << interfaceName << "'";
         if (std::strlen(errorBuffer) > 0) {
             output << ": " << errorBuffer;
         }
@@ -214,7 +214,7 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
         if (status == 1) {
             if (header == nullptr || data == nullptr) {
                 closeHandle(handle);
-                return "không đọc được gói tin từ '" + interfaceName + "': libpcap trả về packet rỗng";
+                return "could not read packet from '" + interfaceName + "': libpcap returned an empty packet";
             }
 
             OfflinePacket packet;
@@ -230,7 +230,7 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
         }
 
         if (status == 0) {
-            // Timeout chờ gói tin (đã set 1000ms), tiếp tục vòng lặp để kiểm tra thời gian
+            // Packet read timeout; continue so the duration check can run.
             continue;
         }
 
@@ -239,7 +239,7 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
         }
 
         std::ostringstream output;
-        output << "lỗi khi đọc interface '" << interfaceName << "'";
+        output << "error while reading interface '" << interfaceName << "'";
         const char* pcapError = pcap_geterr(handle);
         if (pcapError != nullptr && std::strlen(pcapError) > 0) {
             output << ": " << pcapError;
@@ -251,7 +251,7 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
     closeHandle(handle);
     return std::nullopt;
 #else
-    return "không thể chạy live capture trên '" + interfaceName + "': backend libpcap không có trong bản build này";
+    return "cannot run live capture on '" + interfaceName + "': libpcap backend is not available in this build";
 #endif
 }
 

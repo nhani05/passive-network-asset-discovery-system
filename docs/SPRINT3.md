@@ -35,7 +35,7 @@ Quy tắc input:
 - Phải chọn đúng một nguồn: `--pcap` hoặc `--interface`.
 - Khi dùng `--interface`, `--duration <seconds>` là bắt buộc và phải là số nguyên dương.
 - `--filter` là tùy chọn, nhưng nếu truyền thì giá trị không được rỗng.
-- Nếu filter BPF sai cú pháp, chương trình thoát khác 0 và in lỗi tiếng Việt từ libpcap.
+- Nếu filter BPF sai cú pháp, chương trình thoát khác 0 và in lỗi tiếng Anh từ libpcap.
 
 ### Capture
 
@@ -97,7 +97,7 @@ Kiểm tra lỗi BPF:
 Hình dạng lỗi mong đợi:
 
 ```text
-lỗi: filter BPF không hợp lệ cho 'samples/arp.pcap': can't parse filter expression: syntax error
+error: invalid BPF filter for 'samples/arp.pcap': can't parse filter expression: syntax error
 ```
 
 Lưu ý: binary tự load `.env` từ thư mục hiện tại. Nếu `.env`, `DATABASE_URL`, hoặc biến `PG*` đang trỏ tới PostgreSQL nhưng database chưa chạy, chương trình sẽ cố ghi DB và thoát lỗi trước khi in output.

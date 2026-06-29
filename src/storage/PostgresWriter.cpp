@@ -117,7 +117,7 @@ std::optional<std::string> writeAssetsToPostgres(
     {
         std::ofstream sql(path);
         if (!sql) {
-            return "không tạo được file SQL tạm để ghi PostgreSQL";
+            return "could not create a temporary SQL file for PostgreSQL writes";
         }
         sql << "\\set ON_ERROR_STOP on\n";
         sql << postgresSchemaSql();
@@ -147,7 +147,7 @@ std::optional<std::string> writeAssetsToPostgres(
     const bool success = runPsqlCommandWithRetries(command);
     std::remove(path.c_str());
     if (!success) {
-        return "ghi PostgreSQL thất bại bằng psql";
+        return "PostgreSQL write failed through psql";
     }
     return std::nullopt;
 }

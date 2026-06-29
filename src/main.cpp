@@ -178,7 +178,7 @@ int writeDatabaseIfRequested(
 {
     const auto error = asset_discovery::storage::writeAssetsToPostgres(databaseUrl, assets);
     if (error.has_value()) {
-        std::cerr << "lỗi: " << *error << "\n";
+        std::cerr << "error: " << *error << "\n";
         return 1;
     }
     return 0;
@@ -221,15 +221,15 @@ int main(int argc, char* argv[])
     }
 
     if (result.error.has_value()) {
-        std::cerr << "lỗi: " << *result.error << "\n\n"
+        std::cerr << "error: " << *result.error << "\n\n"
                   << asset_discovery::cli::usageText(executableName);
         return 2;
     }
 
     const asset_discovery::capture::PacketCaptureBackend backend;
     if (!backend.pcapAvailable()) {
-        std::cerr << "cảnh báo: backend " << backend.backendName()
-                  << " không có trong bản build này; chức năng capture packet sẽ hoạt động khi cài libpcap.\n";
+        std::cerr << "warning: backend " << backend.backendName()
+                  << " is not available in this build; packet capture will work after libpcap is installed.\n";
     }
 
     if (result.options.pcapPath.has_value()) {
@@ -237,7 +237,7 @@ int main(int argc, char* argv[])
             *result.options.pcapPath,
             result.options.packetFilter);
         if (pcapResult.error.has_value()) {
-            std::cerr << "lỗi: " << *pcapResult.error << "\n";
+            std::cerr << "error: " << *pcapResult.error << "\n";
             return 1;
         }
 
@@ -271,7 +271,7 @@ int main(int argc, char* argv[])
         );
 
         if (error.has_value()) {
-            std::cerr << "lỗi: " << *error << "\n";
+            std::cerr << "error: " << *error << "\n";
             return 1;
         }
 
