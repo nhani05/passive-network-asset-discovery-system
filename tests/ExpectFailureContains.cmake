@@ -1,9 +1,9 @@
 if(NOT DEFINED ASSET_DISCOVERY_EXE)
-    message(FATAL_ERROR "ASSET_DISCOVERY_EXE is required")
+    message(FATAL_ERROR "Cần ASSET_DISCOVERY_EXE")
 endif()
 
 if(NOT DEFINED PCAP_PATH)
-    message(FATAL_ERROR "PCAP_PATH is required")
+    message(FATAL_ERROR "Cần PCAP_PATH")
 endif()
 
 execute_process(
@@ -14,11 +14,11 @@ execute_process(
 )
 
 if(command_result EQUAL 0)
-    message(FATAL_ERROR "Expected command to fail, but it exited with 0")
+    message(FATAL_ERROR "Lệnh được kỳ vọng thất bại nhưng lại thoát với mã 0")
 endif()
 
 set(combined_output "${command_output}${command_error}")
 string(FIND "${combined_output}" "${PCAP_PATH}" path_position)
 if(path_position EQUAL -1)
-    message(FATAL_ERROR "Expected failure output to contain '${PCAP_PATH}', got: ${combined_output}")
+    message(FATAL_ERROR "Output lỗi được kỳ vọng chứa '${PCAP_PATH}', nhưng nhận được: ${combined_output}")
 endif()

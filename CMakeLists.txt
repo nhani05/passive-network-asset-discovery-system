@@ -6,7 +6,39 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(ASSET_DISCOVERY_REQUIRE_PCAP "Fail configuration when libpcap is unavailable" OFF)
+option(ASSET_DISCOVERY_REQUIRE_PCAP "Dừng cấu hình khi không có libpcap" OFF)
+
+add_library(asset_discovery_parser
+    src/parser/ArpPacket.cpp
+    src/parser/AssetObservation.cpp
+    src/parser/EthernetFrame.cpp
+    src/parser/PacketParsers.cpp
+)
+
+target_include_directories(asset_discovery_parser PUBLIC include)
+
+add_library(asset_discovery_asset
+    src/asset/AssetStore.cpp
+)
+
+target_include_directories(asset_discovery_asset PUBLIC include)
+target_link_libraries(asset_discovery_asset PUBLIC asset_discovery_parser)
+
+add_library(asset_discovery_output
+    src/output/CsvRenderer.cpp
+    src/output/JsonRenderer.cpp
+    src/output/TableRenderer.cpp
+)
+
+target_include_directories(asset_discovery_output PUBLIC include)
+target_link_libraries(asset_discovery_output PUBLIC asset_discovery_asset)
+
+add_library(asset_discovery_storage
+    src/storage/PostgresWriter.cpp
+)
+
+target_include_directories(asset_discovery_storage PUBLIC include)
+target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_asset)
 
 add_executable(asset-discovery
     src/main.cpp
@@ -15,6 +47,7 @@ add_executable(asset-discovery
 )
 
 target_include_directories(asset-discovery PRIVATE include)
+target_link_libraries(asset-discovery PRIVATE asset_discovery_output asset_discovery_storage asset_discovery_asset asset_discovery_parser)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -39,7 +72,7 @@ if(NOT PCAP_FOUND AND DEFINED NPCAP_ROOT)
         set(PCAP_INCLUDE_DIRS "${_NPCAP_INCLUDE_DIR}")
         set(PCAP_LIBRARIES "${_NPCAP_WPCAP_LIBRARY}" "${_NPCAP_PACKET_LIBRARY}")
         set(PCAP_CFLAGS_OTHER "")
-        message(STATUS "Found Npcap SDK: ${NPCAP_ROOT}")
+        message(STATUS "Đã tìm thấy Npcap SDK: ${NPCAP_ROOT}")
     endif()
 endif()
 
@@ -50,10 +83,10 @@ if(PCAP_FOUND)
     target_compile_definitions(asset-discovery PRIVATE ASSET_DISCOVERY_HAS_PCAP=1)
 else()
     if(ASSET_DISCOVERY_REQUIRE_PCAP)
-        message(FATAL_ERROR "libpcap was not found. Install libpcap development files or set ASSET_DISCOVERY_REQUIRE_PCAP=OFF.")
+        message(FATAL_ERROR "Không tìm thấy libpcap. Hãy cài file phát triển của libpcap hoặc đặt ASSET_DISCOVERY_REQUIRE_PCAP=OFF.")
     endif()
     target_compile_definitions(asset-discovery PRIVATE ASSET_DISCOVERY_HAS_PCAP=0)
-    message(WARNING "libpcap was not found. Building CLI scaffold without packet capture backend.")
+    message(WARNING "Không tìm thấy libpcap. Đang build khung CLI không có backend capture packet.")
 endif()
 
 include(CTest)
