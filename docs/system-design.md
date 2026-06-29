@@ -10,7 +10,7 @@ Hệ thống phân tích traffic thụ động từ file PCAP hoặc network int
 
 | Layer | Module | Đường dẫn | Trách nhiệm |
 | --- | --- | --- |
-| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--duration`, `--filter`, `--output`, `--db-url`; kiểm tra quan hệ option. |
+| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--duration`, `--live`, `--idle-timeout`, `--max-assets`, `--filter`, `--output`, `--db-url`; kiểm tra quan hệ option. |
 | Domain | Asset model | `include/domain`, `src/domain` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`; gộp observation theo MAC address và duy trì asset state. |
 | Application | Parser core | `include/application/parser`, `src/application/parser` | Build `PacketContext`, điều phối `ParserEngine`/`ParserRegistry`, expose parser facade `parseEthernetObservations()`. |
 | Plugins | Parser plugins | `include/plugins/parser`, `src/plugins/parser` | Built-in ARP/DHCP/DNS plugins và composition root `createDefaultParserRegistry()`. |
@@ -61,12 +61,29 @@ Asset list
         +--> PostgreSQL writer nếu có --db-url, DATABASE_URL, hoặc PG*/DB* env
 ```
 
-PCAP mode và live capture dùng cùng parser, asset store, renderer, và storage writer. Điểm khác nhau duy nhất là nguồn packet trong `PacketCaptureBackend`.
+PCAP mode, live timed mode và live infinite mode dùng cùng parser, asset store, renderer, và storage writer. Điểm khác nhau nằm ở nguồn packet và stop policy trong `PacketCaptureBackend`.
+
+## Capture Modes
+
+CLI hỗ trợ ba chế độ input rõ ràng:
+
+- PCAP offline: `--pcap <file>`, đọc hết file rồi render kết quả.
+- Live timed: `--interface <name> --duration <seconds>`, capture đến khi hết thời lượng.
+- Live infinite: `--interface <name> --live`, capture đến khi có stop condition.
+
+Live infinite có thể dừng khi:
+
+- Không có packet được chấp nhận sau BPF filter trong `--idle-timeout <seconds>`.
+- Asset store đạt `--max-assets <count>`.
+- Người vận hành nhấn Ctrl+C/SIGINT.
+
+Ctrl+C trong live infinite mode chỉ đặt stop flag tối thiểu, vòng capture thoát theo hướng graceful, rồi `main` tiếp tục dùng cùng luồng render và PostgreSQL writer như PCAP/live timed. `--idle-timeout` không tính packet bị BPF filter loại ra, vì những packet này không được đưa vào pipeline phân tích.
 
 ## Xử Lý Packet
 
 - Capture backend chỉ chấp nhận Ethernet datalink hiện tại.
 - BPF filter được compile bằng libpcap trước khi đọc packet.
+- Live capture dùng non-blocking polling với sleep ngắn khi chưa có packet để kiểm tra duration, idle timeout và stop flag ổn định.
 - Parser build `PacketContext` một lần để decode Ethernet, IPv4, UDP và transport payload khi hợp lệ.
 - Mỗi parser plugin có `match(PacketContext)` để lọc packet trước khi chạy `parse(PacketContext)`.
 - Parser core chỉ biết `ParserInterface` và `ParserRegistry`; built-in plugin registration nằm trong `plugins/parser/BuiltinParserPlugins`.
