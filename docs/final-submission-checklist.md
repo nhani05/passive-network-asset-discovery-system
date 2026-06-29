@@ -59,7 +59,7 @@ sudo ./build/asset-discovery --interface eth0 --duration 10 \
 - Query PostgreSQL:
 
 ```sh
-psql "postgresql://postgres:123456@localhost:15432/asset_discovery" \
+psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
   -c "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets order by mac_address;"
 ```
 

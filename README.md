@@ -84,9 +84,9 @@ Ghi PostgreSQL bằng database từ Docker Compose khi `psql` có trong `PATH`:
 
 ```sh
 docker compose up -d db
-psql "postgresql://postgres:123456@localhost:15432/asset_discovery" -f db/schema.sql
+psql "postgresql://postgres:123456@localhost:5432/asset_discovery" -f db/schema.sql
 ./build/asset-discovery --pcap samples/arp.pcap --output json
-psql "postgresql://postgres:123456@localhost:15432/asset_discovery" \
+psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
   -c "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets;"
 ```
 
@@ -94,7 +94,7 @@ Tạo `.env` trong thư mục hiện tại:
 
 ```env
 PGHOST=localhost
-PGPORT=15432
+PGPORT=5432
 PGDATABASE=asset_discovery
 PGUSER=postgres
 PGPASSWORD=123456
@@ -141,11 +141,11 @@ Nếu muốn chạy binary local nhưng dùng PostgreSQL từ Docker Compose:
 ```sh
 docker compose up -d db
 ./build/asset-discovery --pcap samples/arp.pcap --output json
-psql "postgresql://postgres:123456@localhost:15432/asset_discovery" \
+psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
   -c "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets;"
 ```
 
-Compose publish PostgreSQL trên port host mặc định `15432` để tránh đụng PostgreSQL local ở port `5432`. Nếu muốn đổi port host, đặt `POSTGRES_HOST_PORT`, ví dụ `POSTGRES_HOST_PORT=5433 docker compose up -d db`.
+Compose publish PostgreSQL trên port host mặc định `5432`. Nếu máy đã có PostgreSQL local dùng port này, đặt `POSTGRES_HOST_PORT=<port-khac>` khi chạy `docker compose up -d db`.
 
 Nếu volume `postgres-data` đã từng được tạo với credential khác, PostgreSQL sẽ giữ credential cũ. Khi chỉ dùng dữ liệu demo và chấp nhận xóa database cũ, chạy `docker compose down -v` rồi tạo lại service `db`.
 

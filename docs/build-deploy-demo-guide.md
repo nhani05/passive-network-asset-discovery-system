@@ -67,7 +67,7 @@ Tạo `.env` cho binary local:
 
 ```env
 PGHOST=localhost
-PGPORT=15432
+PGPORT=5432
 PGDATABASE=asset_discovery
 PGUSER=postgres
 PGPASSWORD=123456
@@ -84,7 +84,7 @@ Chạy discovery và ghi database:
 Truy vấn bằng `psql`:
 
 ```sh
-psql "postgresql://postgres:123456@localhost:15432/asset_discovery" \
+psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
   -c "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets order by mac_address;"
 ```
 
@@ -92,7 +92,7 @@ Nếu muốn truyền connection string trực tiếp:
 
 ```sh
 ./build/asset-discovery --pcap samples/arp.pcap \
-  --db-url "postgresql://postgres:123456@localhost:15432/asset_discovery" \
+  --db-url "postgresql://postgres:123456@localhost:5432/asset_discovery" \
   --output json
 ```
 
@@ -185,6 +185,6 @@ Không đủ quyền live capture: chạy bằng `sudo` trên native Linux hoặ
 Database không kết nối được:
 
 - Kiểm tra `docker compose ps`.
-- Kiểm tra port host là `15432` nếu dùng Compose.
+- Kiểm tra port host là `5432` nếu dùng Compose, hoặc port trong `POSTGRES_HOST_PORT` nếu đã override.
 - Kiểm tra `.env`, `DATABASE_URL`, hoặc biến `PG*`.
 - Nếu volume PostgreSQL từng tạo với credential khác và chỉ là dữ liệu demo, chạy `docker compose down -v` rồi tạo lại.

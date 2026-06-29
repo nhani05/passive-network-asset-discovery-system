@@ -52,7 +52,7 @@ Quy tắc input:
 
 `docker-compose.yml` cung cấp:
 
-- `db`: PostgreSQL 16 Alpine với database `asset_discovery`, user `postgres`, password `123456`, và port host mặc định `15432` qua biến `POSTGRES_HOST_PORT`.
+- `db`: PostgreSQL 16 Alpine với database `asset_discovery`, user `postgres`, password `123456`, và port host mặc định `5432` qua biến `POSTGRES_HOST_PORT`.
 - `pcap-demo`: build image, mount `./samples` read-only, chạy `/samples/arp.pcap`, áp dụng filter ARP/DHCP, ghi PostgreSQL qua `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, và giữ container sống sau khi demo chạy xong để kiểm tra DNS/DB.
 - `live-capture`: chỉ chạy khi bật profile `live`, dùng `network_mode: host`, user `0:0`, `NET_ADMIN`, `NET_RAW`, và các biến `CAPTURE_INTERFACE`, `CAPTURE_DURATION`, `CAPTURE_FILTER`.
 
@@ -133,7 +133,7 @@ Chạy binary local để ghi vào PostgreSQL của Compose:
 ```sh
 docker compose up -d db
 ./build/asset-discovery --pcap samples/arp.pcap --output json
-psql "postgresql://postgres:123456@localhost:15432/asset_discovery" \
+psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
   -c "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets;"
 ```
 

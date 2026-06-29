@@ -162,5 +162,5 @@ Nếu host không cấp quyền capture hoặc không có traffic ARP/DHCP trong
 - Tài liệu chi tiết: `docs/build-deploy-demo-guide.md`.
 - Thiết kế: `docs/system-design.md`.
 - Checklist cuối: `docs/final-submission-checklist.md`.
-- PostgreSQL Compose publish port host `15432`.
-- `.env.example` dùng `PGPORT=15432` để binary local kết nối đúng database Compose.
+- PostgreSQL Compose publish port host `5432`.
+- `.env.example` dùng `PGPORT=5432` để binary local kết nối đúng database Compose.
