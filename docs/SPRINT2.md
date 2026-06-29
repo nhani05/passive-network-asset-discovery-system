@@ -73,7 +73,8 @@ Hình dạng mong đợi:
 Tạo schema:
 
 ```sh
-psql -f db/schema.sql
+docker compose up -d db
+psql "postgresql://postgres:123456@localhost:15432/asset_discovery" -f db/schema.sql
 ```
 
 Chạy discovery và lưu asset:
@@ -86,7 +87,7 @@ Chạy discovery và lưu asset:
 
 ```env
 PGHOST=localhost
-PGPORT=5432
+PGPORT=15432
 PGDATABASE=asset_discovery
 PGUSER=postgres
 PGPASSWORD=123456
@@ -95,7 +96,7 @@ PGPASSWORD=123456
 Truy vấn asset đã lưu:
 
 ```sh
-psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
+psql "postgresql://postgres:123456@localhost:15432/asset_discovery" \
   -c "SELECT mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources FROM assets;"
 ```
 

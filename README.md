@@ -80,12 +80,13 @@ sudo ./build/asset-discovery --interface eth0 --duration 60 \
   --output table
 ```
 
-Ghi PostgreSQL khi đã có database và `psql` trong `PATH`:
+Ghi PostgreSQL bằng database từ Docker Compose khi `psql` có trong `PATH`:
 
 ```sh
-psql "postgresql://postgres:123456@localhost:5432/asset_discovery" -f db/schema.sql
+docker compose up -d db
+psql "postgresql://postgres:123456@localhost:15432/asset_discovery" -f db/schema.sql
 ./build/asset-discovery --pcap samples/arp.pcap --output json
-psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
+psql "postgresql://postgres:123456@localhost:15432/asset_discovery" \
   -c "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets;"
 ```
 
@@ -93,7 +94,7 @@ Tạo `.env` trong thư mục hiện tại:
 
 ```env
 PGHOST=localhost
-PGPORT=5432
+PGPORT=15432
 PGDATABASE=asset_discovery
 PGUSER=postgres
 PGPASSWORD=123456
@@ -168,4 +169,8 @@ Tài liệu Sprint và output contract nằm ở:
 
 - `docs/SPRINT2.md`
 - `docs/SPRINT3.md`
+- `docs/SPRINT4.md`
 - `docs/asset-output-contract.md`
+- `docs/system-design.md`
+- `docs/build-deploy-demo-guide.md`
+- `docs/final-submission-checklist.md`
