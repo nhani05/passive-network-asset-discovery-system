@@ -11,7 +11,7 @@ Tài liệu này định nghĩa các field asset dùng chung cho output table, J
 | `hostname` | Hostname tùy chọn, hiện được lấy từ DHCP option 12 khi có. |
 | `first_seen` | Timestamp packet sớm nhất đã quan sát cho asset, định dạng `seconds.microseconds`. |
 | `last_seen` | Timestamp packet mới nhất đã quan sát cho asset, định dạng `seconds.microseconds`. |
-| `discovery_sources` | Tập source protocol ổn định, ví dụ `arp` và `dhcp`. |
+| `discovery_sources` | Tập source protocol ổn định dạng lowercase text, ví dụ `arp`, `dhcp`, và `dns`. |
 
 ## Quy Tắc Gộp
 
@@ -20,7 +20,7 @@ Tài liệu này định nghĩa các field asset dùng chung cho output table, J
 - Observation cũ hơn đến không theo thứ tự có thể cập nhật `first_seen`.
 - Địa chỉ IP mới được thêm vào `ip_addresses`.
 - Hostname DHCP không rỗng cập nhật `hostname`.
-- Source protocol được tích lũy trong `discovery_sources`.
+- Source protocol được tích lũy trong `discovery_sources` mà không cần enum core cho từng protocol mới.
 
 ## JSON
 

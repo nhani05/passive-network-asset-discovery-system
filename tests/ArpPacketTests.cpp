@@ -1,4 +1,4 @@
-#include "parser/ArpPacket.hpp"
+#include "infrastructure/packet/ArpPacket.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -8,11 +8,12 @@
 namespace {
 
 using asset_discovery::parser::ArpDecodeError;
-using asset_discovery::parser::ObservationSource;
+using asset_discovery::parser::ObservationEventType;
 using asset_discovery::parser::ObservationTimestamp;
 using asset_discovery::parser::arpEthernetIpv4Length;
 using asset_discovery::parser::decodeArpPacket;
-using asset_discovery::parser::parseArpObservationsFromEthernetFrame;
+using asset_discovery::parser::observationFromArpPacket;
+using asset_discovery::parser::sourceIdArp;
 
 int failures = 0;
 
@@ -39,19 +40,6 @@ std::vector<std::uint8_t> arpRequestPayloadFixture()
     };
 }
 
-std::vector<std::uint8_t> ethernetFrameWithEtherType(std::uint16_t etherType)
-{
-    std::vector<std::uint8_t> frame = {
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0x02, 0x42, 0xac, 0x11, 0x00, 0x02,
-        static_cast<std::uint8_t>((etherType >> 8U) & 0xffU),
-        static_cast<std::uint8_t>(etherType & 0xffU),
-    };
-    const auto payload = arpRequestPayloadFixture();
-    frame.insert(frame.end(), payload.begin(), payload.end());
-    return frame;
-}
-
 void decodesValidArpRequest()
 {
     const auto result = decodeArpPacket(arpRequestPayloadFixture());
@@ -72,18 +60,22 @@ void decodesValidArpRequest()
 void emitsSenderObservation()
 {
     const ObservationTimestamp timestamp{123, 456};
-    const auto observations = parseArpObservationsFromEthernetFrame(ethernetFrameWithEtherType(0x0806), timestamp);
+    const auto result = decodeArpPacket(arpRequestPayloadFixture());
 
-    expect(observations.size() == 1, "valid ARP Ethernet frame should produce one observation");
-    if (observations.empty()) {
+    expect(result.ok(), "valid ARP request should decode before creating an observation");
+    if (!result.packet.has_value()) {
         return;
     }
 
-    expect(observations.front().source == ObservationSource::Arp, "observation source should be ARP");
-    expect(observations.front().macAddress == "02:42:ac:11:00:02", "observation MAC should use the sender MAC");
-    expect(observations.front().ipAddress == "192.168.1.10", "observation IP should use the sender IP");
-    expect(observations.front().timestamp.seconds == 123, "observation seconds should preserve the packet timestamp");
-    expect(observations.front().timestamp.microseconds == 456, "observation microseconds should preserve the packet timestamp");
+    const auto observation = observationFromArpPacket(*result.packet, timestamp);
+
+    expect(observation.sourceId == sourceIdArp, "observation source should be ARP");
+    expect(observation.eventType == ObservationEventType::Seen, "ARP event should be Seen");
+    expect(observation.confidence == 1.0F, "ARP confidence should preserve existing behavior");
+    expect(observation.macAddress == "02:42:ac:11:00:02", "observation MAC should use the sender MAC");
+    expect(observation.ipAddress == "192.168.1.10", "observation IP should use the sender IP");
+    expect(observation.timestamp.seconds == 123, "observation seconds should preserve the packet timestamp");
+    expect(observation.timestamp.microseconds == 456, "observation microseconds should preserve the packet timestamp");
 }
 
 void rejectsTruncatedArpPayload()
@@ -107,13 +99,6 @@ void rejectsMalformedArpMetadata()
     expect(result.error == ArpDecodeError::UnsupportedHardwareLength, "unsupported hardware length should be reported clearly");
 }
 
-void skipsNonArpEthernetFrame()
-{
-    const auto observations = parseArpObservationsFromEthernetFrame(ethernetFrameWithEtherType(0x0800), {});
-
-    expect(observations.empty(), "non-ARP Ethernet frame should not produce ARP observations");
-}
-
 } // namespace
 
 int main()
@@ -122,7 +107,6 @@ int main()
     emitsSenderObservation();
     rejectsTruncatedArpPayload();
     rejectsMalformedArpMetadata();
-    skipsNonArpEthernetFrame();
 
     if (failures > 0) {
         std::cerr << failures << " ARP packet test expectation(s) failed\n";

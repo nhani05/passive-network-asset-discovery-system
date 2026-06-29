@@ -1,4 +1,4 @@
-#include "output/JsonRenderer.hpp"
+#include "infrastructure/output/JsonRenderer.hpp"
 
 #include <iostream>
 #include <string>
@@ -7,7 +7,8 @@ namespace {
 
 using asset_discovery::asset::Asset;
 using asset_discovery::output::renderAssetJson;
-using asset_discovery::parser::ObservationSource;
+using asset_discovery::parser::sourceIdArp;
+using asset_discovery::parser::sourceIdDns;
 
 int failures = 0;
 
@@ -31,7 +32,7 @@ Asset makeAsset()
     asset.ipAddresses.insert("192.168.1.10");
     asset.firstSeen = {1699606784, 0};
     asset.lastSeen = {1699606790, 10};
-    asset.sources.insert(ObservationSource::Arp);
+    asset.sources.insert(sourceIdArp);
     return asset;
 }
 
@@ -57,11 +58,14 @@ void rendersDeterministicArrays()
 {
     auto asset = makeAsset();
     asset.ipAddresses.insert("192.168.1.2");
+    asset.sources.insert(sourceIdDns);
 
     const auto output = renderAssetJson({asset});
 
     expect(contains(output, "\"ip_addresses\": [\"192.168.1.10\", \"192.168.1.2\"]"),
         "JSON should emit IP set in deterministic order");
+    expect(contains(output, "\"discovery_sources\": [\"arp\", \"dns\"]"),
+        "JSON should preserve arbitrary source ids in deterministic order");
 }
 
 void escapesJsonStrings()
