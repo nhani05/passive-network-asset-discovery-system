@@ -4,19 +4,21 @@ Tài liệu này mô tả kiến trúc hiện tại của Passive Network Asset 
 
 ## Mục Tiêu
 
-Hệ thống phân tích traffic thụ động từ file PCAP hoặc network interface, trích xuất observation từ ARP/DHCP, gộp observation thành asset state, rồi xuất kết quả ra terminal, file-friendly format, hoặc PostgreSQL.
+Hệ thống phân tích traffic thụ động từ file PCAP hoặc network interface, trích xuất observation từ ARP/DHCP/DNS bằng parser plugins, gộp observation thành asset state, rồi xuất kết quả ra terminal, file-friendly format, hoặc PostgreSQL.
 
-## Module Chính
+## Layer Và Module Chính
 
-| Module | Đường dẫn | Trách nhiệm |
+| Layer | Module | Đường dẫn | Trách nhiệm |
 | --- | --- | --- |
-| CLI | `include/cli`, `src/cli` | Parse `--pcap`, `--interface`, `--duration`, `--filter`, `--output`, `--db-url`; kiểm tra quan hệ option. |
-| Capture | `include/capture`, `src/capture` | Đọc PCAP offline hoặc live capture qua libpcap/Npcap; áp dụng BPF filter; chuẩn hóa packet thành `OfflinePacket`. |
-| Parser | `include/parser`, `src/parser` | Decode Ethernet, ARP, IPv4/UDP/DHCP; trả về `AssetObservation`; bỏ qua packet chưa hỗ trợ hoặc bị cắt ngắn. |
-| Asset | `include/asset`, `src/asset` | Gộp observation theo MAC address; duy trì IP set, hostname, first_seen, last_seen, và discovery_sources. |
-| Output | `include/output`, `src/output` | Render asset state ở dạng table, JSON, hoặc CSV. |
-| Storage | `include/storage`, `src/storage` | Tạo schema tối thiểu và upsert asset vào PostgreSQL thông qua client `psql`. |
-| Orchestration | `src/main.cpp` | Nối CLI, capture, parser, asset store, output renderer, và storage writer thành một luồng chạy. |
+| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--duration`, `--filter`, `--output`, `--db-url`; kiểm tra quan hệ option. |
+| Domain | Asset model | `include/domain`, `src/domain` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`; gộp observation theo MAC address và duy trì asset state. |
+| Application | Parser core | `include/application/parser`, `src/application/parser` | Build `PacketContext`, điều phối `ParserEngine`/`ParserRegistry`, expose parser facade `parseEthernetObservations()`. |
+| Plugins | Parser plugins | `include/plugins/parser`, `src/plugins/parser` | Built-in ARP/DHCP/DNS plugins và composition root `createDefaultParserRegistry()`. |
+| Infrastructure | Packet decoders | `include/infrastructure/packet`, `src/infrastructure/packet` | Decode Ethernet và ARP payload dùng chung cho context builder/plugins. |
+| Infrastructure | Capture | `include/infrastructure/capture`, `src/infrastructure/capture` | Đọc PCAP offline hoặc live capture qua libpcap/Npcap; áp dụng BPF filter; chuẩn hóa packet thành `OfflinePacket`. |
+| Infrastructure | Output | `include/infrastructure/output`, `src/infrastructure/output` | Render asset state ở dạng table, JSON, hoặc CSV. |
+| Infrastructure | Storage | `include/infrastructure/storage`, `src/infrastructure/storage` | Tạo schema tối thiểu và upsert asset vào PostgreSQL thông qua client `psql`. |
+| Composition | Main | `src/main.cpp` | Nối CLI, capture, parser facade, asset store, output renderer, và storage writer thành một luồng chạy. |
 
 ## Luồng Dữ Liệu
 
@@ -33,7 +35,20 @@ OfflinePacket { timestamp, linkType, bytes }
 parseEthernetObservations()
         |
         v
-AssetObservation { macAddress, ipAddress, hostname, source, timestamp }
+PacketContextBuilder
+        |
+        v
+PacketContext { raw bytes, timestamp, Ethernet, IPv4?, UDP?, payload }
+        |
+        v
+ParserEngine + ParserRegistry
+        |
+        +--> ARPPlugin  match() -> parse()
+        +--> DHCPPlugin match() -> parse()
+        +--> DNSPlugin  match() -> parse()
+        |
+        v
+AssetObservation { macAddress, ipAddress, hostname, sourceId, eventType, confidence, metadata, timestamp }
         |
         v
 AssetStore::applyObservation()
@@ -52,8 +67,12 @@ PCAP mode và live capture dùng cùng parser, asset store, renderer, và storag
 
 - Capture backend chỉ chấp nhận Ethernet datalink hiện tại.
 - BPF filter được compile bằng libpcap trước khi đọc packet.
-- Parser kiểm tra độ dài buffer trước khi đọc field.
-- Packet không phải ARP/DHCP hoặc packet chưa hỗ trợ được bỏ qua an toàn.
+- Parser build `PacketContext` một lần để decode Ethernet, IPv4, UDP và transport payload khi hợp lệ.
+- Mỗi parser plugin có `match(PacketContext)` để lọc packet trước khi chạy `parse(PacketContext)`.
+- Parser core chỉ biết `ParserInterface` và `ParserRegistry`; built-in plugin registration nằm trong `plugins/parser/BuiltinParserPlugins`.
+- Registry hiện là static built-in registry, không dùng dynamic `.so`/`.dll`, để tránh ABI/runtime complexity trong scope C++17 hiện tại.
+- Built-in plugin hiện có: ARP, DHCP, DNS endpoint observation.
+- Parser kiểm tra độ dài buffer trước khi đọc field; packet chưa hỗ trợ hoặc bị cắt ngắn được bỏ qua an toàn.
 - Parser không ghi warning vào stdout JSON; lỗi capture được trả về cho `main` để in trên stderr.
 
 ## Asset State
@@ -67,7 +86,8 @@ Quy tắc merge:
 - Timestamp sớm hơn cập nhật `first_seen`.
 - IP không rỗng được thêm vào `ip_addresses`.
 - Hostname DHCP không rỗng cập nhật `hostname`.
-- Source protocol được thêm vào `discovery_sources`.
+- Source protocol dạng lowercase text id được thêm vào `discovery_sources`, ví dụ `arp`, `dhcp`, `dns`.
+- Observation có `eventType`, `confidence`, và metadata key/value để hỗ trợ giải thích nguồn dữ liệu và mở rộng protocol mà không thêm field riêng cho từng protocol.
 
 ## PostgreSQL
 
@@ -97,7 +117,8 @@ PCAP fixture ổn định, không cần quyền capture, không phụ thuộc tr
 ## Giới Hạn Hiện Tại
 
 - Hệ thống chỉ passive monitoring, không scan chủ động.
-- Chỉ decode Ethernet với ARP và DHCP metadata cơ bản.
+- Chỉ decode Ethernet với ARP, DHCP metadata cơ bản, và DNS endpoint observation thụ động.
 - DHCP hostname chỉ xuất hiện khi traffic có option tương ứng.
+- DNS plugin không gán hostname từ query name và không thực hiện resolver/enrichment chủ động.
 - Live capture cần quyền hệ thống và có thể khác nhau giữa Linux, macOS, Windows/Npcap, và Docker Desktop.
 - PostgreSQL writer phụ thuộc client `psql` trong `PATH` và database đang reachable.

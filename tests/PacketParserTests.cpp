@@ -1,4 +1,4 @@
-#include "parser/PacketParsers.hpp"
+#include "application/parser/PacketParserFacade.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -7,8 +7,9 @@
 
 namespace {
 
-using asset_discovery::parser::ObservationSource;
 using asset_discovery::parser::parseEthernetObservations;
+using asset_discovery::parser::ObservationEventType;
+using asset_discovery::parser::sourceIdDhcp;
 
 int failures = 0;
 
@@ -99,10 +100,13 @@ void parsesDhcpObservation()
     if (observations.empty()) {
         return;
     }
-    expect(observations.front().source == ObservationSource::Dhcp, "source should be DHCP");
+    expect(observations.front().sourceId == sourceIdDhcp, "source should be DHCP");
     expect(observations.front().macAddress == "02:42:ac:11:00:03", "client MAC should be parsed");
     expect(observations.front().ipAddress == "192.168.1.20", "requested IP should be parsed");
     expect(observations.front().hostname == "laptop-user", "hostname option should be parsed");
+    expect(observations.front().eventType == ObservationEventType::Update, "DHCP event should be an update");
+    expect(observations.front().confidence == 1.0F, "DHCP confidence should preserve existing behavior");
+    expect(observations.front().metadata.count("dhcp.option.hostname") == 1, "DHCP metadata should include hostname option");
 }
 
 void skipsTruncatedIpv4()

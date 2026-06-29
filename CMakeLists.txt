@@ -8,46 +8,90 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ASSET_DISCOVERY_REQUIRE_PCAP "Stop configuration when libpcap is unavailable" OFF)
 
+add_library(asset_discovery_domain
+    src/domain/AssetObservation.cpp
+    src/domain/AssetStore.cpp
+)
+
+target_include_directories(asset_discovery_domain PUBLIC include)
+add_library(asset_discovery_asset ALIAS asset_discovery_domain)
+
+add_library(asset_discovery_packet
+    src/infrastructure/packet/ArpPacket.cpp
+    src/infrastructure/packet/EthernetFrame.cpp
+)
+
+target_include_directories(asset_discovery_packet PUBLIC include)
+target_link_libraries(asset_discovery_packet PUBLIC asset_discovery_domain)
+
+add_library(asset_discovery_parser_core
+    src/application/parser/PacketContext.cpp
+    src/application/parser/ParserEngine.cpp
+    src/application/parser/ParserInterface.cpp
+    src/application/parser/ParserRegistry.cpp
+)
+
+target_include_directories(asset_discovery_parser_core PUBLIC include)
+target_link_libraries(asset_discovery_parser_core PUBLIC asset_discovery_domain asset_discovery_packet)
+
+add_library(asset_discovery_parser_plugins
+    src/plugins/parser/ArpPlugin.cpp
+    src/plugins/parser/BuiltinParserPlugins.cpp
+    src/plugins/parser/DhcpPlugin.cpp
+    src/plugins/parser/DnsPlugin.cpp
+)
+
+target_include_directories(asset_discovery_parser_plugins PUBLIC include)
+target_link_libraries(asset_discovery_parser_plugins PUBLIC asset_discovery_parser_core asset_discovery_packet)
+
 add_library(asset_discovery_parser
-    src/parser/ArpPacket.cpp
-    src/parser/AssetObservation.cpp
-    src/parser/EthernetFrame.cpp
-    src/parser/PacketParsers.cpp
+    src/application/parser/PacketParserFacade.cpp
 )
 
 target_include_directories(asset_discovery_parser PUBLIC include)
-
-add_library(asset_discovery_asset
-    src/asset/AssetStore.cpp
-)
-
-target_include_directories(asset_discovery_asset PUBLIC include)
-target_link_libraries(asset_discovery_asset PUBLIC asset_discovery_parser)
+target_link_libraries(asset_discovery_parser PUBLIC asset_discovery_parser_core asset_discovery_parser_plugins)
 
 add_library(asset_discovery_output
-    src/output/CsvRenderer.cpp
-    src/output/JsonRenderer.cpp
-    src/output/TableRenderer.cpp
+    src/infrastructure/output/CsvRenderer.cpp
+    src/infrastructure/output/JsonRenderer.cpp
+    src/infrastructure/output/TableRenderer.cpp
 )
 
 target_include_directories(asset_discovery_output PUBLIC include)
-target_link_libraries(asset_discovery_output PUBLIC asset_discovery_asset)
+target_link_libraries(asset_discovery_output PUBLIC asset_discovery_domain)
 
 add_library(asset_discovery_storage
-    src/storage/PostgresWriter.cpp
+    src/infrastructure/storage/PostgresWriter.cpp
 )
 
 target_include_directories(asset_discovery_storage PUBLIC include)
-target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_asset)
+target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_domain)
+
+add_library(asset_discovery_capture
+    src/infrastructure/capture/PacketCapture.cpp
+)
+
+target_include_directories(asset_discovery_capture PUBLIC include)
+
+add_library(asset_discovery_cli
+    src/interface/cli/Arguments.cpp
+)
+
+target_include_directories(asset_discovery_cli PUBLIC include)
 
 add_executable(asset-discovery
     src/main.cpp
-    src/capture/PacketCapture.cpp
-    src/cli/Arguments.cpp
 )
 
 target_include_directories(asset-discovery PRIVATE include)
-target_link_libraries(asset-discovery PRIVATE asset_discovery_output asset_discovery_storage asset_discovery_asset asset_discovery_parser)
+target_link_libraries(asset-discovery PRIVATE
+    asset_discovery_capture
+    asset_discovery_cli
+    asset_discovery_domain
+    asset_discovery_output
+    asset_discovery_parser
+    asset_discovery_storage
+)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -77,15 +121,15 @@ if(NOT PCAP_FOUND AND DEFINED NPCAP_ROOT)
 endif()
 
 if(PCAP_FOUND)
-    target_include_directories(asset-discovery PRIVATE ${PCAP_INCLUDE_DIRS})
-    target_link_libraries(asset-discovery PRIVATE ${PCAP_LIBRARIES})
-    target_compile_options(asset-discovery PRIVATE ${PCAP_CFLAGS_OTHER})
-    target_compile_definitions(asset-discovery PRIVATE ASSET_DISCOVERY_HAS_PCAP=1)
+    target_include_directories(asset_discovery_capture PRIVATE ${PCAP_INCLUDE_DIRS})
+    target_link_libraries(asset_discovery_capture PRIVATE ${PCAP_LIBRARIES})
+    target_compile_options(asset_discovery_capture PRIVATE ${PCAP_CFLAGS_OTHER})
+    target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_PCAP=1)
 else()
     if(ASSET_DISCOVERY_REQUIRE_PCAP)
         message(FATAL_ERROR "libpcap was not found. Install the libpcap development package or set ASSET_DISCOVERY_REQUIRE_PCAP=OFF.")
     endif()
-    target_compile_definitions(asset-discovery PRIVATE ASSET_DISCOVERY_HAS_PCAP=0)
+    target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_PCAP=0)
     message(WARNING "libpcap was not found. Building the CLI shell without a packet capture backend.")
 endif()
 

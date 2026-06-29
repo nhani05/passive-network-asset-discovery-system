@@ -1,4 +1,4 @@
-#include "parser/EthernetFrame.hpp"
+#include "infrastructure/packet/EthernetFrame.hpp"
 
 #include <cstdint>
 #include <iostream>
