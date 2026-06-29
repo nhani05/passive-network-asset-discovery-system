@@ -1,4 +1,4 @@
-#include "output/CsvRenderer.hpp"
+#include "infrastructure/output/CsvRenderer.hpp"
 
 #include <iostream>
 #include <string>
@@ -7,7 +7,9 @@ namespace {
 
 using asset_discovery::asset::Asset;
 using asset_discovery::output::renderAssetCsv;
-using asset_discovery::parser::ObservationSource;
+using asset_discovery::parser::sourceIdArp;
+using asset_discovery::parser::sourceIdDhcp;
+using asset_discovery::parser::sourceIdDns;
 
 int failures = 0;
 
@@ -32,8 +34,9 @@ Asset makeAsset()
     asset.hostname = "laptop-user";
     asset.firstSeen = {1699606784, 0};
     asset.lastSeen = {1699606790, 10};
-    asset.sources.insert(ObservationSource::Arp);
-    asset.sources.insert(ObservationSource::Dhcp);
+    asset.sources.insert(sourceIdArp);
+    asset.sources.insert(sourceIdDhcp);
+    asset.sources.insert(sourceIdDns);
     return asset;
 }
 
@@ -42,7 +45,7 @@ void rendersHeaderAndAsset()
     const auto output = renderAssetCsv({makeAsset()});
     expect(contains(output, "mac_address,ip_addresses,hostname,first_seen,last_seen,discovery_sources\n"),
         "CSV should include deterministic header");
-    expect(contains(output, "02:42:ac:11:00:02,192.168.1.10,laptop-user,1699606784.0,1699606790.10,arp;dhcp"),
+    expect(contains(output, "02:42:ac:11:00:02,192.168.1.10,laptop-user,1699606784.0,1699606790.10,arp;dhcp;dns"),
         "CSV should include asset fields");
 }
 

@@ -38,17 +38,40 @@ add_executable(packet-parser-tests
 target_link_libraries(packet-parser-tests PRIVATE asset_discovery_parser)
 add_test(NAME packet-parser-tests COMMAND packet-parser-tests)
 
+add_executable(packet-context-tests
+    PacketContextTests.cpp
+)
+target_link_libraries(packet-context-tests PRIVATE asset_discovery_parser)
+add_test(NAME packet-context-tests COMMAND packet-context-tests)
+
+add_executable(parser-engine-tests
+    ParserEngineTests.cpp
+)
+target_link_libraries(parser-engine-tests PRIVATE asset_discovery_parser)
+add_test(NAME parser-engine-tests COMMAND parser-engine-tests)
+
+add_executable(dns-plugin-tests
+    DnsPluginTests.cpp
+)
+target_link_libraries(dns-plugin-tests PRIVATE asset_discovery_parser)
+add_test(NAME dns-plugin-tests COMMAND dns-plugin-tests)
+
 add_executable(asset-store-tests
     AssetStoreTests.cpp
 )
 target_link_libraries(asset-store-tests PRIVATE asset_discovery_asset)
 add_test(NAME asset-store-tests COMMAND asset-store-tests)
 
+add_executable(postgres-writer-tests
+    PostgresWriterTests.cpp
+)
+target_link_libraries(postgres-writer-tests PRIVATE asset_discovery_storage)
+add_test(NAME postgres-writer-tests COMMAND postgres-writer-tests)
+
 add_executable(arguments-tests
     ArgumentsTests.cpp
-    ../src/cli/Arguments.cpp
 )
-target_include_directories(arguments-tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(arguments-tests PRIVATE asset_discovery_cli)
 add_test(NAME arguments-tests COMMAND arguments-tests)
 
 if(PCAP_FOUND)

@@ -1,4 +1,4 @@
-#include "output/TableRenderer.hpp"
+#include "infrastructure/output/TableRenderer.hpp"
 
 #include <iostream>
 #include <string>
@@ -7,7 +7,8 @@ namespace {
 
 using asset_discovery::asset::Asset;
 using asset_discovery::output::renderAssetTable;
-using asset_discovery::parser::ObservationSource;
+using asset_discovery::parser::sourceIdArp;
+using asset_discovery::parser::sourceIdDns;
 
 int failures = 0;
 
@@ -31,7 +32,8 @@ Asset makeAsset()
     asset.ipAddresses.insert("192.168.1.10");
     asset.firstSeen = {1699606784, 0};
     asset.lastSeen = {1699606790, 10};
-    asset.sources.insert(ObservationSource::Arp);
+    asset.sources.insert(sourceIdArp);
+    asset.sources.insert(sourceIdDns);
     return asset;
 }
 
@@ -49,6 +51,7 @@ void rendersSingleAsset()
     expect(contains(output, "1699606784.0"), "table should contain first seen timestamp");
     expect(contains(output, "1699606790.10"), "table should contain last seen timestamp");
     expect(contains(output, "arp"), "table should contain ARP source");
+    expect(contains(output, "dns"), "table should preserve DNS source");
 }
 
 void rendersMultipleIpsDeterministically()
