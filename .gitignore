@@ -33,6 +33,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Generated sample captures
+samples/generated-*.pcap
+
 # Dependencies and build output
 node_modules/
 dist/
