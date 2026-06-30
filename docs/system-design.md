@@ -12,6 +12,7 @@ Hệ thống phân tích traffic thụ động từ file PCAP hoặc network int
 | --- | --- | --- |
 | Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--duration`, `--filter`, `--output`, `--db-url`; kiểm tra quan hệ option. |
 | Domain | Asset model | `include/domain`, `src/domain` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`; gộp observation theo MAC address và duy trì asset state. |
+| Application | Live pipeline | `include/application/live`, `src/application/live` | Tách live capture thành producer-consumer pipeline với bounded queue, parser worker pool, aggregator single-writer, và metrics throughput/drop. |
 | Application | Parser core | `include/application/parser`, `src/application/parser` | Build `PacketContext`, điều phối `ParserEngine`/`ParserRegistry`, expose parser facade `parseEthernetObservations()`. |
 | Plugins | Parser plugins | `include/plugins/parser`, `src/plugins/parser` | Built-in ARP/DHCP/DNS plugins và composition root `createDefaultParserRegistry()`. |
 | Infrastructure | Packet decoders | `include/infrastructure/packet`, `src/infrastructure/packet` | Decode Ethernet và ARP payload dùng chung cho context builder/plugins. |
@@ -61,7 +62,49 @@ Asset list
         +--> PostgreSQL writer nếu có --db-url, DATABASE_URL, hoặc PG*/DB* env
 ```
 
-PCAP mode và live capture dùng cùng parser, asset store, renderer, và storage writer. Điểm khác nhau duy nhất là nguồn packet trong `PacketCaptureBackend`.
+PCAP mode và live capture dùng cùng parser, asset store, renderer, và storage writer. Điểm khác biệt chính là PCAP mode đọc file rồi build `AssetStore`, còn live capture đi qua concurrent pipeline để capture không bị block bởi parser hoặc aggregation.
+
+## Live Capture Concurrency
+
+Live capture dùng mô hình producer-consumer để tách stage đọc packet khỏi stage xử lý:
+
+```text
+┌────────────────┐
+│ Capture Thread │
+│ libpcap read   │
+└───────┬────────┘
+        │ PacketBatch
+        v
+┌────────────────────────┐
+│ Bounded Packet Queue   │
+│ mutex + condition var  │
+└───────┬────────────────┘
+        │
+        v
+┌────────────────────────┐
+│ Parser Worker Pool     │
+│ N std::thread workers  │
+└───────┬────────────────┘
+        │ ObservationBatch
+        v
+┌────────────────────────┐
+│ Bounded Observation    │
+│ Queue                  │
+└───────┬────────────────┘
+        v
+┌────────────────────────┐
+│ Asset Aggregator       │
+│ owns AssetStore        │
+└────────────────────────┘
+```
+
+Capture thread chỉ đọc packet đã qua BPF filter, copy thành `OfflinePacket`, gom thành `PacketBatch`, rồi enqueue. Nếu packet queue đầy, hệ thống drop batch mới và tăng counter thay vì để memory tăng vô hạn.
+
+Parser worker pool dequeue `PacketBatch`, gọi `parseEthernetObservations()` song song, rồi enqueue `ObservationBatch`. Parser workers không cập nhật `AssetStore`.
+
+Aggregator thread là single writer duy nhất của `AssetStore`. Sau khi capture dừng, pipeline close packet queue, drain parser workers, close observation queue, join aggregator, rồi main flow mới lấy asset list để ghi PostgreSQL hoặc render output.
+
+Live metrics được ghi ra stderr sau capture, còn stdout vẫn chỉ chứa table/JSON/CSV asset output. Metrics gồm packet captured/enqueued/parsed, observation produced/applied, queue drop, high watermark, elapsed time, throughput, và libpcap drop counters nếu backend hỗ trợ `pcap_stats()`.
 
 ## Xử Lý Packet
 
@@ -72,6 +115,7 @@ PCAP mode và live capture dùng cùng parser, asset store, renderer, và storag
 - Parser core chỉ biết `ParserInterface` và `ParserRegistry`; built-in plugin registration nằm trong `plugins/parser/BuiltinParserPlugins`.
 - Registry hiện là static built-in registry, không dùng dynamic `.so`/`.dll`, để tránh ABI/runtime complexity trong scope C++17 hiện tại.
 - Built-in plugin hiện có: ARP, DHCP, DNS endpoint observation.
+- Parser plugins chạy trong worker pool của live capture, nên `match(PacketContext)` và `parse(PacketContext)` phải stateless hoặc tự thread-safe; plugin không được mutate shared state nếu không tự đồng bộ.
 - Parser kiểm tra độ dài buffer trước khi đọc field; packet chưa hỗ trợ hoặc bị cắt ngắn được bỏ qua an toàn.
 - Parser không ghi warning vào stdout JSON; lỗi capture được trả về cho `main` để in trên stderr.
 
@@ -112,7 +156,9 @@ PCAP mode trong container không cần quyền đặc biệt. Live capture trong
 
 ## Vì Sao PCAP Là Baseline Test
 
-PCAP fixture ổn định, không cần quyền capture, không phụ thuộc traffic thật, và cho phép kiểm tra deterministic output trong CTest. Live capture vẫn dùng cùng pipeline nhưng được xem là smoke test thủ công vì phụ thuộc hệ điều hành, quyền, interface, và traffic tại thời điểm demo.
+PCAP fixture ổn định, không cần quyền capture, không phụ thuộc traffic thật, và cho phép kiểm tra deterministic output trong CTest. Live capture thật vẫn là smoke test thủ công vì phụ thuộc hệ điều hành, quyền, interface, và traffic tại thời điểm demo.
+
+Benchmark throughput dùng executable `asset-discovery-live-benchmark` để đọc PCAP do người dùng cung cấp rồi chạy packet trong file đó qua cùng concurrent parser/aggregation pipeline mà không cần quyền live capture. Mục tiêu 1M packet/s là mục tiêu benchmark cho Release build trong điều kiện đã ghi rõ PCAP input, packet mix, filter assumption, runtime environment, và drop rate; không phải bảo đảm cho mọi NIC, OS, hoặc mọi loại traffic.
 
 ## Giới Hạn Hiện Tại
 
