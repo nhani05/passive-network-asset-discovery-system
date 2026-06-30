@@ -11,6 +11,7 @@ docs/*
 !docs/build-deploy-demo-guide.md
 !docs/docker-packaging-guide.md
 !docs/final-submission-checklist.md
+!docs/system-programming-improvement-proposal.md
 !docs/system-design.md
 openspec/
 # Editor and IDE files
