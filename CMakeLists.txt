@@ -51,6 +51,17 @@ add_library(asset_discovery_parser
 target_include_directories(asset_discovery_parser PUBLIC include)
 target_link_libraries(asset_discovery_parser PUBLIC asset_discovery_parser_core asset_discovery_parser_plugins)
 
+add_library(asset_discovery_live
+    src/application/live/LiveCapturePipeline.cpp
+)
+
+target_include_directories(asset_discovery_live PUBLIC include)
+target_link_libraries(asset_discovery_live PUBLIC
+    asset_discovery_capture
+    asset_discovery_domain
+    asset_discovery_parser
+)
+
 add_library(asset_discovery_output
     src/infrastructure/output/CsvRenderer.cpp
     src/infrastructure/output/JsonRenderer.cpp
@@ -88,10 +99,18 @@ target_link_libraries(asset-discovery PRIVATE
     asset_discovery_capture
     asset_discovery_cli
     asset_discovery_domain
+    asset_discovery_live
     asset_discovery_output
     asset_discovery_parser
     asset_discovery_storage
 )
+
+add_executable(asset-discovery-live-benchmark
+    benchmarks/LivePipelineBenchmark.cpp
+)
+
+target_include_directories(asset-discovery-live-benchmark PRIVATE include)
+target_link_libraries(asset-discovery-live-benchmark PRIVATE asset_discovery_live)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)

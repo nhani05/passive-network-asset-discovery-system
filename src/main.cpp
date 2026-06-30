@@ -1,4 +1,5 @@
 #include "domain/AssetStore.hpp"
+#include "application/live/LiveCapturePipeline.hpp"
 #include "infrastructure/capture/PacketCapture.hpp"
 #include "interface/cli/Arguments.hpp"
 #include "infrastructure/output/CsvRenderer.hpp"
@@ -252,30 +253,20 @@ int main(int argc, char* argv[])
         }
         std::cout << renderAssets(assets, result.options.outputFormat);
     } else if (result.options.interfaceName.has_value()) {
-        asset_discovery::asset::AssetStore store;
-        const auto error = backend.captureLive(
+        const auto liveResult = asset_discovery::live::runLiveCapturePipeline(
+            backend,
             *result.options.interfaceName,
             result.options.durationSeconds,
-            result.options.packetFilter,
-            [&store](const asset_discovery::capture::OfflinePacket& packet) {
-                if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
-                    return;
-                }
-                const auto observations = asset_discovery::parser::parseEthernetObservations(
-                    packet.bytes,
-                    toObservationTimestamp(packet.timestamp));
-                for (const auto& observation : observations) {
-                    store.applyObservation(observation);
-                }
-            }
+            result.options.packetFilter
         );
+        std::cerr << asset_discovery::live::formatLivePipelineMetrics(liveResult.stats);
 
-        if (error.has_value()) {
-            std::cerr << "error: " << *error << "\n";
+        if (liveResult.error.has_value()) {
+            std::cerr << "error: " << *liveResult.error << "\n";
             return 1;
         }
 
-        const auto assets = store.assets();
+        const auto assets = liveResult.assets;
         const auto databaseUrl = resolveDatabaseUrl(result.options);
         if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
             const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);

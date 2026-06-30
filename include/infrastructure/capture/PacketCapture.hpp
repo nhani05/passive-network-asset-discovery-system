@@ -33,6 +33,13 @@ struct PcapReadResult {
     std::optional<std::string> error;
 };
 
+struct LiveCaptureBackendStats {
+    bool available = false;
+    std::uint64_t packetsReceived = 0;
+    std::uint64_t packetsDropped = 0;
+    std::uint64_t packetsInterfaceDropped = 0;
+};
+
 class PacketCaptureBackend {
 public:
     // Reports whether this build has a usable linked libpcap backend.
@@ -51,7 +58,8 @@ public:
         const std::string& interfaceName,
         std::optional<int> durationSeconds,
         std::optional<std::string> packetFilter,
-        LiveCaptureCallback callback) const;
+        LiveCaptureCallback callback,
+        LiveCaptureBackendStats* stats = nullptr) const;
 };
 
 std::string linkTypeName(LinkType linkType);

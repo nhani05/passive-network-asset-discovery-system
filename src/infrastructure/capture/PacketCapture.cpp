@@ -162,7 +162,8 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
     const std::string& interfaceName,
     std::optional<int> durationSeconds,
     std::optional<std::string> packetFilter,
-    LiveCaptureCallback callback) const
+    LiveCaptureCallback callback,
+    LiveCaptureBackendStats* stats) const
 {
 #if ASSET_DISCOVERY_HAS_PCAP == 1
     char errorBuffer[PCAP_ERRBUF_SIZE] = {};
@@ -182,17 +183,32 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
             pcap_close(pcapHandle);
         }
     };
+    const auto fillStats = [stats](pcap_t* pcapHandle) {
+        if (stats == nullptr || pcapHandle == nullptr) {
+            return;
+        }
+
+        pcap_stat pcapStats = {};
+        if (pcap_stats(pcapHandle, &pcapStats) == 0) {
+            stats->available = true;
+            stats->packetsReceived = static_cast<std::uint64_t>(pcapStats.ps_recv);
+            stats->packetsDropped = static_cast<std::uint64_t>(pcapStats.ps_drop);
+            stats->packetsInterfaceDropped = static_cast<std::uint64_t>(pcapStats.ps_ifdrop);
+        }
+    };
 
     const int datalink = pcap_datalink(handle);
     const auto linkType = normalizeDatalink(datalink);
     if (!linkType.has_value()) {
         const auto error = unsupportedLinkTypeError(interfaceName, datalink);
+        fillStats(handle);
         closeHandle(handle);
         return error;
     }
 
     const auto filterError = applyPacketFilter(handle, interfaceName, packetFilter);
     if (filterError.has_value()) {
+        fillStats(handle);
         closeHandle(handle);
         return filterError;
     }
@@ -244,13 +260,16 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
         if (pcapError != nullptr && std::strlen(pcapError) > 0) {
             output << ": " << pcapError;
         }
+        fillStats(handle);
         closeHandle(handle);
         return output.str();
     }
 
+    fillStats(handle);
     closeHandle(handle);
     return std::nullopt;
 #else
+    (void)stats;
     return "cannot run live capture on '" + interfaceName + "': libpcap backend is not available in this build";
 #endif
 }
