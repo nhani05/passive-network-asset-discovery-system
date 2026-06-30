@@ -9,6 +9,7 @@ docs/*
 !docs/SPRINT4.md
 !docs/asset-output-contract.md
 !docs/build-deploy-demo-guide.md
+!docs/docker-packaging-guide.md
 !docs/final-submission-checklist.md
 !docs/system-design.md
 openspec/
