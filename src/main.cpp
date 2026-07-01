@@ -1,4 +1,5 @@
 #include "domain/AssetStore.hpp"
+#include "application/live/LiveCapturePipeline.hpp"
 #include "infrastructure/capture/PacketCapture.hpp"
 #include "interface/cli/Arguments.hpp"
 #include "infrastructure/output/CsvRenderer.hpp"
@@ -7,7 +8,6 @@
 #include "application/parser/PacketParserFacade.hpp"
 #include "infrastructure/storage/PostgresWriter.hpp"
 
-#include <atomic>
 #include <csignal>
 #include <iostream>
 #include <cstdlib>
@@ -15,6 +15,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -251,14 +252,14 @@ int main(int argc, char* argv[])
         return 2;
     }
 
-    const asset_discovery::capture::PacketCaptureBackend backend;
-    if (!backend.pcapAvailable()) {
-        std::cerr << "warning: backend " << backend.backendName()
-                  << " is not available in this build; packet capture will work after libpcap is installed.\n";
-    }
-
     const auto captureMode = *result.options.captureMode;
     if (captureMode == asset_discovery::cli::CaptureMode::PcapOffline) {
+        const asset_discovery::capture::PacketCaptureBackend backend;
+        if (!backend.pcapAvailable()) {
+            std::cerr << "warning: backend " << backend.backendName()
+                      << " is not available in this build; packet capture will work after libpcap is installed.\n";
+        }
+
         const auto pcapResult = backend.readPcapFile(
             *result.options.pcapPath,
             result.options.packetFilter);
@@ -272,8 +273,11 @@ int main(int argc, char* argv[])
         return writeAndRenderAssets(result.options, assets);
     } else if (captureMode == asset_discovery::cli::CaptureMode::LiveTimed
         || captureMode == asset_discovery::cli::CaptureMode::LiveInfinite) {
-        asset_discovery::asset::AssetStore store;
-        std::atomic_bool stopRequested(false);
+        auto backendResult = asset_discovery::capture::createCaptureBackend(result.options.captureBackend);
+        if (backendResult.error.has_value() || !backendResult.backend) {
+            std::cerr << "error: " << backendResult.error.value_or("capture backend could not be created") << "\n";
+            return 1;
+        }
 
         asset_discovery::capture::LiveCaptureOptions liveOptions;
         liveOptions.durationSeconds = result.options.durationSeconds;
@@ -282,45 +286,39 @@ int main(int argc, char* argv[])
         }
 
         liveCaptureInterrupted = 0;
-        liveOptions.stopRequested = [&stopRequested]() {
-            return liveCaptureInterrupted != 0 || stopRequested.load();
+        liveOptions.stopRequested = []() {
+            return liveCaptureInterrupted != 0;
         };
 
         using SignalHandler = void (*)(int);
         const SignalHandler previousSignalHandler = std::signal(SIGINT, handleLiveCaptureSignal);
 
-        const auto error = backend.captureLive(
-            *result.options.interfaceName,
-            liveOptions,
-            result.options.packetFilter,
-            [&store, &result, &stopRequested](const asset_discovery::capture::OfflinePacket& packet) {
-                if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
-                    return;
-                }
-                const auto observations = asset_discovery::parser::parseEthernetObservations(
-                    packet.bytes,
-                    toObservationTimestamp(packet.timestamp));
-                for (const auto& observation : observations) {
-                    store.applyObservation(observation);
-                }
+        asset_discovery::capture::CaptureConfig captureConfig;
+        captureConfig.interfaceName = *result.options.interfaceName;
+        captureConfig.liveOptions = liveOptions;
+        captureConfig.packetFilter = result.options.packetFilter;
+        captureConfig.requestedBackend = result.options.captureBackend;
 
-                if (result.options.maxAssets.has_value()
-                    && store.size() >= static_cast<std::size_t>(*result.options.maxAssets)) {
-                    stopRequested.store(true);
-                }
-            }
+        const auto liveResult = asset_discovery::live::runLiveCapturePipeline(
+            *backendResult.backend,
+            std::move(captureConfig),
+            result.options.maxAssets,
+            std::move(backendResult.initialStats),
+            {}
         );
 
         if (previousSignalHandler != SIG_ERR) {
             std::signal(SIGINT, previousSignalHandler);
         }
 
-        if (error.has_value()) {
-            std::cerr << "error: " << *error << "\n";
+        std::cerr << asset_discovery::live::formatLivePipelineMetrics(liveResult.stats);
+
+        if (liveResult.error.has_value()) {
+            std::cerr << "error: " << *liveResult.error << "\n";
             return 1;
         }
 
-        const auto assets = store.assets();
+        const auto assets = liveResult.assets;
         return writeAndRenderAssets(result.options, assets);
     }
 

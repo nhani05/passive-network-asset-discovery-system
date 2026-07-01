@@ -74,6 +74,24 @@ add_executable(arguments-tests
 target_link_libraries(arguments-tests PRIVATE asset_discovery_cli)
 add_test(NAME arguments-tests COMMAND arguments-tests)
 
+add_executable(capture-backend-tests
+    CaptureBackendTests.cpp
+)
+target_link_libraries(capture-backend-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-backend-tests COMMAND capture-backend-tests)
+
+add_executable(bounded-queue-tests
+    BoundedQueueTests.cpp
+)
+target_link_libraries(bounded-queue-tests PRIVATE asset_discovery_live)
+add_test(NAME bounded-queue-tests COMMAND bounded-queue-tests)
+
+add_executable(live-capture-pipeline-tests
+    LiveCapturePipelineTests.cpp
+)
+target_link_libraries(live-capture-pipeline-tests PRIVATE asset_discovery_live asset_discovery_output)
+add_test(NAME live-capture-pipeline-tests COMMAND live-capture-pipeline-tests)
+
 if(PCAP_FOUND)
     set(EMPTY_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcap")
     add_custom_command(

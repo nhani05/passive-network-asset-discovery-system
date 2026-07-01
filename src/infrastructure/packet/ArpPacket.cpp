@@ -3,17 +3,18 @@
 #include <iomanip>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace asset_discovery::parser {
 namespace {
 
-std::uint16_t readBigEndianUInt16(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::uint16_t readBigEndianUInt16(ByteView bytes, std::size_t offset)
 {
     return static_cast<std::uint16_t>((static_cast<std::uint16_t>(bytes[offset]) << 8U)
                                       | static_cast<std::uint16_t>(bytes[offset + 1]));
 }
 
-std::string formatMacAddress(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::string formatMacAddress(ByteView bytes, std::size_t offset)
 {
     std::ostringstream output;
     output << std::hex << std::setfill('0');
@@ -26,7 +27,7 @@ std::string formatMacAddress(const std::vector<std::uint8_t>& bytes, std::size_t
     return output.str();
 }
 
-std::string formatIpv4Address(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::string formatIpv4Address(ByteView bytes, std::size_t offset)
 {
     std::ostringstream output;
     for (std::size_t i = 0; i < arpProtocolLengthIpv4; ++i) {
@@ -45,9 +46,9 @@ bool ArpDecodeResult::ok() const
     return packet.has_value() && !error.has_value();
 }
 
-ArpDecodeResult decodeArpPacket(const std::vector<std::uint8_t>& bytes)
+ArpDecodeResult decodeArpPacket(ByteView bytes)
 {
-    if (bytes.size() < arpEthernetIpv4Length) {
+    if (bytes.size < arpEthernetIpv4Length) {
         return {std::nullopt, ArpDecodeError::TruncatedPacket};
     }
 
@@ -77,6 +78,11 @@ ArpDecodeResult decodeArpPacket(const std::vector<std::uint8_t>& bytes)
     packet.targetIp = formatIpv4Address(bytes, 24);
 
     return {std::move(packet), std::nullopt};
+}
+
+ArpDecodeResult decodeArpPacket(const std::vector<std::uint8_t>& bytes)
+{
+    return decodeArpPacket(makeByteView(bytes));
 }
 
 AssetObservation observationFromArpPacket(const ArpPacket& packet, ObservationTimestamp timestamp)

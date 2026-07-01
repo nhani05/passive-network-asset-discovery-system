@@ -7,6 +7,7 @@
 namespace {
 
 using asset_discovery::cli::parseArguments;
+using asset_discovery::capture::CaptureBackendSelection;
 
 int failures = 0;
 
@@ -85,6 +86,59 @@ void rejectsEmptyPacketFilter()
     }
 }
 
+void parsesCaptureBackendSelection()
+{
+    const std::vector<std::string> args = {
+        "--interface",
+        "eth0",
+        "--duration",
+        "5",
+        "--capture-backend",
+        "af-packet",
+    };
+
+    const auto result = parseArguments(args);
+    expect(!result.error.has_value(), "valid --capture-backend should be accepted");
+    expect(result.options.captureBackend == CaptureBackendSelection::AfPacket,
+        "af-packet backend selection should be stored");
+}
+
+void rejectsUnknownCaptureBackend()
+{
+    const std::vector<std::string> args = {
+        "--interface",
+        "eth0",
+        "--duration",
+        "5",
+        "--capture-backend",
+        "raw",
+    };
+
+    const auto result = parseArguments(args);
+    expect(result.error.has_value(), "unknown --capture-backend should be rejected");
+    if (result.error.has_value()) {
+        expect(result.error->find("expected one of: auto, pcap, af-packet") != std::string::npos,
+            "error should list supported capture backends");
+    }
+}
+
+void rejectsCaptureBackendForOfflinePcap()
+{
+    const std::vector<std::string> args = {
+        "--pcap",
+        "samples/arp.pcap",
+        "--capture-backend",
+        "pcap",
+    };
+
+    const auto result = parseArguments(args);
+    expect(result.error.has_value(), "--capture-backend should be live-only");
+    if (result.error.has_value()) {
+        expect(result.error->find("--capture-backend is only valid") != std::string::npos,
+            "error should explain live-only backend selection");
+    }
+}
+
 void parsesPcapMode()
 {
     const std::vector<std::string> args = {
@@ -116,6 +170,38 @@ void parsesLiveInfiniteMode()
         "live infinite capture mode should be selected");
     expect(result.options.idleTimeoutSeconds == 30, "idle timeout should be stored");
     expect(result.options.maxAssets == 10, "max assets should be stored");
+}
+
+void parsesLiveCaptureBackend()
+{
+    const auto result = parseArguments({
+        "--interface",
+        "eth0",
+        "--duration",
+        "60",
+        "--capture-backend",
+        "pcap",
+    });
+
+    expect(!result.error.has_value(), "valid live capture backend should be accepted");
+    expect(result.options.captureBackend == asset_discovery::capture::CaptureBackendSelection::Pcap,
+        "capture backend should be stored");
+}
+
+void rejectsCaptureBackendWithPcap()
+{
+    const auto result = parseArguments({
+        "--pcap",
+        "samples/arp.pcap",
+        "--capture-backend",
+        "pcap",
+    });
+
+    expect(result.error.has_value(), "--capture-backend with --pcap should be rejected");
+    if (result.error.has_value()) {
+        expect(result.error->find("--capture-backend is only valid with --interface capture") != std::string::npos,
+            "error should explain capture backend scope");
+    }
 }
 
 void rejectsInterfaceWithoutLiveControl()
@@ -199,8 +285,13 @@ int main()
     parsesValidDatabaseUrl();
     parsesPacketFilter();
     rejectsEmptyPacketFilter();
+    parsesCaptureBackendSelection();
+    rejectsUnknownCaptureBackend();
+    rejectsCaptureBackendForOfflinePcap();
     parsesPcapMode();
     parsesLiveInfiniteMode();
+    parsesLiveCaptureBackend();
+    rejectsCaptureBackendWithPcap();
     rejectsInterfaceWithoutLiveControl();
     rejectsDurationWithLive();
     rejectsInfiniteControlsWithoutLive();

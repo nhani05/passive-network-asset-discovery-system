@@ -23,6 +23,20 @@ bool needsValue(const std::string& option, std::size_t index, std::size_t size)
     return option.rfind("--", 0) == 0 && index + 1 >= size;
 }
 
+std::optional<capture::CaptureBackendSelection> parseBackendSelection(const std::string& value)
+{
+    if (value == "auto") {
+        return capture::CaptureBackendSelection::Auto;
+    }
+    if (value == "pcap") {
+        return capture::CaptureBackendSelection::Pcap;
+    }
+    if (value == "af-packet") {
+        return capture::CaptureBackendSelection::AfPacket;
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 ParseResult parseArguments(const std::vector<std::string>& args)
@@ -106,6 +120,19 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
+        if (arg == "--capture-backend") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--capture-backend requires one of: auto, pcap, af-packet"};
+            }
+            const auto value = args[++i];
+            const auto backend = parseBackendSelection(value);
+            if (!backend.has_value()) {
+                return {options, "capture backend '" + value + "' is not supported; expected one of: auto, pcap, af-packet"};
+            }
+            options.captureBackend = *backend;
+            continue;
+        }
+
         if (arg == "--output") {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--output requires one of: table, json, csv"};
@@ -157,6 +184,9 @@ ParseResult parseArguments(const std::vector<std::string>& args)
         if (options.maxAssets.has_value()) {
             return {options, "--max-assets is only valid with --interface <name> --live"};
         }
+        if (options.captureBackend != capture::CaptureBackendSelection::Auto) {
+            return {options, "--capture-backend is only valid with --interface capture"};
+        }
         options.captureMode = CaptureMode::PcapOffline;
         return {options, std::nullopt};
     }
@@ -189,8 +219,8 @@ std::string usageText(const std::string& executableName)
     std::ostringstream output;
     output << "Usage:\n"
            << "  " << executableName << " --pcap <file> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
-           << "  " << executableName << " --interface <name> --duration <seconds> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
-           << "  " << executableName << " --interface <name> --live [--idle-timeout <seconds>] [--max-assets <count>] [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --interface <name> --duration <seconds> [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --interface <name> --live [--idle-timeout <seconds>] [--max-assets <count>] [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv] [--db-url <url>]\n"
            << "\nOptions:\n"
            << "  --pcap <file>              Read packets from a PCAP file.\n"
            << "  --interface <name>         Capture packets from a live interface.\n"
@@ -199,6 +229,7 @@ std::string usageText(const std::string& executableName)
            << "  --idle-timeout <seconds>   In --live mode, stop after no accepted packet is seen for this many seconds.\n"
            << "  --max-assets <count>       In --live mode, stop after discovering this many assets.\n"
            << "  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.\n"
+           << "  --capture-backend <name>   Live capture backend: auto, pcap, or af-packet. Defaults to auto.\n"
            << "  --output table|json|csv    Output format. Defaults to table.\n"
            << "  --db-url <url>             Write assets to PostgreSQL with the psql client.\n"
            << "  -h, --help                 Show this help text.\n";

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "infrastructure/capture/PacketCapture.hpp"
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,6 +30,7 @@ struct Options {
     std::optional<int> maxAssets;
     std::optional<std::string> packetFilter;
     std::optional<std::string> databaseUrl;
+    capture::CaptureBackendSelection captureBackend = capture::CaptureBackendSelection::Auto;
     OutputFormat outputFormat = OutputFormat::Table;
     bool helpRequested = false;
 };

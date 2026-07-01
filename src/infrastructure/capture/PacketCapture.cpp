@@ -1,7 +1,10 @@
 #include "infrastructure/capture/PacketCapture.hpp"
 
+#include "infrastructure/capture/AfPacketCaptureBackend.hpp"
+
 #include <chrono>
 #include <cstring>
+#include <memory>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -66,17 +69,42 @@ std::string unsupportedLinkTypeError(const std::string& path, int datalink)
 
 } // namespace
 
-bool PacketCaptureBackend::pcapAvailable() const
+PacketView OfflinePacket::view() const
+{
+    return {
+        timestamp,
+        linkType,
+        capturedLength,
+        originalLength,
+        makeByteView(bytes),
+        nullptr,
+    };
+}
+
+bool PcapCaptureBackend::pcapAvailable() const
 {
     return ASSET_DISCOVERY_HAS_PCAP == 1;
 }
 
-std::string PacketCaptureBackend::backendName() const
+std::string PcapCaptureBackend::backendName() const
 {
-    return ASSET_DISCOVERY_HAS_PCAP == 1 ? "libpcap" : "libpcap-unavailable";
+    return "pcap";
 }
 
-PcapReadResult PacketCaptureBackend::readPcapFile(
+BackendAvailability PcapCaptureBackend::availability() const
+{
+    if (pcapAvailable()) {
+        return {true, {}};
+    }
+    return {false, "libpcap backend is not available in this build"};
+}
+
+bool PcapCaptureBackend::supportsOfflinePcap() const
+{
+    return true;
+}
+
+PcapReadResult PcapCaptureBackend::readPcapFile(
     const std::string& path,
     std::optional<std::string> packetFilter) const
 {
@@ -159,13 +187,16 @@ PcapReadResult PacketCaptureBackend::readPcapFile(
 #endif
 }
 
-std::optional<std::string> PacketCaptureBackend::captureLive(
-    const std::string& interfaceName,
-    const LiveCaptureOptions& options,
-    std::optional<std::string> packetFilter,
-    LiveCaptureCallback callback) const
+std::optional<std::string> PcapCaptureBackend::captureLive(
+    const CaptureConfig& config,
+    LiveCaptureCallback callback,
+    BackendStats* stats) const
 {
 #if ASSET_DISCOVERY_HAS_PCAP == 1
+    const auto& interfaceName = config.interfaceName;
+    const auto& options = config.liveOptions;
+    const auto& packetFilter = config.packetFilter;
+
     char errorBuffer[PCAP_ERRBUF_SIZE] = {};
     // Open the interface with snaplen 65535, promiscuous mode = 1, timeout = 1000ms.
     pcap_t* handle = pcap_open_live(interfaceName.c_str(), 65535, 1, 1000, errorBuffer);
@@ -183,17 +214,35 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
             pcap_close(pcapHandle);
         }
     };
+    const auto fillStats = [stats](pcap_t* pcapHandle) {
+        if (stats == nullptr || pcapHandle == nullptr) {
+            return;
+        }
+
+        pcap_stat pcapStats = {};
+        if (pcap_stats(pcapHandle, &pcapStats) == 0) {
+            stats->available = true;
+            if (stats->selectedBackend.empty()) {
+                stats->selectedBackend = "pcap";
+            }
+            stats->packetsReceived = static_cast<std::uint64_t>(pcapStats.ps_recv);
+            stats->packetsDropped = static_cast<std::uint64_t>(pcapStats.ps_drop);
+            stats->packetsInterfaceDropped = static_cast<std::uint64_t>(pcapStats.ps_ifdrop);
+        }
+    };
 
     const int datalink = pcap_datalink(handle);
     const auto linkType = normalizeDatalink(datalink);
     if (!linkType.has_value()) {
         const auto error = unsupportedLinkTypeError(interfaceName, datalink);
+        fillStats(handle);
         closeHandle(handle);
         return error;
     }
 
     const auto filterError = applyPacketFilter(handle, interfaceName, packetFilter);
     if (filterError.has_value()) {
+        fillStats(handle);
         closeHandle(handle);
         return filterError;
     }
@@ -248,8 +297,20 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
             packet.originalLength = header->len;
             packet.bytes.assign(data, data + header->caplen);
 
+            auto ownedBytes = std::make_shared<std::vector<std::uint8_t>>(packet.bytes);
+            PacketView view;
+            view.timestamp = packet.timestamp;
+            view.linkType = packet.linkType;
+            view.capturedLength = packet.capturedLength;
+            view.originalLength = packet.originalLength;
+            view.bytes = makeByteView(*ownedBytes);
+            view.owner = ownedBytes;
+            if (stats != nullptr) {
+                ++stats->packetsCopied;
+            }
+
             lastAcceptedPacketTime = std::chrono::steady_clock::now();
-            callback(packet);
+            callback(view);
             continue;
         }
 
@@ -269,18 +330,79 @@ std::optional<std::string> PacketCaptureBackend::captureLive(
         if (pcapError != nullptr && std::strlen(pcapError) > 0) {
             output << ": " << pcapError;
         }
+        fillStats(handle);
         closeHandle(handle);
         return output.str();
     }
 
+    fillStats(handle);
     closeHandle(handle);
     return std::nullopt;
 #else
-    (void)options;
-    (void)packetFilter;
+    (void)config;
     (void)callback;
-    return "cannot run live capture on '" + interfaceName + "': libpcap backend is not available in this build";
+    (void)stats;
+    return "cannot run live capture: libpcap backend is not available in this build";
 #endif
+}
+
+CaptureBackendFactoryResult createCaptureBackend(CaptureBackendSelection requested)
+{
+    CaptureBackendFactoryResult result;
+    result.initialStats.requestedBackend = captureBackendSelectionName(requested);
+
+    if (requested == CaptureBackendSelection::Pcap) {
+        auto backend = std::make_unique<PcapCaptureBackend>();
+        const auto availability = backend->availability();
+        if (!availability.available) {
+            result.error = availability.reason;
+            return result;
+        }
+        result.initialStats.selectedBackend = backend->backendName();
+        result.backend = std::move(backend);
+        return result;
+    }
+
+    if (requested == CaptureBackendSelection::AfPacket) {
+        auto backend = std::make_unique<AfPacketCaptureBackend>();
+        const auto availability = backend->availability();
+        if (!availability.available) {
+            result.error = availability.reason;
+            return result;
+        }
+        result.initialStats.selectedBackend = backend->backendName();
+        result.backend = std::move(backend);
+        return result;
+    }
+
+    auto afPacket = std::make_unique<AfPacketCaptureBackend>();
+    const auto afPacketAvailability = afPacket->availability();
+    if (afPacketAvailability.available) {
+        result.initialStats.selectedBackend = afPacket->backendName();
+        result.backend = std::move(afPacket);
+        return result;
+    }
+
+    auto pcap = std::make_unique<PcapCaptureBackend>();
+    const auto pcapAvailability = pcap->availability();
+    if (pcapAvailability.available) {
+        result.initialStats.selectedBackend = pcap->backendName();
+        result.initialStats.fallbackReason = afPacketAvailability.reason;
+        result.backend = std::move(pcap);
+        return result;
+    }
+
+    result.error = "no capture backend is available";
+    if (!afPacketAvailability.reason.empty() || !pcapAvailability.reason.empty()) {
+        result.error = "no capture backend is available";
+        if (!afPacketAvailability.reason.empty()) {
+            *result.error += "; af-packet: " + afPacketAvailability.reason;
+        }
+        if (!pcapAvailability.reason.empty()) {
+            *result.error += "; pcap: " + pcapAvailability.reason;
+        }
+    }
+    return result;
 }
 
 std::string linkTypeName(LinkType linkType)
@@ -290,6 +412,33 @@ std::string linkTypeName(LinkType linkType)
         return "ethernet";
     }
     return "unknown";
+}
+
+std::string captureBackendSelectionName(CaptureBackendSelection selection)
+{
+    switch (selection) {
+    case CaptureBackendSelection::Auto:
+        return "auto";
+    case CaptureBackendSelection::Pcap:
+        return "pcap";
+    case CaptureBackendSelection::AfPacket:
+        return "af-packet";
+    }
+    return "auto";
+}
+
+std::optional<CaptureBackendSelection> parseCaptureBackendSelection(const std::string& value)
+{
+    if (value == "auto") {
+        return CaptureBackendSelection::Auto;
+    }
+    if (value == "pcap") {
+        return CaptureBackendSelection::Pcap;
+    }
+    if (value == "af-packet") {
+        return CaptureBackendSelection::AfPacket;
+    }
+    return std::nullopt;
 }
 
 } // namespace asset_discovery::capture

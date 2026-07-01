@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/ByteView.hpp"
 #include "domain/AssetObservation.hpp"
 #include "infrastructure/packet/EthernetFrame.hpp"
 
@@ -22,24 +23,28 @@ struct Ipv4Packet {
     std::size_t headerLength = 0;
     std::uint16_t totalLength = 0;
     bool fragmented = false;
-    std::vector<std::uint8_t> payload;
+    ByteView payload;
 };
 
 struct UdpDatagram {
     std::uint16_t sourcePort = 0;
     std::uint16_t destinationPort = 0;
     std::uint16_t length = 0;
-    std::vector<std::uint8_t> payload;
+    ByteView payload;
 };
 
 struct PacketContext {
-    std::vector<std::uint8_t> rawBytes;
+    ByteView rawBytes;
     ObservationTimestamp timestamp;
     std::optional<EthernetFrame> ethernet;
     std::optional<Ipv4Packet> ipv4;
     std::optional<UdpDatagram> udp;
-    std::vector<std::uint8_t> transportPayload;
+    ByteView transportPayload;
 };
+
+PacketContext buildPacketContext(
+    ByteView bytes,
+    ObservationTimestamp timestamp);
 
 PacketContext buildPacketContext(
     const std::vector<std::uint8_t>& bytes,
