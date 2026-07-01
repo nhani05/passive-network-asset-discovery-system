@@ -24,7 +24,7 @@ std::string DnsPlugin::id() const
 
 ParserMatch DnsPlugin::match(const PacketContext& context) const
 {
-    if (context.udp.has_value() && isDnsPort(*context.udp) && context.udp->payload.size() >= dnsHeaderLength) {
+    if (context.udp.has_value() && isDnsPort(*context.udp) && context.udp->payload.size >= dnsHeaderLength) {
         return {80};
     }
     return {};

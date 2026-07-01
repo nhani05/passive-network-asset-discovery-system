@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/ByteView.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -18,7 +20,7 @@ struct EthernetFrame {
     std::string destinationMac;
     std::string sourceMac;
     std::uint16_t etherType = 0;
-    std::vector<std::uint8_t> payload;
+    ByteView payload;
 };
 
 struct EthernetDecodeResult {
@@ -28,6 +30,7 @@ struct EthernetDecodeResult {
     bool ok() const;
 };
 
+EthernetDecodeResult decodeEthernetFrame(ByteView bytes);
 EthernetDecodeResult decodeEthernetFrame(const std::vector<std::uint8_t>& bytes);
 std::string ethernetDecodeErrorName(EthernetDecodeError error);
 

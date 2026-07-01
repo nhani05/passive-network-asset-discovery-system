@@ -1,5 +1,7 @@
 #pragma once
 
+#include "infrastructure/capture/PacketCapture.hpp"
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -12,13 +14,23 @@ enum class OutputFormat {
     Csv,
 };
 
+enum class CaptureMode {
+    PcapOffline,
+    LiveTimed,
+    LiveInfinite,
+};
+
 // CLI options after validating relationships between arguments.
 struct Options {
     std::optional<std::string> pcapPath;
     std::optional<std::string> interfaceName;
+    std::optional<CaptureMode> captureMode;
     std::optional<int> durationSeconds;
+    std::optional<int> idleTimeoutSeconds;
+    std::optional<int> maxAssets;
     std::optional<std::string> packetFilter;
     std::optional<std::string> databaseUrl;
+    capture::CaptureBackendSelection captureBackend = capture::CaptureBackendSelection::Auto;
     OutputFormat outputFormat = OutputFormat::Table;
     bool helpRequested = false;
 };

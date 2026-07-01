@@ -10,13 +10,13 @@ Hệ thống phân tích traffic thụ động từ file PCAP hoặc network int
 
 | Layer | Module | Đường dẫn | Trách nhiệm |
 | --- | --- | --- |
-| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--duration`, `--filter`, `--output`, `--db-url`; kiểm tra quan hệ option. |
+| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--duration`, `--live`, `--idle-timeout`, `--max-assets`, `--filter`, `--capture-backend`, `--output`, `--db-url`; kiểm tra quan hệ option. |
 | Domain | Asset model | `include/domain`, `src/domain` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`; gộp observation theo MAC address và duy trì asset state. |
 | Application | Live pipeline | `include/application/live`, `src/application/live` | Tách live capture thành producer-consumer pipeline với bounded queue, parser worker pool, aggregator single-writer, và metrics throughput/drop. |
 | Application | Parser core | `include/application/parser`, `src/application/parser` | Build `PacketContext`, điều phối `ParserEngine`/`ParserRegistry`, expose parser facade `parseEthernetObservations()`. |
 | Plugins | Parser plugins | `include/plugins/parser`, `src/plugins/parser` | Built-in ARP/DHCP/DNS plugins và composition root `createDefaultParserRegistry()`. |
 | Infrastructure | Packet decoders | `include/infrastructure/packet`, `src/infrastructure/packet` | Decode Ethernet và ARP payload dùng chung cho context builder/plugins. |
-| Infrastructure | Capture | `include/infrastructure/capture`, `src/infrastructure/capture` | Đọc PCAP offline hoặc live capture qua libpcap/Npcap; áp dụng BPF filter; chuẩn hóa packet thành `OfflinePacket`. |
+| Infrastructure | Capture | `include/infrastructure/capture`, `src/infrastructure/capture` | Đọc PCAP offline hoặc live capture qua backend được chọn; áp dụng BPF filter; chuẩn hóa packet thành `OfflinePacket` hoặc `PacketView`. |
 | Infrastructure | Output | `include/infrastructure/output`, `src/infrastructure/output` | Render asset state ở dạng table, JSON, hoặc CSV. |
 | Infrastructure | Storage | `include/infrastructure/storage`, `src/infrastructure/storage` | Tạo schema tối thiểu và upsert asset vào PostgreSQL thông qua client `psql`. |
 | Composition | Main | `src/main.cpp` | Nối CLI, capture, parser facade, asset store, output renderer, và storage writer thành một luồng chạy. |
@@ -62,7 +62,25 @@ Asset list
         +--> PostgreSQL writer nếu có --db-url, DATABASE_URL, hoặc PG*/DB* env
 ```
 
-PCAP mode và live capture dùng cùng parser, asset store, renderer, và storage writer. Điểm khác biệt chính là PCAP mode đọc file rồi build `AssetStore`, còn live capture đi qua concurrent pipeline để capture không bị block bởi parser hoặc aggregation.
+PCAP mode, live timed mode và live infinite mode dùng cùng parser, asset store, renderer, và storage writer. Điểm khác nhau nằm ở nguồn packet và stop policy. PCAP mode đọc file rồi build `AssetStore`, còn live capture đi qua concurrent pipeline để capture không bị block bởi parser hoặc aggregation.
+
+## Capture Modes
+
+CLI hỗ trợ ba chế độ input rõ ràng:
+
+- PCAP offline: `--pcap <file>`, đọc hết file rồi render kết quả.
+- Live timed: `--interface <name> --duration <seconds>`, capture đến khi hết thời lượng.
+- Live infinite: `--interface <name> --live`, capture đến khi có stop condition.
+
+Live capture có thể chọn backend bằng `--capture-backend auto|pcap|af-packet`. `auto` để runtime chọn backend khả dụng; `pcap` là baseline portable qua libpcap/Npcap.
+
+Live infinite có thể dừng khi:
+
+- Không có packet được chấp nhận sau BPF filter trong `--idle-timeout <seconds>`.
+- Asset store đạt `--max-assets <count>`.
+- Người vận hành nhấn Ctrl+C/SIGINT.
+
+Ctrl+C trong live infinite mode chỉ đặt stop flag tối thiểu, vòng capture thoát theo hướng graceful, rồi `main` tiếp tục dùng cùng luồng render và PostgreSQL writer như PCAP/live timed. `--idle-timeout` không tính packet bị BPF filter loại ra, vì những packet này không được đưa vào pipeline phân tích.
 
 ## Live Capture Concurrency
 
@@ -98,7 +116,7 @@ Live capture dùng mô hình producer-consumer để tách stage đọc packet k
 └────────────────────────┘
 ```
 
-Capture thread chỉ đọc packet đã qua BPF filter, copy thành `OfflinePacket`, gom thành `PacketBatch`, rồi enqueue. Nếu packet queue đầy, hệ thống drop batch mới và tăng counter thay vì để memory tăng vô hạn.
+Capture thread chỉ đọc packet đã qua BPF filter, chuẩn hóa thành `PacketView`, gom thành `PacketBatch`, rồi enqueue. Nếu packet queue đầy, hệ thống drop batch mới và tăng counter thay vì để memory tăng vô hạn.
 
 Parser worker pool dequeue `PacketBatch`, gọi `parseEthernetObservations()` song song, rồi enqueue `ObservationBatch`. Parser workers không cập nhật `AssetStore`.
 
@@ -110,6 +128,7 @@ Live metrics được ghi ra stderr sau capture, còn stdout vẫn chỉ chứa 
 
 - Capture backend chỉ chấp nhận Ethernet datalink hiện tại.
 - BPF filter được compile bằng libpcap trước khi đọc packet.
+- Live capture dùng non-blocking polling với sleep ngắn khi chưa có packet để kiểm tra duration, idle timeout và stop flag ổn định.
 - Parser build `PacketContext` một lần để decode Ethernet, IPv4, UDP và transport payload khi hợp lệ.
 - Mỗi parser plugin có `match(PacketContext)` để lọc packet trước khi chạy `parse(PacketContext)`.
 - Parser core chỉ biết `ParserInterface` và `ParserRegistry`; built-in plugin registration nằm trong `plugins/parser/BuiltinParserPlugins`.

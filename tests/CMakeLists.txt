@@ -74,6 +74,12 @@ add_executable(arguments-tests
 target_link_libraries(arguments-tests PRIVATE asset_discovery_cli)
 add_test(NAME arguments-tests COMMAND arguments-tests)
 
+add_executable(capture-backend-tests
+    CaptureBackendTests.cpp
+)
+target_link_libraries(capture-backend-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-backend-tests COMMAND capture-backend-tests)
+
 add_executable(bounded-queue-tests
     BoundedQueueTests.cpp
 )

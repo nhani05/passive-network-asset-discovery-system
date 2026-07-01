@@ -3,11 +3,12 @@
 #include <iomanip>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace asset_discovery::parser {
 namespace {
 
-std::string formatMacAddress(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::string formatMacAddress(ByteView bytes, std::size_t offset)
 {
     std::ostringstream output;
     output << std::hex << std::setfill('0');
@@ -20,7 +21,7 @@ std::string formatMacAddress(const std::vector<std::uint8_t>& bytes, std::size_t
     return output.str();
 }
 
-std::uint16_t readBigEndianUInt16(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::uint16_t readBigEndianUInt16(ByteView bytes, std::size_t offset)
 {
     return static_cast<std::uint16_t>((static_cast<std::uint16_t>(bytes[offset]) << 8U)
                                       | static_cast<std::uint16_t>(bytes[offset + 1]));
@@ -33,9 +34,9 @@ bool EthernetDecodeResult::ok() const
     return frame.has_value() && !error.has_value();
 }
 
-EthernetDecodeResult decodeEthernetFrame(const std::vector<std::uint8_t>& bytes)
+EthernetDecodeResult decodeEthernetFrame(ByteView bytes)
 {
-    if (bytes.size() < ethernetHeaderLength) {
+    if (bytes.size < ethernetHeaderLength) {
         return {std::nullopt, EthernetDecodeError::TruncatedFrame};
     }
 
@@ -43,9 +44,14 @@ EthernetDecodeResult decodeEthernetFrame(const std::vector<std::uint8_t>& bytes)
     frame.destinationMac = formatMacAddress(bytes, 0);
     frame.sourceMac = formatMacAddress(bytes, 6);
     frame.etherType = readBigEndianUInt16(bytes, 12);
-    frame.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(ethernetHeaderLength), bytes.end());
+    frame.payload = bytes.subview(ethernetHeaderLength);
 
     return {std::move(frame), std::nullopt};
+}
+
+EthernetDecodeResult decodeEthernetFrame(const std::vector<std::uint8_t>& bytes)
+{
+    return decodeEthernetFrame(makeByteView(bytes));
 }
 
 std::string ethernetDecodeErrorName(EthernetDecodeError error)

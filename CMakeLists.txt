@@ -79,10 +79,16 @@ target_include_directories(asset_discovery_storage PUBLIC include)
 target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_domain)
 
 add_library(asset_discovery_capture
+    src/infrastructure/capture/AfPacketCaptureBackend.cpp
     src/infrastructure/capture/PacketCapture.cpp
 )
 
 target_include_directories(asset_discovery_capture PUBLIC include)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_AF_PACKET=1)
+else()
+    target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_AF_PACKET=0)
+endif()
 
 add_library(asset_discovery_cli
     src/interface/cli/Arguments.cpp

@@ -1,0 +1,32 @@
+# docker-compose.dev.yml – Development overrides
+# Dùng: docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d
+#
+# Khác biệt so với prod:
+#   - Expose thêm port debug
+#   - PGSSLMODE=disable (local container)
+#   - Restart policy ít aggressive hơn
+
+services:
+  db:
+    container_name: db-dev
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-asset_discovery}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-123456}
+
+  pcap-demo:
+    container_name: pcap-demo-dev
+    restart: "no"
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE:-asset_discovery}
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-123456}
+      PGSSLMODE: disable
+    depends_on:
+      db:
+        condition: service_healthy

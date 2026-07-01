@@ -2,17 +2,18 @@
 
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace asset_discovery::parser {
 namespace {
 
-std::uint16_t readBigEndianUInt16(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::uint16_t readBigEndianUInt16(ByteView bytes, std::size_t offset)
 {
     return static_cast<std::uint16_t>((static_cast<std::uint16_t>(bytes[offset]) << 8U)
                                       | static_cast<std::uint16_t>(bytes[offset + 1]));
 }
 
-std::string formatIpv4Address(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::string formatIpv4Address(ByteView bytes, std::size_t offset)
 {
     std::ostringstream output;
     for (std::size_t i = 0; i < 4; ++i) {
@@ -24,20 +25,20 @@ std::string formatIpv4Address(const std::vector<std::uint8_t>& bytes, std::size_
     return output.str();
 }
 
-std::optional<Ipv4Packet> decodeIpv4Packet(const std::vector<std::uint8_t>& bytes)
+std::optional<Ipv4Packet> decodeIpv4Packet(ByteView bytes)
 {
-    if (bytes.size() < 20) {
+    if (bytes.size < 20) {
         return std::nullopt;
     }
 
     const std::uint8_t version = static_cast<std::uint8_t>(bytes[0] >> 4U);
     const std::size_t headerLength = static_cast<std::size_t>(bytes[0] & 0x0fU) * 4U;
-    if (version != 4 || headerLength < 20 || bytes.size() < headerLength) {
+    if (version != 4 || headerLength < 20 || bytes.size < headerLength) {
         return std::nullopt;
     }
 
     const std::uint16_t totalLength = readBigEndianUInt16(bytes, 2);
-    if (totalLength < headerLength || bytes.size() < totalLength) {
+    if (totalLength < headerLength || bytes.size < totalLength) {
         return std::nullopt;
     }
 
@@ -48,15 +49,13 @@ std::optional<Ipv4Packet> decodeIpv4Packet(const std::vector<std::uint8_t>& byte
     packet.headerLength = headerLength;
     packet.totalLength = totalLength;
     packet.fragmented = (readBigEndianUInt16(bytes, 6) & 0x3fffU) != 0;
-    packet.payload.assign(
-        bytes.begin() + static_cast<std::ptrdiff_t>(headerLength),
-        bytes.begin() + static_cast<std::ptrdiff_t>(totalLength));
+    packet.payload = bytes.subview(headerLength, totalLength - headerLength);
     return packet;
 }
 
 std::optional<UdpDatagram> decodeUdpDatagram(const Ipv4Packet& ipv4)
 {
-    if (ipv4.protocol != ipv4ProtocolUdp || ipv4.fragmented || ipv4.payload.size() < udpHeaderLength) {
+    if (ipv4.protocol != ipv4ProtocolUdp || ipv4.fragmented || ipv4.payload.size < udpHeaderLength) {
         return std::nullopt;
     }
 
@@ -64,20 +63,18 @@ std::optional<UdpDatagram> decodeUdpDatagram(const Ipv4Packet& ipv4)
     datagram.sourcePort = readBigEndianUInt16(ipv4.payload, 0);
     datagram.destinationPort = readBigEndianUInt16(ipv4.payload, 2);
     datagram.length = readBigEndianUInt16(ipv4.payload, 4);
-    if (datagram.length < udpHeaderLength || datagram.length > ipv4.payload.size()) {
+    if (datagram.length < udpHeaderLength || datagram.length > ipv4.payload.size) {
         return std::nullopt;
     }
 
-    datagram.payload.assign(
-        ipv4.payload.begin() + static_cast<std::ptrdiff_t>(udpHeaderLength),
-        ipv4.payload.begin() + static_cast<std::ptrdiff_t>(datagram.length));
+    datagram.payload = ipv4.payload.subview(udpHeaderLength, datagram.length - udpHeaderLength);
     return datagram;
 }
 
 } // namespace
 
 PacketContext buildPacketContext(
-    const std::vector<std::uint8_t>& bytes,
+    ByteView bytes,
     ObservationTimestamp timestamp)
 {
     PacketContext context;
@@ -107,6 +104,13 @@ PacketContext buildPacketContext(
     context.udp = std::move(*udp);
     context.transportPayload = context.udp->payload;
     return context;
+}
+
+PacketContext buildPacketContext(
+    const std::vector<std::uint8_t>& bytes,
+    ObservationTimestamp timestamp)
+{
+    return buildPacketContext(makeByteView(bytes), timestamp);
 }
 
 } // namespace asset_discovery::parser

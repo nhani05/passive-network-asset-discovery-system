@@ -8,15 +8,24 @@
 #include "application/parser/PacketParserFacade.hpp"
 #include "infrastructure/storage/PostgresWriter.hpp"
 
+#include <csignal>
 #include <iostream>
 #include <cstdlib>
 #include <cctype>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
+
+volatile std::sig_atomic_t liveCaptureInterrupted = 0;
+
+void handleLiveCaptureSignal(int)
+{
+    liveCaptureInterrupted = 1;
+}
 
 std::string trimWhitespace(std::string value)
 {
@@ -200,6 +209,22 @@ std::string renderAssets(
     return asset_discovery::output::renderAssetTable(assets);
 }
 
+int writeAndRenderAssets(
+    const asset_discovery::cli::Options& options,
+    const std::vector<asset_discovery::asset::Asset>& assets)
+{
+    const auto databaseUrl = resolveDatabaseUrl(options);
+    if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
+        const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
+        if (dbResult != 0) {
+            return dbResult;
+        }
+    }
+
+    std::cout << renderAssets(assets, options.outputFormat);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -227,13 +252,14 @@ int main(int argc, char* argv[])
         return 2;
     }
 
-    const asset_discovery::capture::PacketCaptureBackend backend;
-    if (!backend.pcapAvailable()) {
-        std::cerr << "warning: backend " << backend.backendName()
-                  << " is not available in this build; packet capture will work after libpcap is installed.\n";
-    }
+    const auto captureMode = *result.options.captureMode;
+    if (captureMode == asset_discovery::cli::CaptureMode::PcapOffline) {
+        const asset_discovery::capture::PacketCaptureBackend backend;
+        if (!backend.pcapAvailable()) {
+            std::cerr << "warning: backend " << backend.backendName()
+                      << " is not available in this build; packet capture will work after libpcap is installed.\n";
+        }
 
-    if (result.options.pcapPath.has_value()) {
         const auto pcapResult = backend.readPcapFile(
             *result.options.pcapPath,
             result.options.packetFilter);
@@ -244,21 +270,47 @@ int main(int argc, char* argv[])
 
         const auto assetStore = buildAssetStore(pcapResult.packets);
         const auto assets = assetStore.assets();
-        const auto databaseUrl = resolveDatabaseUrl(result.options);
-        if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
-            const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
-            if (dbResult != 0) {
-                return dbResult;
-            }
+        return writeAndRenderAssets(result.options, assets);
+    } else if (captureMode == asset_discovery::cli::CaptureMode::LiveTimed
+        || captureMode == asset_discovery::cli::CaptureMode::LiveInfinite) {
+        auto backendResult = asset_discovery::capture::createCaptureBackend(result.options.captureBackend);
+        if (backendResult.error.has_value() || !backendResult.backend) {
+            std::cerr << "error: " << backendResult.error.value_or("capture backend could not be created") << "\n";
+            return 1;
         }
-        std::cout << renderAssets(assets, result.options.outputFormat);
-    } else if (result.options.interfaceName.has_value()) {
+
+        asset_discovery::capture::LiveCaptureOptions liveOptions;
+        liveOptions.durationSeconds = result.options.durationSeconds;
+        if (captureMode == asset_discovery::cli::CaptureMode::LiveInfinite) {
+            liveOptions.idleTimeoutSeconds = result.options.idleTimeoutSeconds;
+        }
+
+        liveCaptureInterrupted = 0;
+        liveOptions.stopRequested = []() {
+            return liveCaptureInterrupted != 0;
+        };
+
+        using SignalHandler = void (*)(int);
+        const SignalHandler previousSignalHandler = std::signal(SIGINT, handleLiveCaptureSignal);
+
+        asset_discovery::capture::CaptureConfig captureConfig;
+        captureConfig.interfaceName = *result.options.interfaceName;
+        captureConfig.liveOptions = liveOptions;
+        captureConfig.packetFilter = result.options.packetFilter;
+        captureConfig.requestedBackend = result.options.captureBackend;
+
         const auto liveResult = asset_discovery::live::runLiveCapturePipeline(
-            backend,
-            *result.options.interfaceName,
-            result.options.durationSeconds,
-            result.options.packetFilter
+            *backendResult.backend,
+            std::move(captureConfig),
+            result.options.maxAssets,
+            std::move(backendResult.initialStats),
+            {}
         );
+
+        if (previousSignalHandler != SIG_ERR) {
+            std::signal(SIGINT, previousSignalHandler);
+        }
+
         std::cerr << asset_discovery::live::formatLivePipelineMetrics(liveResult.stats);
 
         if (liveResult.error.has_value()) {
@@ -267,14 +319,7 @@ int main(int argc, char* argv[])
         }
 
         const auto assets = liveResult.assets;
-        const auto databaseUrl = resolveDatabaseUrl(result.options);
-        if (databaseUrl.has_value() || hasPostgresConnectionEnvironment()) {
-            const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
-            if (dbResult != 0) {
-                return dbResult;
-            }
-        }
-        std::cout << renderAssets(assets, result.options.outputFormat);
+        return writeAndRenderAssets(result.options, assets);
     }
 
     return 0;

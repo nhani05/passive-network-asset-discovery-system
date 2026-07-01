@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/ByteView.hpp"
 #include "application/parser/ParserRegistry.hpp"
 
 #include <cstdint>
@@ -12,6 +13,9 @@ public:
     explicit ParserEngine(ParserRegistry registry);
 
     std::vector<AssetObservation> parse(const PacketContext& context) const;
+    std::vector<AssetObservation> parse(
+        ByteView bytes,
+        ObservationTimestamp timestamp) const;
     std::vector<AssetObservation> parse(
         const std::vector<std::uint8_t>& bytes,
         ObservationTimestamp timestamp) const;

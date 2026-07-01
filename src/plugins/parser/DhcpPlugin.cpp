@@ -4,6 +4,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace asset_discovery::parser {
 namespace {
@@ -19,7 +20,7 @@ bool isDhcpPortPair(const UdpDatagram& udp)
         && (udp.destinationPort == dhcpServerPort || udp.destinationPort == dhcpClientPort);
 }
 
-std::uint32_t readBigEndianUInt32(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::uint32_t readBigEndianUInt32(ByteView bytes, std::size_t offset)
 {
     return (static_cast<std::uint32_t>(bytes[offset]) << 24U)
         | (static_cast<std::uint32_t>(bytes[offset + 1]) << 16U)
@@ -27,7 +28,7 @@ std::uint32_t readBigEndianUInt32(const std::vector<std::uint8_t>& bytes, std::s
         | static_cast<std::uint32_t>(bytes[offset + 3]);
 }
 
-std::string formatMacAddress(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::string formatMacAddress(ByteView bytes, std::size_t offset)
 {
     std::ostringstream output;
     output << std::hex << std::setfill('0');
@@ -40,7 +41,7 @@ std::string formatMacAddress(const std::vector<std::uint8_t>& bytes, std::size_t
     return output.str();
 }
 
-std::string formatIpv4Address(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+std::string formatIpv4Address(ByteView bytes, std::size_t offset)
 {
     std::ostringstream output;
     for (std::size_t i = 0; i < 4; ++i) {
@@ -53,11 +54,11 @@ std::string formatIpv4Address(const std::vector<std::uint8_t>& bytes, std::size_
 }
 
 std::optional<AssetObservation> parseDhcpPayload(
-    const std::vector<std::uint8_t>& payload,
+    ByteView payload,
     ObservationTimestamp timestamp,
     const UdpDatagram& udp)
 {
-    if (payload.size() < dhcpFixedHeaderLength + 4) {
+    if (payload.size < dhcpFixedHeaderLength + 4) {
         return std::nullopt;
     }
     if (readBigEndianUInt32(payload, dhcpFixedHeaderLength) != dhcpMagicCookie) {
@@ -82,7 +83,7 @@ std::optional<AssetObservation> parseDhcpPayload(
     }
 
     std::size_t offset = dhcpFixedHeaderLength + 4;
-    while (offset < payload.size()) {
+    while (offset < payload.size) {
         const std::uint8_t option = payload[offset++];
         if (option == 255) {
             break;
@@ -90,11 +91,11 @@ std::optional<AssetObservation> parseDhcpPayload(
         if (option == 0) {
             continue;
         }
-        if (offset >= payload.size()) {
+        if (offset >= payload.size) {
             return std::nullopt;
         }
         const std::size_t length = payload[offset++];
-        if (payload.size() - offset < length) {
+        if (payload.size - offset < length) {
             return std::nullopt;
         }
         if (option == 12) {

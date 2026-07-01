@@ -30,10 +30,17 @@ std::vector<AssetObservation> ParserEngine::parse(const PacketContext& context) 
 }
 
 std::vector<AssetObservation> ParserEngine::parse(
-    const std::vector<std::uint8_t>& bytes,
+    ByteView bytes,
     ObservationTimestamp timestamp) const
 {
     return parse(buildPacketContext(bytes, timestamp));
+}
+
+std::vector<AssetObservation> ParserEngine::parse(
+    const std::vector<std::uint8_t>& bytes,
+    ObservationTimestamp timestamp) const
+{
+    return parse(makeByteView(bytes), timestamp);
 }
 
 } // namespace asset_discovery::parser

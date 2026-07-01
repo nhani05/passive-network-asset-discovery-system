@@ -13,7 +13,7 @@
 namespace asset_discovery::live {
 
 struct PacketBatch {
-    std::vector<capture::OfflinePacket> packets;
+    std::vector<capture::PacketView> packets;
 };
 
 struct ObservationBatch {
@@ -38,9 +38,16 @@ struct LivePipelineStats {
     std::size_t observationQueueHighWatermark = 0;
     double elapsedSeconds = 0.0;
     bool backendStatsAvailable = false;
+    std::string backendRequested;
+    std::string backendSelected;
+    std::string backendFallbackReason;
     std::uint64_t backendPacketsReceived = 0;
     std::uint64_t backendPacketsDropped = 0;
     std::uint64_t backendPacketsInterfaceDropped = 0;
+    std::uint64_t backendPacketsCopied = 0;
+    std::uint64_t backendKernelDrops = 0;
+    std::uint64_t packetBatchesDropped = 0;
+    std::uint64_t backendBatchDrops = 0;
     std::size_t packetBatchSize = 0;
     std::size_t packetQueueCapacity = 0;
     std::size_t observationQueueCapacity = 0;
@@ -56,10 +63,10 @@ struct LivePipelineResult {
 LivePipelineOptions normalizeLivePipelineOptions(LivePipelineOptions options);
 
 LivePipelineResult runLiveCapturePipeline(
-    const capture::PacketCaptureBackend& backend,
-    const std::string& interfaceName,
-    std::optional<int> durationSeconds,
-    std::optional<std::string> packetFilter,
+    const capture::CaptureBackend& backend,
+    capture::CaptureConfig captureConfig,
+    std::optional<int> maxAssets,
+    capture::BackendStats initialBackendStats = {},
     LivePipelineOptions options = {});
 
 LivePipelineResult processPacketsConcurrently(

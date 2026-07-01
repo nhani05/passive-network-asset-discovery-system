@@ -4,14 +4,19 @@
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
 
 using asset_discovery::capture::LinkType;
 using asset_discovery::capture::OfflinePacket;
+using asset_discovery::capture::PacketView;
+using asset_discovery::live::runLiveCapturePipeline;
 using asset_discovery::live::LivePipelineOptions;
 using asset_discovery::live::formatLivePipelineMetrics;
 using asset_discovery::live::processPacketsConcurrently;
@@ -60,6 +65,22 @@ void appendBytes(std::vector<std::uint8_t>& bytes, const std::vector<std::uint8_
     bytes.insert(bytes.end(), suffix.begin(), suffix.end());
 }
 
+struct LeaseState {
+    std::vector<std::uint8_t> bytes;
+    std::shared_ptr<int> releases;
+
+    explicit LeaseState(std::vector<std::uint8_t> value, std::shared_ptr<int> releaseCounter)
+        : bytes(std::move(value))
+        , releases(std::move(releaseCounter))
+    {
+    }
+
+    ~LeaseState()
+    {
+        ++(*releases);
+    }
+};
+
 OfflinePacket arpPacket(
     const std::string& sourceMac,
     const std::string& sourceIp,
@@ -87,6 +108,74 @@ OfflinePacket arpPacket(
     packet.bytes = std::move(bytes);
     return packet;
 }
+
+PacketView packetViewWithLease(
+    const OfflinePacket& packet,
+    const std::shared_ptr<int>& releaseCounter)
+{
+    auto lease = std::make_shared<LeaseState>(packet.bytes, releaseCounter);
+    PacketView view;
+    view.timestamp = packet.timestamp;
+    view.linkType = packet.linkType;
+    view.capturedLength = packet.capturedLength;
+    view.originalLength = packet.originalLength;
+    view.bytes = asset_discovery::makeByteView(lease->bytes);
+    view.owner = lease;
+    return view;
+}
+
+class FakeCaptureBackend final : public asset_discovery::capture::CaptureBackend {
+public:
+    explicit FakeCaptureBackend(std::vector<PacketView> packets)
+        : packets_(std::move(packets))
+    {
+    }
+
+    std::string backendName() const override
+    {
+        return "fake";
+    }
+
+    asset_discovery::capture::BackendAvailability availability() const override
+    {
+        return {true, {}};
+    }
+
+    bool supportsOfflinePcap() const override
+    {
+        return false;
+    }
+
+    asset_discovery::capture::PcapReadResult readPcapFile(
+        const std::string& path,
+        std::optional<std::string> packetFilter = std::nullopt) const override
+    {
+        (void)packetFilter;
+        return {{}, "fake backend cannot read PCAP file '" + path + "'"};
+    }
+
+    std::optional<std::string> captureLive(
+        const asset_discovery::capture::CaptureConfig& config,
+        LiveCaptureCallback callback,
+        asset_discovery::capture::BackendStats* stats = nullptr) const override
+    {
+        (void)config;
+        const auto packetCount = packets_.size();
+        for (const auto& packet : packets_) {
+            callback(packet);
+        }
+        packets_.clear();
+        if (stats != nullptr) {
+            stats->available = true;
+            stats->selectedBackend = backendName();
+            stats->packetsReceived = packetCount;
+        }
+        return std::nullopt;
+    }
+
+private:
+    mutable std::vector<PacketView> packets_;
+};
 
 void parsesPacketsAndAggregatesAssets()
 {
@@ -132,12 +221,62 @@ void keepsMetricsSeparateFromJsonAssets()
     expect(metrics.find("packets_parsed=1") != std::string::npos, "metrics should report parsed packets");
 }
 
+void keepsBorrowedPacketLeaseUntilWorkersFinish()
+{
+    auto releases = std::make_shared<int>(0);
+    const auto packet = arpPacket("02:42:ac:11:00:05", "192.168.1.13", 13);
+    FakeCaptureBackend backend({packetViewWithLease(packet, releases)});
+
+    LivePipelineOptions options;
+    options.packetBatchSize = 1;
+    options.packetQueueCapacity = 2;
+    options.observationQueueCapacity = 2;
+    options.parserWorkerCount = 1;
+
+    asset_discovery::capture::CaptureConfig config;
+    config.interfaceName = "fake0";
+    asset_discovery::capture::BackendStats backendStats;
+    backendStats.requestedBackend = "fake";
+
+    const auto result = runLiveCapturePipeline(backend, config, std::nullopt, backendStats, options);
+
+    expect(!result.error.has_value(), "fake live backend should process without error");
+    expect(result.assets.size() == 1, "borrowed packet should parse before lease is released");
+    expect(*releases == 1, "borrowed packet owner should release exactly once after pipeline drains");
+    expect(result.stats.backendSelected == "fake", "metrics should retain selected backend");
+}
+
+void releasesBorrowedPacketLeaseWhenBatchDrops()
+{
+    auto releases = std::make_shared<int>(0);
+    const auto packet = arpPacket("02:42:ac:11:00:06", "192.168.1.14", 14);
+    FakeCaptureBackend backend({packetViewWithLease(packet, releases)});
+
+    LivePipelineOptions options;
+    options.packetBatchSize = 1;
+    options.packetQueueCapacity = 0;
+    options.observationQueueCapacity = 1;
+    options.parserWorkerCount = 1;
+
+    asset_discovery::capture::CaptureConfig config;
+    config.interfaceName = "fake0";
+    const auto result = runLiveCapturePipeline(backend, config, std::nullopt, {}, options);
+
+    expect(!result.error.has_value(), "dropping packet batch should not fail the pipeline");
+    expect(result.assets.empty(), "dropped packet batch should not produce assets");
+    expect(result.stats.packetsDroppedQueueFull == 1, "dropped packet should be counted");
+    expect(result.stats.packetBatchesDropped == 1, "dropped packet batch should be counted");
+    expect(*releases == 1, "dropped packet owner should release after failed enqueue");
+}
+
 } // namespace
 
 int main()
 {
     parsesPacketsAndAggregatesAssets();
     keepsMetricsSeparateFromJsonAssets();
+    keepsBorrowedPacketLeaseUntilWorkersFinish();
+    releasesBorrowedPacketLeaseWhenBatchDrops();
 
     if (failures != 0) {
         std::cerr << failures << " live capture pipeline test expectation(s) failed\n";

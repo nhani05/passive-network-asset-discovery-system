@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/ByteView.hpp"
 #include "domain/AssetObservation.hpp"
 
 #include <cstddef>
@@ -40,6 +41,7 @@ struct ArpDecodeResult {
     bool ok() const;
 };
 
+ArpDecodeResult decodeArpPacket(ByteView bytes);
 ArpDecodeResult decodeArpPacket(const std::vector<std::uint8_t>& bytes);
 AssetObservation observationFromArpPacket(const ArpPacket& packet, ObservationTimestamp timestamp);
 std::string arpDecodeErrorName(ArpDecodeError error);

@@ -15,10 +15,17 @@ const ParserEngine& defaultParserEngine()
 } // namespace
 
 std::vector<AssetObservation> parseEthernetObservations(
-    const std::vector<std::uint8_t>& bytes,
+    ByteView bytes,
     ObservationTimestamp timestamp)
 {
     return defaultParserEngine().parse(bytes, timestamp);
+}
+
+std::vector<AssetObservation> parseEthernetObservations(
+    const std::vector<std::uint8_t>& bytes,
+    ObservationTimestamp timestamp)
+{
+    return parseEthernetObservations(makeByteView(bytes), timestamp);
 }
 
 } // namespace asset_discovery::parser

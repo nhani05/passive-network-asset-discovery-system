@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <exception>
+#include <functional>
 #include <iomanip>
 #include <iterator>
 #include <mutex>
@@ -26,6 +27,7 @@ struct AtomicPipelineStats {
     std::atomic<std::uint64_t> packetsParsed{0};
     std::atomic<std::uint64_t> observationsProduced{0};
     std::atomic<std::uint64_t> observationsApplied{0};
+    std::atomic<std::uint64_t> packetBatchesDropped{0};
 };
 
 parser::ObservationTimestamp toObservationTimestamp(const capture::PacketTimestamp& timestamp)
@@ -55,8 +57,13 @@ std::string firstError(const std::optional<std::string>& left, const std::option
 
 class PipelineRunner {
 public:
-    explicit PipelineRunner(LivePipelineOptions options)
+    explicit PipelineRunner(
+        LivePipelineOptions options,
+        std::optional<int> maxAssets = std::nullopt,
+        std::function<void()> requestStop = {})
         : options_(normalizeLivePipelineOptions(options)),
+          maxAssets_(maxAssets),
+          requestStop_(std::move(requestStop)),
           packetQueue_(options_.packetQueueCapacity),
           observationQueue_(options_.observationQueueCapacity)
     {
@@ -69,7 +76,7 @@ public:
         startAggregator();
         startParserWorkers();
 
-        const auto producerError = producer([this](const capture::OfflinePacket& packet) {
+        const auto producerError = producer([this](const capture::PacketView& packet) {
             enqueuePacket(packet);
         });
         flushPacketBatch();
@@ -100,7 +107,7 @@ public:
         return result;
     }
 
-    void setBackendStats(const capture::LiveCaptureBackendStats& stats)
+    void setBackendStats(const capture::BackendStats& stats)
     {
         backendStats_ = stats;
     }
@@ -114,6 +121,10 @@ private:
                 while (observationQueue_.waitPop(batch)) {
                     for (const auto& observation : batch.observations) {
                         assetStore_.applyObservation(observation);
+                        if (maxAssets_.has_value()
+                            && assetStore_.size() >= static_cast<std::size_t>(*maxAssets_)) {
+                            requestCaptureStop();
+                        }
                     }
                     counters_.observationsApplied.fetch_add(
                         static_cast<std::uint64_t>(batch.observations.size()),
@@ -183,7 +194,7 @@ private:
         }
     }
 
-    void enqueuePacket(const capture::OfflinePacket& packet)
+    void enqueuePacket(const capture::PacketView& packet)
     {
         counters_.packetsCaptured.fetch_add(1, std::memory_order_relaxed);
         pendingPacketBatch_.packets.push_back(packet);
@@ -208,6 +219,7 @@ private:
             counters_.packetsDroppedQueueFull.fetch_add(
                 static_cast<std::uint64_t>(packetCount),
                 std::memory_order_relaxed);
+            counters_.packetBatchesDropped.fetch_add(1, std::memory_order_relaxed);
         }
 
         pendingPacketBatch_ = PacketBatch{};
@@ -219,6 +231,13 @@ private:
         std::lock_guard<std::mutex> lock(errorMutex_);
         if (!error_.has_value()) {
             error_ = std::move(message);
+        }
+    }
+
+    void requestCaptureStop() const
+    {
+        if (requestStop_) {
+            requestStop_();
         }
     }
 
@@ -244,17 +263,26 @@ private:
         stats.observationQueueCapacity = options_.observationQueueCapacity;
         stats.parserWorkerCount = options_.parserWorkerCount;
         stats.backendStatsAvailable = backendStats_.available;
+        stats.backendRequested = backendStats_.requestedBackend;
+        stats.backendSelected = backendStats_.selectedBackend;
+        stats.backendFallbackReason = backendStats_.fallbackReason;
         stats.backendPacketsReceived = backendStats_.packetsReceived;
         stats.backendPacketsDropped = backendStats_.packetsDropped;
         stats.backendPacketsInterfaceDropped = backendStats_.packetsInterfaceDropped;
+        stats.backendPacketsCopied = backendStats_.packetsCopied;
+        stats.backendKernelDrops = backendStats_.kernelDrops;
+        stats.packetBatchesDropped = counters_.packetBatchesDropped.load(std::memory_order_relaxed);
+        stats.backendBatchDrops = backendStats_.batchDrops;
         return stats;
     }
 
     LivePipelineOptions options_;
+    std::optional<int> maxAssets_;
+    std::function<void()> requestStop_;
     BoundedQueue<PacketBatch> packetQueue_;
     BoundedQueue<ObservationBatch> observationQueue_;
     AtomicPipelineStats counters_;
-    capture::LiveCaptureBackendStats backendStats_;
+    capture::BackendStats backendStats_;
     PacketBatch pendingPacketBatch_;
     std::vector<std::thread> parserWorkers_;
     std::thread aggregatorThread_;
@@ -270,9 +298,6 @@ LivePipelineOptions normalizeLivePipelineOptions(LivePipelineOptions options)
     if (options.packetBatchSize == 0) {
         options.packetBatchSize = 128;
     }
-    if (options.packetQueueCapacity == 0) {
-        options.packetQueueCapacity = 1024;
-    }
     if (options.observationQueueCapacity == 0) {
         options.observationQueueCapacity = 1024;
     }
@@ -283,23 +308,34 @@ LivePipelineOptions normalizeLivePipelineOptions(LivePipelineOptions options)
 }
 
 LivePipelineResult runLiveCapturePipeline(
-    const capture::PacketCaptureBackend& backend,
-    const std::string& interfaceName,
-    std::optional<int> durationSeconds,
-    std::optional<std::string> packetFilter,
+    const capture::CaptureBackend& backend,
+    capture::CaptureConfig captureConfig,
+    std::optional<int> maxAssets,
+    capture::BackendStats initialBackendStats,
     LivePipelineOptions options)
 {
-    PipelineRunner runner(options);
-    capture::LiveCaptureBackendStats backendStats;
+    std::atomic_bool pipelineStopRequested(false);
+    const auto externalStopRequested = std::move(captureConfig.liveOptions.stopRequested);
+    captureConfig.liveOptions.stopRequested = [&pipelineStopRequested, externalStopRequested]() {
+        if (pipelineStopRequested.load(std::memory_order_relaxed)) {
+            return true;
+        }
+        return externalStopRequested && externalStopRequested();
+    };
+
+    PipelineRunner runner(options, maxAssets, [&pipelineStopRequested] {
+        pipelineStopRequested.store(true, std::memory_order_relaxed);
+    });
+    capture::BackendStats backendStats = std::move(initialBackendStats);
+    backendStats.selectedBackend = backend.backendName();
+    runner.setBackendStats(backendStats);
 
     auto result = runner.run([&](const auto& enqueuePacket) -> std::optional<std::string> {
         std::optional<std::string> captureError;
         std::thread captureThread([&] {
             captureError = backend.captureLive(
-                interfaceName,
-                durationSeconds,
-                packetFilter,
-                [&](const capture::OfflinePacket& packet) {
+                captureConfig,
+                [&](const capture::PacketView& packet) {
                     enqueuePacket(packet);
                 },
                 &backendStats);
@@ -320,7 +356,7 @@ LivePipelineResult processPacketsConcurrently(
     PipelineRunner runner(options);
     return runner.run([&](const auto& enqueuePacket) -> std::optional<std::string> {
         for (const auto& packet : packets) {
-            enqueuePacket(packet);
+            enqueuePacket(packet.view());
         }
         return std::nullopt;
     });
@@ -347,12 +383,26 @@ std::string formatLivePipelineMetrics(const LivePipelineStats& stats)
            << " packet_batch_size=" << stats.packetBatchSize
            << " packet_queue_capacity=" << stats.packetQueueCapacity
            << " observation_queue_capacity=" << stats.observationQueueCapacity
-           << " parser_worker_count=" << stats.parserWorkerCount;
+           << " parser_worker_count=" << stats.parserWorkerCount
+           << " packet_batches_dropped=" << stats.packetBatchesDropped;
 
-    if (stats.backendStatsAvailable) {
+    if (!stats.backendRequested.empty()) {
+        output << " backend_requested=" << stats.backendRequested;
+    }
+    if (!stats.backendSelected.empty()) {
+        output << " backend_selected=" << stats.backendSelected;
+    }
+    if (!stats.backendFallbackReason.empty()) {
+        output << " backend_fallback_reason=\"" << stats.backendFallbackReason << '"';
+    }
+
+    if (stats.backendStatsAvailable || !stats.backendSelected.empty()) {
         output << " backend_packets_received=" << stats.backendPacketsReceived
                << " backend_packets_dropped=" << stats.backendPacketsDropped
-               << " backend_packets_interface_dropped=" << stats.backendPacketsInterfaceDropped;
+               << " backend_packets_interface_dropped=" << stats.backendPacketsInterfaceDropped
+               << " backend_packets_copied=" << stats.backendPacketsCopied
+               << " backend_kernel_drops=" << stats.backendKernelDrops
+               << " backend_batch_drops=" << stats.backendBatchDrops;
     }
 
     output << '\n';
