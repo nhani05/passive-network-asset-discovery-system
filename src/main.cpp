@@ -1,14 +1,15 @@
-#include "application/monitor/AssetMonitor.hpp"
-#include "application/live/LiveCapturePipeline.hpp"
-#include "domain/AssetStore.hpp"
-#include "infrastructure/capture/PacketCapture.hpp"
-#include "interface/cli/Arguments.hpp"
-#include "infrastructure/output/CsvRenderer.hpp"
-#include "infrastructure/output/EventSink.hpp"
-#include "infrastructure/output/JsonRenderer.hpp"
-#include "infrastructure/output/TableRenderer.hpp"
-#include "application/parser/PacketParserFacade.hpp"
-#include "infrastructure/storage/PostgresWriter.hpp"
+#include "pnad/discovery/AssetMonitor.hpp"
+#include "pnad/app/LiveCapturePipeline.hpp"
+#include "pnad/discovery/AssetStore.hpp"
+#include "pnad/capture/PacketCapture.hpp"
+#include "pnad/cli/Arguments.hpp"
+#include "pnad/discovery/CsvRenderer.hpp"
+#include "pnad/event/EventSink.hpp"
+#include "pnad/discovery/JsonRenderer.hpp"
+#include "pnad/discovery/TableRenderer.hpp"
+#include "pnad/packet/PacketParserFacade.hpp"
+#include "pnad/storage/PostgresWriter.hpp"
+#include "pnad/error/AppError.hpp"
 
 #include <csignal>
 #include <iostream>
@@ -302,16 +303,14 @@ std::vector<asset_discovery::asset::Asset> processOfflinePackets(
     return monitor.assets();
 }
 
-int writeDatabaseIfRequested(
+void writeDatabaseIfRequested(
     const std::optional<std::string>& databaseUrl,
     const std::vector<asset_discovery::asset::Asset>& assets)
 {
     const auto error = asset_discovery::storage::writeAssetsToPostgres(databaseUrl, assets);
     if (error.has_value()) {
-        std::cerr << "error: " << *error << "\n";
-        return 1;
+        throw asset_discovery::DatabaseError(*error);
     }
-    return 0;
 }
 
 std::string renderAssets(
@@ -329,141 +328,159 @@ std::string renderAssets(
     return asset_discovery::output::renderAssetTable(assets);
 }
 
-int writeAndRenderAssets(
+void writeAndRenderAssets(
     const asset_discovery::cli::Options& options,
     const std::vector<asset_discovery::asset::Asset>& assets)
 {
     const auto databaseUrl = resolveDatabaseUrl();
-    const int dbResult = writeDatabaseIfRequested(databaseUrl, assets);
-    if (dbResult != 0) {
-        return dbResult;
-    }
-
+    writeDatabaseIfRequested(databaseUrl, assets);
     std::cout << renderAssets(assets, options.outputFormat);
-    return 0;
 }
 
 } // namespace
 
 int main(int argc, char* argv[])
 {
-    loadDotEnvFile(".env");
-    applyPostgresAliasEnvironment();
-
-    std::vector<std::string> args;
-    args.reserve(static_cast<std::size_t>(argc > 0 ? argc - 1 : 0));
-    for (int i = 1; i < argc; ++i) {
-        args.emplace_back(argv[i]);
-    }
-
     const std::string executableName = argc > 0 ? argv[0] : "asset-discovery";
-    const auto result = asset_discovery::cli::parseArguments(args);
+    try {
+        loadDotEnvFile(".env");
+        applyPostgresAliasEnvironment();
 
-    if (result.options.helpRequested) {
-        std::cout << asset_discovery::cli::usageText(executableName);
-        return 0;
+        std::vector<std::string> args;
+        args.reserve(static_cast<std::size_t>(argc > 0 ? argc - 1 : 0));
+        for (int i = 1; i < argc; ++i) {
+            args.emplace_back(argv[i]);
+        }
+
+        const auto result = asset_discovery::cli::parseArguments(args);
+
+        if (result.options.helpRequested) {
+            std::cout << asset_discovery::cli::usageText(executableName);
+            return 0;
+        }
+
+        if (result.error.has_value()) {
+            throw asset_discovery::ConfigError(*result.error);
+        }
+
+        const auto captureMode = *result.options.captureMode;
+        const auto databaseUrl = resolveDatabaseUrl();
+        if (!hasDatabaseConfiguration(databaseUrl)) {
+            throw asset_discovery::ConfigError("PostgreSQL configuration is required; set DATABASE_URL or PG*/DB_* values in .env or the process environment");
+        }
+
+        auto eventDispatcherResult = buildEventDispatcher(databaseUrl);
+        if (eventDispatcherResult.error.has_value()) {
+            throw asset_discovery::DatabaseError(*eventDispatcherResult.error);
+        }
+        auto& eventDispatcher = eventDispatcherResult.dispatcher;
+
+        if (captureMode == asset_discovery::cli::CaptureMode::PcapOffline) {
+            const asset_discovery::capture::PacketCaptureBackend backend;
+            if (!backend.pcapAvailable()) {
+                std::cerr << "warning: backend " << backend.backendName()
+                          << " is not available in this build; packet capture will work after libpcap is installed.\n";
+            }
+
+            const auto pcapResult = backend.readPcapFile(
+                *result.options.pcapPath,
+                result.options.packetFilter);
+            if (pcapResult.error.has_value()) {
+                throw asset_discovery::PcapError(*pcapResult.error);
+            }
+
+            const auto assets = processOfflinePackets(
+                pcapResult.packets,
+                result.options,
+                eventDispatcher && !eventDispatcher->empty() ? eventDispatcher.get() : nullptr);
+            writeAndRenderAssets(result.options, assets);
+            return 0;
+        } else if (captureMode == asset_discovery::cli::CaptureMode::Live) {
+            auto backendResult = asset_discovery::capture::createCaptureBackend(result.options.captureBackend);
+            if (backendResult.error.has_value() || !backendResult.backend) {
+                throw asset_discovery::CaptureError(backendResult.error.value_or("capture backend could not be created"));
+            }
+
+            asset_discovery::capture::LiveCaptureOptions liveOptions;
+            liveCaptureInterrupted = 0;
+            liveOptions.stopRequested = []() {
+                return liveCaptureInterrupted != 0;
+            };
+
+            using SignalHandler = void (*)(int);
+            const SignalHandler previousInterruptHandler = std::signal(SIGINT, handleLiveCaptureSignal);
+            const SignalHandler previousTerminateHandler = std::signal(SIGTERM, handleLiveCaptureSignal);
+
+            asset_discovery::capture::CaptureConfig captureConfig;
+            captureConfig.interfaceName = *result.options.interfaceName;
+            captureConfig.liveOptions = liveOptions;
+            captureConfig.packetFilter = result.options.packetFilter;
+            captureConfig.requestedBackend = result.options.captureBackend;
+
+            asset_discovery::live::LivePipelineOptions livePipelineOptions;
+            livePipelineOptions.monitorConfig = makeMonitorConfig(result.options);
+            if (result.options.eventQueueCapacity.has_value()) {
+                livePipelineOptions.eventQueueCapacity = static_cast<std::size_t>(*result.options.eventQueueCapacity);
+            }
+            if (eventDispatcher && !eventDispatcher->empty()) {
+                livePipelineOptions.eventCallback = [&eventDispatcher](const asset_discovery::asset::AssetEvent& event) {
+                    eventDispatcher->dispatch(event);
+                };
+                livePipelineOptions.eventFlushCallback = [&eventDispatcher]() {
+                    eventDispatcher->flush();
+                };
+            }
+
+            const auto liveResult = asset_discovery::live::runLiveCapturePipeline(
+                *backendResult.backend,
+                std::move(captureConfig),
+                std::move(backendResult.initialStats),
+                std::move(livePipelineOptions)
+            );
+
+            if (previousInterruptHandler != SIG_ERR) {
+                std::signal(SIGINT, previousInterruptHandler);
+            }
+            if (previousTerminateHandler != SIG_ERR) {
+                std::signal(SIGTERM, previousTerminateHandler);
+            }
+
+            std::cerr << asset_discovery::live::formatLivePipelineMetrics(liveResult.stats);
+
+            if (liveResult.error.has_value()) {
+                const auto& errStr = *liveResult.error;
+                if (errStr.find("PostgreSQL") != std::string::npos || errStr.find("database") != std::string::npos || errStr.find("psql") != std::string::npos || errStr.find("Database") != std::string::npos) {
+                    throw asset_discovery::DatabaseError(errStr);
+                } else {
+                    throw asset_discovery::CaptureError(errStr);
+                }
+            }
+
+            const auto assets = liveResult.assets;
+            writeAndRenderAssets(result.options, assets);
+            return 0;
+        }
     }
-
-    if (result.error.has_value()) {
-        std::cerr << "error: " << *result.error << "\n\n"
+    catch (const asset_discovery::ConfigError& e) {
+        std::cerr << "[CONFIG ERROR] " << e.what() << "\n\n"
                   << asset_discovery::cli::usageText(executableName);
         return 2;
     }
-
-    const auto captureMode = *result.options.captureMode;
-    const auto databaseUrl = resolveDatabaseUrl();
-    if (!hasDatabaseConfiguration(databaseUrl)) {
-        std::cerr << "error: PostgreSQL configuration is required; set DATABASE_URL or PG*/DB_* values in .env or the process environment\n";
-        return 1;
+    catch (const asset_discovery::PcapError& e) {
+        std::cerr << "[PCAP ERROR] " << e.what() << std::endl;
+        return 3;
     }
-
-    auto eventDispatcherResult = buildEventDispatcher(databaseUrl);
-    if (eventDispatcherResult.error.has_value()) {
-        std::cerr << "error: " << *eventDispatcherResult.error << "\n";
-        return 1;
+    catch (const asset_discovery::CaptureError& e) {
+        std::cerr << "[CAPTURE ERROR] " << e.what() << std::endl;
+        return 3;
     }
-    auto& eventDispatcher = eventDispatcherResult.dispatcher;
-
-    if (captureMode == asset_discovery::cli::CaptureMode::PcapOffline) {
-        const asset_discovery::capture::PacketCaptureBackend backend;
-        if (!backend.pcapAvailable()) {
-            std::cerr << "warning: backend " << backend.backendName()
-                      << " is not available in this build; packet capture will work after libpcap is installed.\n";
-        }
-
-        const auto pcapResult = backend.readPcapFile(
-            *result.options.pcapPath,
-            result.options.packetFilter);
-        if (pcapResult.error.has_value()) {
-            std::cerr << "error: " << *pcapResult.error << "\n";
-            return 1;
-        }
-
-        const auto assets = processOfflinePackets(
-            pcapResult.packets,
-            result.options,
-            eventDispatcher && !eventDispatcher->empty() ? eventDispatcher.get() : nullptr);
-        return writeAndRenderAssets(result.options, assets);
-    } else if (captureMode == asset_discovery::cli::CaptureMode::Live) {
-        auto backendResult = asset_discovery::capture::createCaptureBackend(result.options.captureBackend);
-        if (backendResult.error.has_value() || !backendResult.backend) {
-            std::cerr << "error: " << backendResult.error.value_or("capture backend could not be created") << "\n";
-            return 1;
-        }
-
-        asset_discovery::capture::LiveCaptureOptions liveOptions;
-        liveCaptureInterrupted = 0;
-        liveOptions.stopRequested = []() {
-            return liveCaptureInterrupted != 0;
-        };
-
-        using SignalHandler = void (*)(int);
-        const SignalHandler previousInterruptHandler = std::signal(SIGINT, handleLiveCaptureSignal);
-        const SignalHandler previousTerminateHandler = std::signal(SIGTERM, handleLiveCaptureSignal);
-
-        asset_discovery::capture::CaptureConfig captureConfig;
-        captureConfig.interfaceName = *result.options.interfaceName;
-        captureConfig.liveOptions = liveOptions;
-        captureConfig.packetFilter = result.options.packetFilter;
-        captureConfig.requestedBackend = result.options.captureBackend;
-
-        asset_discovery::live::LivePipelineOptions livePipelineOptions;
-        livePipelineOptions.monitorConfig = makeMonitorConfig(result.options);
-        if (result.options.eventQueueCapacity.has_value()) {
-            livePipelineOptions.eventQueueCapacity = static_cast<std::size_t>(*result.options.eventQueueCapacity);
-        }
-        if (eventDispatcher && !eventDispatcher->empty()) {
-            livePipelineOptions.eventCallback = [&eventDispatcher](const asset_discovery::asset::AssetEvent& event) {
-                eventDispatcher->dispatch(event);
-            };
-            livePipelineOptions.eventFlushCallback = [&eventDispatcher]() {
-                eventDispatcher->flush();
-            };
-        }
-
-        const auto liveResult = asset_discovery::live::runLiveCapturePipeline(
-            *backendResult.backend,
-            std::move(captureConfig),
-            std::move(backendResult.initialStats),
-            std::move(livePipelineOptions)
-        );
-
-        if (previousInterruptHandler != SIG_ERR) {
-            std::signal(SIGINT, previousInterruptHandler);
-        }
-        if (previousTerminateHandler != SIG_ERR) {
-            std::signal(SIGTERM, previousTerminateHandler);
-        }
-
-        std::cerr << asset_discovery::live::formatLivePipelineMetrics(liveResult.stats);
-
-        if (liveResult.error.has_value()) {
-            std::cerr << "error: " << *liveResult.error << "\n";
-            return 1;
-        }
-
-        const auto assets = liveResult.assets;
-        return writeAndRenderAssets(result.options, assets);
+    catch (const asset_discovery::DatabaseError& e) {
+        std::cerr << "[DATABASE ERROR] " << e.what() << std::endl;
+        return 4;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[FATAL ERROR] " << e.what() << std::endl;
+        return 1;
     }
 
     return 0;

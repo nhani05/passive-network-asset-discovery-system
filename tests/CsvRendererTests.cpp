@@ -1,4 +1,4 @@
-#include "infrastructure/output/CsvRenderer.hpp"
+#include "pnad/discovery/CsvRenderer.hpp"
 
 #include <iostream>
 #include <string>

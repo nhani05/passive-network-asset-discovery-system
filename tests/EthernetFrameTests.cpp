@@ -1,4 +1,4 @@
-#include "infrastructure/packet/EthernetFrame.hpp"
+#include "pnad/packet/EthernetFrame.hpp"
 
 #include <cstdint>
 #include <iostream>

@@ -1,4 +1,4 @@
-#include "infrastructure/output/EventSink.hpp"
+#include "pnad/event/EventSink.hpp"
 
 #include <cstdio>
 #include <fstream>

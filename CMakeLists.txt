@@ -9,60 +9,60 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(ASSET_DISCOVERY_REQUIRE_PCAP "Stop configuration when libpcap is unavailable" OFF)
 
 add_library(asset_discovery_domain
-    src/domain/AssetEvent.cpp
-    src/domain/AssetEventDetector.cpp
-    src/domain/AssetObservation.cpp
-    src/domain/AssetStore.cpp
-    src/domain/EventRateLimiter.cpp
+    src/event/AssetEvent.cpp
+    src/event/AssetEventDetector.cpp
+    src/discovery/AssetObservation.cpp
+    src/discovery/AssetStore.cpp
+    src/event/EventRateLimiter.cpp
 )
 
 target_include_directories(asset_discovery_domain PUBLIC include)
 add_library(asset_discovery_asset ALIAS asset_discovery_domain)
 
 add_library(asset_discovery_packet
-    src/infrastructure/packet/ArpPacket.cpp
-    src/infrastructure/packet/EthernetFrame.cpp
+    src/packet/ArpPacket.cpp
+    src/packet/EthernetFrame.cpp
 )
 
 target_include_directories(asset_discovery_packet PUBLIC include)
 target_link_libraries(asset_discovery_packet PUBLIC asset_discovery_domain)
 
 add_library(asset_discovery_parser_core
-    src/application/parser/PacketContext.cpp
-    src/application/parser/ParserEngine.cpp
-    src/application/parser/ParserInterface.cpp
-    src/application/parser/ParserRegistry.cpp
+    src/packet/PacketContext.cpp
+    src/packet/ParserEngine.cpp
+    src/packet/ParserInterface.cpp
+    src/packet/ParserRegistry.cpp
 )
 
 target_include_directories(asset_discovery_parser_core PUBLIC include)
 target_link_libraries(asset_discovery_parser_core PUBLIC asset_discovery_domain asset_discovery_packet)
 
 add_library(asset_discovery_parser_plugins
-    src/plugins/parser/ArpPlugin.cpp
-    src/plugins/parser/BuiltinParserPlugins.cpp
-    src/plugins/parser/DhcpPlugin.cpp
-    src/plugins/parser/DnsPlugin.cpp
+    src/packet/ArpPlugin.cpp
+    src/packet/BuiltinParserPlugins.cpp
+    src/packet/DhcpPlugin.cpp
+    src/packet/DnsPlugin.cpp
 )
 
 target_include_directories(asset_discovery_parser_plugins PUBLIC include)
 target_link_libraries(asset_discovery_parser_plugins PUBLIC asset_discovery_parser_core asset_discovery_packet)
 
 add_library(asset_discovery_parser
-    src/application/parser/PacketParserFacade.cpp
+    src/packet/PacketParserFacade.cpp
 )
 
 target_include_directories(asset_discovery_parser PUBLIC include)
 target_link_libraries(asset_discovery_parser PUBLIC asset_discovery_parser_core asset_discovery_parser_plugins)
 
 add_library(asset_discovery_monitor
-    src/application/monitor/AssetMonitor.cpp
+    src/discovery/AssetMonitor.cpp
 )
 
 target_include_directories(asset_discovery_monitor PUBLIC include)
 target_link_libraries(asset_discovery_monitor PUBLIC asset_discovery_domain)
 
 add_library(asset_discovery_live
-    src/application/live/LiveCapturePipeline.cpp
+    src/app/LiveCapturePipeline.cpp
 )
 
 target_include_directories(asset_discovery_live PUBLIC include)
@@ -74,25 +74,25 @@ target_link_libraries(asset_discovery_live PUBLIC
 )
 
 add_library(asset_discovery_output
-    src/infrastructure/output/CsvRenderer.cpp
-    src/infrastructure/output/EventSink.cpp
-    src/infrastructure/output/JsonRenderer.cpp
-    src/infrastructure/output/TableRenderer.cpp
+    src/discovery/CsvRenderer.cpp
+    src/event/EventSink.cpp
+    src/discovery/JsonRenderer.cpp
+    src/discovery/TableRenderer.cpp
 )
 
 target_include_directories(asset_discovery_output PUBLIC include)
 target_link_libraries(asset_discovery_output PUBLIC asset_discovery_domain)
 
 add_library(asset_discovery_storage
-    src/infrastructure/storage/PostgresWriter.cpp
+    src/storage/PostgresWriter.cpp
 )
 
 target_include_directories(asset_discovery_storage PUBLIC include)
 target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_domain asset_discovery_output)
 
 add_library(asset_discovery_capture
-    src/infrastructure/capture/AfPacketCaptureBackend.cpp
-    src/infrastructure/capture/PacketCapture.cpp
+    src/capture/AfPacketCaptureBackend.cpp
+    src/capture/PacketCapture.cpp
 )
 
 target_include_directories(asset_discovery_capture PUBLIC include)
@@ -103,7 +103,7 @@ else()
 endif()
 
 add_library(asset_discovery_cli
-    src/interface/cli/Arguments.cpp
+    src/cli/Arguments.cpp
 )
 
 target_include_directories(asset_discovery_cli PUBLIC include)

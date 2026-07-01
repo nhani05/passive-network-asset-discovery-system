@@ -133,7 +133,7 @@ Service `pcap-demo` sẽ:
 Live capture cần quyền mạng đặc biệt và Linux host:
 
 ```sh
-CAPTURE_INTERFACE=eth0 CAPTURE_DURATION=60 \
+CAPTURE_INTERFACE=eth0 \
 docker compose --profile live run --rm live-capture
 ```
 
@@ -145,7 +145,6 @@ docker run --rm --user 0:0 --net=host \
   --cap-add=NET_RAW \
   passive-asset-discovery:latest \
   --interface eth0 \
-  --duration 60 \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```

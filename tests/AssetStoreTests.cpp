@@ -1,4 +1,4 @@
-#include "domain/AssetStore.hpp"
+#include "pnad/discovery/AssetStore.hpp"
 
 #include <iostream>
 #include <string>
