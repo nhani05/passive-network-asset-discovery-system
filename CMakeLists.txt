@@ -116,7 +116,7 @@ add_executable(asset-discovery-live-benchmark
 )
 
 target_include_directories(asset-discovery-live-benchmark PRIVATE include)
-target_link_libraries(asset-discovery-live-benchmark PRIVATE asset_discovery_live)
+target_link_libraries(asset-discovery-live-benchmark PRIVATE asset_discovery_live asset_discovery_capture)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)

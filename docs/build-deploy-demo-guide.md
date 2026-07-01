@@ -138,9 +138,28 @@ Benchmark offline không cần quyền live capture. Packet input phải lấy t
 ```sh
 ./build-release/asset-discovery-live-benchmark path/to/user-traffic.pcap
 ./build-release/asset-discovery-live-benchmark path/to/user-traffic.pcap 7 256 "arp or udp port 67 or udp port 68"
+./build-release/asset-discovery-live-benchmark --pcap path/to/user-traffic.pcap \
+  --workers 7 --batch-size 256 \
+  --filter "arp or udp port 67 or udp port 68"
 ```
 
-Tham số lần lượt là `<pcap-path> [worker-count] [batch-size] [filter]`. Nếu truyền filter, đặt biểu thức BPF trong dấu nháy.
+Tham số positional cũ lần lượt là `<pcap-path> [worker-count] [batch-size] [filter]`. Nếu truyền filter, đặt biểu thức BPF trong dấu nháy.
+
+Benchmark so sánh backend live cần Linux host, interface thật, và quyền capture. Chạy cùng interface, duration, filter, worker count, và batch size cho hai backend để so sánh công bằng:
+
+```sh
+sudo ./build-release/asset-discovery-live-benchmark \
+  --interface eth0 --duration 30 --backend pcap \
+  --workers 7 --batch-size 256 \
+  --filter "arp or udp port 67 or udp port 68"
+
+sudo ./build-release/asset-discovery-live-benchmark \
+  --interface eth0 --duration 30 --backend af-packet \
+  --workers 7 --batch-size 256 \
+  --filter "arp or udp port 67 or udp port 68"
+```
+
+Backend `af-packet` dùng Linux `AF_PACKET`/`TPACKET_V3` nên cần root hoặc `CAP_NET_RAW`. Nếu dùng `--backend auto`, output sẽ cho biết `backend_selected` thực tế và `backend_fallback_reason` nếu runtime fallback về `pcap`.
 
 Output gồm điều kiện benchmark và metrics:
 
@@ -155,7 +174,17 @@ build_type=Release recommended
 live_capture_metrics elapsed_seconds=... packets_captured=... packets_enqueued=... packets_dropped_queue_full=... packets_parsed=... packet_throughput_per_second=...
 ```
 
-Mục tiêu 1M packet/s là mục tiêu benchmark trong Release build với PCAP input do người dùng cung cấp và drop rate được báo cáo. Không diễn giải con số này như bảo đảm tuyệt đối cho mọi NIC, OS, packet mix, hoặc live capture không dùng BPF filter.
+Với live backend comparison, output có thêm:
+
+```text
+benchmark=live-backend-comparison
+traffic_source=live-interface
+interface=eth0
+duration_seconds=30
+live_capture_metrics ... backend_requested=... backend_selected=... backend_packets_copied=... backend_kernel_drops=... packet_batches_dropped=...
+```
+
+Mục tiêu 1M packet/s là mục tiêu benchmark trong Release build với traffic source, packet mix, filter, backend, OS/kernel, quyền capture, và drop rate được báo cáo. Không diễn giải con số này như bảo đảm tuyệt đối cho mọi NIC, OS, packet mix, hoặc live capture không dùng BPF filter.
 
 Smoke evidence local ngày 2026-06-30 trên Release build tạm thời, PCAP `samples/multi-asset.pcap`, filter `arp or udp port 67 or udp port 68`, 7 parser workers, batch size 256:
 
@@ -182,7 +211,7 @@ ctest --test-dir build --output-on-failure 2>&1 | tail -5
 Kỳ vọng output:
 
 ```text
-100% tests passed, 0 tests failed out of 19
+100% tests passed, 0 tests failed out of 26
 ```
 
 ---
@@ -756,6 +785,7 @@ Capture trong 60 giây:
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --duration 60 \
+  --capture-backend auto \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```
@@ -764,6 +794,7 @@ Ví dụ với interface `enp4s0`:
 
 ```sh
 sudo ./build/asset-discovery --interface enp4s0 --duration 60 \
+  --capture-backend auto \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```
@@ -782,14 +813,19 @@ Live capture ghi metrics ra stderr sau khi dừng, còn stdout vẫn giữ nguy�
 - `packets_parsed`: packet parser workers đã xử lý.
 - `observations_applied`: observation aggregator đã merge vào `AssetStore`.
 - `packet_throughput_per_second`: throughput của parser pipeline trong phiên capture.
+- `backend_requested`: backend người dùng yêu cầu, ví dụ `auto`, `pcap`, hoặc `af-packet`.
 - `backend_selected`: backend live capture thực tế được dùng.
-- `backend_packets_dropped`: drop counter từ libpcap nếu backend hỗ trợ.
+- `backend_fallback_reason`: lý do `auto` fallback, nếu có.
+- `backend_packets_dropped`: drop counter từ backend nếu hỗ trợ.
 - `backend_packets_copied`: số packet backend phải copy trước khi đưa vào pipeline.
+- `backend_kernel_drops`: drop counter từ kernel ring với `af-packet` khi kernel cung cấp.
+- `packet_batches_dropped`: số batch bị drop ở application queue.
 
 ### 8.2. Live timed capture ngắn cho demo nhanh
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --duration 10 \
+  --capture-backend auto \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```
@@ -798,6 +834,7 @@ sudo ./build/asset-discovery --interface eth0 --duration 10 \
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --duration 30 \
+  --capture-backend auto \
   --filter "arp or udp port 67 or udp port 68" \
   --output json
 ```
@@ -806,6 +843,7 @@ sudo ./build/asset-discovery --interface eth0 --duration 30 \
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --duration 30 \
+  --capture-backend auto \
   --filter "arp or udp port 67 or udp port 68" \
   --output csv
 ```
@@ -814,6 +852,7 @@ sudo ./build/asset-discovery --interface eth0 --duration 30 \
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --duration 30 \
+  --capture-backend auto \
   --db-url "postgresql://postgres:123456@localhost:5432/asset_discovery" \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
@@ -823,6 +862,7 @@ sudo ./build/asset-discovery --interface eth0 --duration 30 \
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --live \
+  --capture-backend auto \
   --idle-timeout 30 \
   --max-assets 10 \
   --filter "arp or udp port 67 or udp port 68" \
@@ -849,6 +889,7 @@ Lưu ý:
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --live \
+  --capture-backend auto \
   --idle-timeout 15 \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
@@ -858,6 +899,7 @@ sudo ./build/asset-discovery --interface eth0 --live \
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --live \
+  --capture-backend auto \
   --max-assets 5 \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
@@ -867,6 +909,7 @@ sudo ./build/asset-discovery --interface eth0 --live \
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --live \
+  --capture-backend auto \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```
@@ -898,10 +941,33 @@ sudo dhclient -v eth0
 
 ```sh
 sudo ./build/asset-discovery --interface eth0 --duration 10 \
+  --capture-backend auto \
   --output table
 ```
 
 Lưu ý: không có BPF filter, tất cả packet Ethernet đều vào parser. Parser vẫn bỏ qua packet không phải ARP/DHCP/DNS.
+
+### 8.13. Chọn backend live capture
+
+`--capture-backend pcap` ép dùng libpcap/Npcap portable baseline:
+
+```sh
+sudo ./build/asset-discovery --interface eth0 --duration 30 \
+  --capture-backend pcap \
+  --filter "arp or udp port 67 or udp port 68" \
+  --output table
+```
+
+`--capture-backend af-packet` ép dùng Linux `AF_PACKET`/`TPACKET_V3`:
+
+```sh
+sudo ./build/asset-discovery --interface eth0 --duration 30 \
+  --capture-backend af-packet \
+  --filter "arp or udp port 67 or udp port 68" \
+  --output table
+```
+
+Nếu không chạy bằng root hoặc binary không có `CAP_NET_RAW`, backend `af-packet` sẽ báo lỗi rõ ràng. `--capture-backend auto` phù hợp cho demo portable vì tự fallback về `pcap` khi `af-packet` không khả dụng.
 
 ---
 
@@ -936,7 +1002,7 @@ docker run --rm --user 0:0 --net=host --cap-add=NET_ADMIN --cap-add=NET_RAW \
 | `--user 0:0` | Chạy container bằng root để có quyền capture |
 | `--net=host` | Dùng network stack của host, cho phép truy cập interface thật |
 | `--cap-add=NET_ADMIN` | Quyền quản lý network (cần cho promiscuous mode) |
-| `--cap-add=NET_RAW` | Quyền raw socket (cần cho pcap capture) |
+| `--cap-add=NET_RAW` | Quyền raw socket, bắt buộc cho `af-packet` và thường cần cho live capture |
 
 ### 9.4. Compose profile live timed
 
