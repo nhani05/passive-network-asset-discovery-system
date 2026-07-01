@@ -1,4 +1,4 @@
-#include "application/parser/PacketParserFacade.hpp"
+#include "pnad/packet/PacketParserFacade.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -9,6 +9,7 @@ namespace {
 
 using asset_discovery::parser::parseEthernetObservations;
 using asset_discovery::parser::ObservationEventType;
+using asset_discovery::parser::sourceIdArp;
 using asset_discovery::parser::sourceIdDhcp;
 
 int failures = 0;
@@ -93,6 +94,25 @@ std::vector<std::uint8_t> dhcpEthernetFrame()
     return bytes;
 }
 
+std::vector<std::uint8_t> arpEthernetFrame()
+{
+    std::vector<std::uint8_t> bytes = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0x02, 0x42, 0xac, 0x11, 0x00, 0x02,
+        0x08, 0x06,
+    };
+    append16(bytes, 1);
+    append16(bytes, 0x0800);
+    bytes.push_back(6);
+    bytes.push_back(4);
+    append16(bytes, 1);
+    bytes.insert(bytes.end(), {0x02, 0x42, 0xac, 0x11, 0x00, 0x02});
+    bytes.insert(bytes.end(), {192, 168, 1, 10});
+    bytes.insert(bytes.end(), {0, 0, 0, 0, 0, 0});
+    bytes.insert(bytes.end(), {192, 168, 1, 1});
+    return bytes;
+}
+
 void parsesDhcpObservation()
 {
     const auto observations = parseEthernetObservations(dhcpEthernetFrame(), {100, 200});
@@ -109,6 +129,29 @@ void parsesDhcpObservation()
     expect(observations.front().metadata.count("dhcp.option.hostname") == 1, "DHCP metadata should include hostname option");
 }
 
+void parsesArpMetadata()
+{
+    const auto observations = parseEthernetObservations(arpEthernetFrame(), {101, 300});
+    expect(observations.size() == 1, "ARP frame should create one observation");
+    if (observations.empty()) {
+        return;
+    }
+    const auto& observation = observations.front();
+    expect(observation.sourceId == sourceIdArp, "source should be ARP");
+    expect(observation.metadata.at("ethernet.source_mac") == "02:42:ac:11:00:02",
+        "ARP metadata should include Ethernet source MAC");
+    expect(observation.metadata.at("arp.sender_mac") == "02:42:ac:11:00:02",
+        "ARP metadata should include sender MAC");
+    expect(observation.metadata.at("arp.sender_ip") == "192.168.1.10",
+        "ARP metadata should include sender IP");
+    expect(observation.metadata.at("arp.target_mac") == "00:00:00:00:00:00",
+        "ARP metadata should include target MAC");
+    expect(observation.metadata.at("arp.target_ip") == "192.168.1.1",
+        "ARP metadata should include target IP");
+    expect(observation.metadata.at("arp.operation") == "1",
+        "ARP metadata should include operation");
+}
+
 void skipsTruncatedIpv4()
 {
     std::vector<std::uint8_t> bytes = {0, 1, 2};
@@ -120,6 +163,7 @@ void skipsTruncatedIpv4()
 int main()
 {
     parsesDhcpObservation();
+    parsesArpMetadata();
     skipsTruncatedIpv4();
 
     if (failures > 0) {

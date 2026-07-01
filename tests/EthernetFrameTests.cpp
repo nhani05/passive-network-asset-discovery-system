@@ -1,4 +1,4 @@
-#include "infrastructure/packet/EthernetFrame.hpp"
+#include "pnad/packet/EthernetFrame.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -33,7 +33,8 @@ std::vector<std::uint8_t> arpEthernetFrameFixture()
 
 void decodesArpEthernetFrame()
 {
-    const auto result = decodeEthernetFrame(arpEthernetFrameFixture());
+    const auto frame = arpEthernetFrameFixture();
+    const auto result = decodeEthernetFrame(frame);
 
     expect(result.ok(), "ARP Ethernet frame should decode successfully");
     expect(result.frame.has_value(), "ARP Ethernet frame should produce a frame");
@@ -44,9 +45,9 @@ void decodesArpEthernetFrame()
     expect(result.frame->destinationMac == "ff:ff:ff:ff:ff:ff", "destination MAC should decode");
     expect(result.frame->sourceMac == "02:42:ac:11:00:02", "source MAC should decode");
     expect(result.frame->etherType == 0x0806, "EtherType should decode as ARP");
-    expect(result.frame->payload.size() == 6, "payload should begin after the Ethernet header");
-    expect(result.frame->payload.front() == 0x00, "first payload byte should be preserved");
-    expect(result.frame->payload.back() == 0x04, "last payload byte should be preserved");
+    expect(result.frame->payload.size == 6, "payload should begin after the Ethernet header");
+    expect(result.frame->payload[0] == 0x00, "first payload byte should be preserved");
+    expect(result.frame->payload[result.frame->payload.size - 1] == 0x04, "last payload byte should be preserved");
 }
 
 void rejectsTruncatedFrame()
@@ -76,7 +77,7 @@ void decodesUnsupportedEtherType()
     expect(result.frame->sourceMac == "02:42:ac:11:00:02", "unsupported EtherType should preserve source MAC");
     expect(result.frame->destinationMac == "ff:ff:ff:ff:ff:ff", "unsupported EtherType should preserve destination MAC");
     expect(result.frame->etherType == 0x88b5, "unsupported EtherType value should be preserved");
-    expect(result.frame->payload.size() == 6, "unsupported EtherType payload should be preserved");
+    expect(result.frame->payload.size == 6, "unsupported EtherType payload should be preserved");
 }
 
 void decodesHeaderOnlyFrame()

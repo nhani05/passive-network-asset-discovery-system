@@ -1,5 +1,5 @@
-#include "domain/AssetObservation.hpp"
-#include "application/parser/PacketParserFacade.hpp"
+#include "pnad/discovery/AssetObservation.hpp"
+#include "pnad/packet/PacketParserFacade.hpp"
 
 #include <cstdint>
 #include <iostream>

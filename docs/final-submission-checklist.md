@@ -9,16 +9,16 @@ Checklist này dùng cho Sprint 4/M4 Delivery.
 - Docker Compose demo: `docker-compose.yml`.
 - PostgreSQL schema: `db/schema.sql`.
 - Sample PCAP: `samples/arp.pcap`, `samples/multi-asset.pcap`.
-- Tài liệu output contract: `docs/asset-output-contract.md`.
-- Tài liệu thiết kế: `docs/system-design.md`.
-- Hướng dẫn build/deploy/demo: `docs/build-deploy-demo-guide.md`.
-- Sprint notes: `docs/SPRINT2.md`, `docs/SPRINT3.md`, `docs/SPRINT4.md`.
+- Tài liệu đặc tả: [docs/design-spec/asset-output-contract.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/asset-output-contract.md) và [docs/design-spec/asset-events.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/asset-events.md).
+- Tài liệu thiết kế: [docs/design-spec/system-design.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/system-design.md).
+- Hướng dẫn build/deploy/demo: [docs/build-deploy-demo-guide.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/build-deploy-demo-guide.md).
+- Sprint notes: [docs/sprints/SPRINT2.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/sprints/SPRINT2.md), [docs/sprints/SPRINT3.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/sprints/SPRINT3.md), [docs/sprints/SPRINT4.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/sprints/SPRINT4.md).
 - Script kiểm chứng Docker: `scripts/verify-docker-runtime.sh`.
 
 ## Lệnh Kiểm Chứng Từ Checkout Sạch
 
 ```sh
-cmake -S . -B build -DASSET_DISCOVERY_REQUIRE_PCAP=OFF
+cmake -S . -B build -DASSET_DISCOVERY_REQUIRE_PCAP=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
@@ -46,7 +46,7 @@ scripts/verify-docker-runtime.sh
 Nếu host có quyền live capture:
 
 ```sh
-sudo ./build/asset-discovery --interface eth0 --duration 10 \
+sudo ./build/asset-discovery --interface eth0 \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```

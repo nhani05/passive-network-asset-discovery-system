@@ -1,0 +1,138 @@
+# Phần 9: Demo Xử Lý Lỗi & Xác Thực Tham Số
+
+Tài liệu này hướng dẫn chạy các kịch bản demo kiểm chứng khả năng tự phát hiện lỗi, xác thực tham số đầu vào và cơ chế từ chối các cờ dòng lệnh cũ (đã bị loại bỏ) qua hệ thống custom exceptions và error boundary.
+
+---
+
+## 1. Lỗi Cú Pháp Bộ Lọc BPF (BPF Syntax Error)
+
+Nếu truyền biểu thức lọc BPF sai cấu trúc, libpcap sẽ không thể dịch được:
+
+```bash
+./build/asset-discovery --pcap samples/arp.pcap --filter "invalid syntax" --output table
+```
+
+* **Kỳ vọng:** Chương trình kết thúc với mã lỗi 3 (`exit code = 3`) và thông báo lỗi rõ ràng:
+  ```text
+  [PCAP ERROR] invalid BPF filter for 'samples/arp.pcap': can't parse filter expression: syntax error
+  ```
+
+---
+
+## 2. File PCAP Không Tồn Tại
+
+```bash
+./build/asset-discovery --pcap file-khong-ton-tai.pcap --output table
+```
+
+* **Kỳ vọng:** Chương trình kết thúc với mã lỗi 3 (`exit code = 3`) và thông báo lỗi rõ ràng:
+  ```text
+  [PCAP ERROR] could not open PCAP file 'file-khong-ton-tai.pcap': file-khong-ton-tai.pcap: No such file or directory
+  ```
+
+---
+
+## 3. Thiếu Hoặc Xung Đột Nguồn Bắt Gói Tin (Input Source Validation)
+
+Ứng dụng bắt buộc phải chọn duy nhất chế độ đọc PCAP hoặc capture Live.
+
+### 3.1. Không chỉ định nguồn:
+```bash
+./build/asset-discovery --output table
+```
+* **Kỳ vọng:** Báo lỗi yêu cầu cung cấp đúng 1 nguồn, exit với mã lỗi 2 (`exit code = 2`):
+  ```text
+  [CONFIG ERROR] provide exactly one input source: --pcap <file> or --interface <name>
+  ```
+
+### 3.2. Cung cấp cả hai nguồn cùng lúc:
+```bash
+./build/asset-discovery --pcap samples/arp.pcap --interface eth0 --output table
+```
+* **Kỳ vọng:** Báo lỗi tương tự, exit với mã lỗi 2 (`exit code = 2`):
+  ```text
+  [CONFIG ERROR] provide exactly one input source: --pcap <file> or --interface <name>
+  ```
+
+---
+
+## 4. Kiểm Chứng Cơ Chế Từ Chối Cờ Cũ (Migration Rejections)
+
+Khi nâng cấp CLI rút gọn, các cờ cũ nếu người dùng cố tình nhập sẽ bị chương trình phát hiện và báo lỗi hướng dẫn di chuyển rõ ràng kèm mã lỗi 2 (`exit code = 2`).
+
+### 4.1. Từ chối cờ `--duration`:
+```bash
+./build/asset-discovery --interface eth0 --duration 60
+```
+* **Kỳ vọng:**
+  ```text
+  [CONFIG ERROR] --duration has been removed; live capture now runs until interrupted
+  ```
+
+### 4.2. Từ chối cờ `--live`:
+```bash
+./build/asset-discovery --interface eth0 --live
+```
+* **Kỳ vọng:**
+  ```text
+  [CONFIG ERROR] --live is no longer required; --interface starts live capture
+  ```
+
+### 4.3. Từ chối cờ `--idle-timeout`:
+```bash
+./build/asset-discovery --interface eth0 --idle-timeout 30
+```
+* **Kỳ vọng:**
+  ```text
+  [CONFIG ERROR] --idle-timeout has been removed; live capture no longer stops on idle timeout
+  ```
+
+### 4.4. Từ chối cờ `--max-assets`:
+```bash
+./build/asset-discovery --interface eth0 --max-assets 10
+```
+* **Kỳ vọng:**
+  ```text
+  [CONFIG ERROR] --max-assets has been removed; live capture no longer stops after an asset count
+  ```
+
+### 4.5. Từ chối cờ cấu hình sự kiện `--events`:
+```bash
+./build/asset-discovery --pcap samples/arp.pcap --events stdout
+```
+* **Kỳ vọng:**
+  ```text
+  [CONFIG ERROR] --events has been removed; realtime stdout events are enabled by default
+  ```
+
+---
+
+## 5. Các Lỗi Định Dạng Khác
+
+### 5.1. Định dạng đầu ra không hỗ trợ:
+```bash
+./build/asset-discovery --pcap samples/arp.pcap --output xml
+```
+* **Kỳ vọng:** Exit với mã lỗi 2 (`exit code = 2`):
+  ```text
+  [CONFIG ERROR] output format 'xml' is not supported; expected one of: table, json, csv
+  ```
+
+### 5.2. Tham số không nhận diện:
+```bash
+./build/asset-discovery --pcap samples/arp.pcap --verbose
+```
+* **Kỳ vọng:** Exit với mã lỗi 2 (`exit code = 2`):
+  ```text
+  [CONFIG ERROR] unknown argument '--verbose'
+  ```
+
+### 5.3. Bộ lọc `--filter` rỗng:
+```bash
+./build/asset-discovery --pcap samples/arp.pcap --filter ""
+```
+* **Kỳ vọng:** Exit với mã lỗi 2 (`exit code = 2`):
+  ```text
+  [CONFIG ERROR] --filter cannot be empty
+  ```
+

@@ -20,6 +20,12 @@ add_executable(csv-renderer-tests
 target_link_libraries(csv-renderer-tests PRIVATE asset_discovery_output)
 add_test(NAME csv-renderer-tests COMMAND csv-renderer-tests)
 
+add_executable(event-sink-tests
+    EventSinkTests.cpp
+)
+target_link_libraries(event-sink-tests PRIVATE asset_discovery_output)
+add_test(NAME event-sink-tests COMMAND event-sink-tests)
+
 add_executable(ethernet-frame-tests
     EthernetFrameTests.cpp
 )
@@ -62,6 +68,24 @@ add_executable(asset-store-tests
 target_link_libraries(asset-store-tests PRIVATE asset_discovery_asset)
 add_test(NAME asset-store-tests COMMAND asset-store-tests)
 
+add_executable(asset-event-detector-tests
+    AssetEventDetectorTests.cpp
+)
+target_link_libraries(asset-event-detector-tests PRIVATE asset_discovery_asset)
+add_test(NAME asset-event-detector-tests COMMAND asset-event-detector-tests)
+
+add_executable(event-rate-limiter-tests
+    EventRateLimiterTests.cpp
+)
+target_link_libraries(event-rate-limiter-tests PRIVATE asset_discovery_asset)
+add_test(NAME event-rate-limiter-tests COMMAND event-rate-limiter-tests)
+
+add_executable(asset-monitor-tests
+    AssetMonitorTests.cpp
+)
+target_link_libraries(asset-monitor-tests PRIVATE asset_discovery_monitor)
+add_test(NAME asset-monitor-tests COMMAND asset-monitor-tests)
+
 add_executable(postgres-writer-tests
     PostgresWriterTests.cpp
 )
@@ -73,6 +97,24 @@ add_executable(arguments-tests
 )
 target_link_libraries(arguments-tests PRIVATE asset_discovery_cli)
 add_test(NAME arguments-tests COMMAND arguments-tests)
+
+add_executable(capture-backend-tests
+    CaptureBackendTests.cpp
+)
+target_link_libraries(capture-backend-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-backend-tests COMMAND capture-backend-tests)
+
+add_executable(bounded-queue-tests
+    BoundedQueueTests.cpp
+)
+target_link_libraries(bounded-queue-tests PRIVATE asset_discovery_live)
+add_test(NAME bounded-queue-tests COMMAND bounded-queue-tests)
+
+add_executable(live-capture-pipeline-tests
+    LiveCapturePipelineTests.cpp
+)
+target_link_libraries(live-capture-pipeline-tests PRIVATE asset_discovery_live asset_discovery_output)
+add_test(NAME live-capture-pipeline-tests COMMAND live-capture-pipeline-tests)
 
 if(PCAP_FOUND)
     set(EMPTY_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcap")
@@ -90,6 +132,7 @@ if(PCAP_FOUND)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_FOUND)
         set(DHCP_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/dhcp.pcap")
+        set(MAC_CHANGE_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/mac-change.pcap")
         add_custom_command(
             OUTPUT "${DHCP_PCAP_PATH}"
             COMMAND "${Python3_EXECUTABLE}"
@@ -100,6 +143,17 @@ if(PCAP_FOUND)
         )
         add_custom_target(dhcp-pcap-fixture DEPENDS "${DHCP_PCAP_PATH}")
         add_dependencies(asset-discovery dhcp-pcap-fixture)
+
+        add_custom_command(
+            OUTPUT "${MAC_CHANGE_PCAP_PATH}"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/GenerateMacChangePcap.py"
+                "${MAC_CHANGE_PCAP_PATH}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateMacChangePcap.py"
+            VERBATIM
+        )
+        add_custom_target(mac-change-pcap-fixture DEPENDS "${MAC_CHANGE_PCAP_PATH}")
+        add_dependencies(asset-discovery mac-change-pcap-fixture)
     endif()
 
     add_test(
@@ -147,6 +201,15 @@ if(PCAP_FOUND)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectFailureContains.cmake"
     )
 
+    add_test(
+        NAME asset-discovery-database-required
+        COMMAND "${CMAKE_COMMAND}"
+            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
+            "-DPCAP_PATH=${PROJECT_SOURCE_DIR}/samples/arp.pcap"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/database-required"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/ValidateDatabaseRequired.cmake"
+    )
+
     if(Python3_FOUND)
         add_test(
             NAME asset-discovery-pcap-json
@@ -170,6 +233,14 @@ if(PCAP_FOUND)
                 "${CMAKE_CURRENT_SOURCE_DIR}/ValidateMultiAssetJsonOutput.py"
                 "$<TARGET_FILE:asset-discovery>"
                 "${PROJECT_SOURCE_DIR}/samples/multi-asset.pcap"
+        )
+
+        add_test(
+            NAME asset-discovery-pcap-event-ndjson
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateEventNdjsonOutput.py"
+                "$<TARGET_FILE:asset-discovery>"
+                "${MAC_CHANGE_PCAP_PATH}"
         )
     endif()
 

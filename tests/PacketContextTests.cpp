@@ -1,5 +1,5 @@
-#include "infrastructure/packet/ArpPacket.hpp"
-#include "application/parser/PacketContext.hpp"
+#include "pnad/packet/ArpPacket.hpp"
+#include "pnad/packet/PacketContext.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -78,11 +78,12 @@ std::vector<std::uint8_t> ipv4UdpFrame(
 
 void exposesArpEthernetContext()
 {
-    const auto context = buildPacketContext(arpFrame(), {10, 20});
+    const auto bytes = arpFrame();
+    const auto context = buildPacketContext(bytes, {10, 20});
 
     expect(context.ethernet.has_value(), "ARP frame should expose Ethernet layer");
     expect(context.ethernet->etherType == ethernetTypeArp, "ARP frame should preserve EtherType");
-    expect(context.rawBytes == arpFrame(), "packet context should preserve raw bytes");
+    expect(context.rawBytes == bytes, "packet context should preserve raw bytes");
     expect(context.timestamp.seconds == 10, "packet context should preserve timestamp seconds");
     expect(!context.ipv4.has_value(), "ARP frame should not expose IPv4 layer");
     expect(!context.udp.has_value(), "ARP frame should not expose UDP layer");
@@ -90,7 +91,8 @@ void exposesArpEthernetContext()
 
 void exposesIpv4UdpContext()
 {
-    const auto context = buildPacketContext(ipv4UdpFrame(5353, 53, {1, 2, 3}), {30, 40});
+    const auto bytes = ipv4UdpFrame(5353, 53, {1, 2, 3});
+    const auto context = buildPacketContext(bytes, {30, 40});
 
     expect(context.ethernet.has_value(), "IPv4 UDP frame should expose Ethernet layer");
     expect(context.ipv4.has_value(), "IPv4 UDP frame should expose IPv4 layer");
@@ -120,7 +122,8 @@ void keepsUnsupportedEtherTypeAtEthernetLayer()
 
 void skipsUdpForFragmentedIpv4()
 {
-    const auto context = buildPacketContext(ipv4UdpFrame(5353, 53, {1, 2, 3}, 0x2000), {});
+    const auto bytes = ipv4UdpFrame(5353, 53, {1, 2, 3}, 0x2000);
+    const auto context = buildPacketContext(bytes, {});
 
     expect(context.ipv4.has_value(), "fragmented IPv4 should still expose IPv4 metadata");
     expect(context.ipv4->fragmented, "fragmented IPv4 should be marked fragmented");

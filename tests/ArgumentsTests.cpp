@@ -1,4 +1,4 @@
-#include "interface/cli/Arguments.hpp"
+#include "pnad/cli/Arguments.hpp"
 
 #include <iostream>
 #include <string>
@@ -6,7 +6,9 @@
 
 namespace {
 
+using asset_discovery::capture::CaptureBackendSelection;
 using asset_discovery::cli::parseArguments;
+using asset_discovery::cli::usageText;
 
 int failures = 0;
 
@@ -18,78 +20,203 @@ void expect(bool condition, const std::string& message)
     }
 }
 
-void rejectsEmptyDatabaseUrl()
+void expectErrorContains(
+    const std::vector<std::string>& args,
+    const std::string& expected,
+    const std::string& message)
 {
-    const std::vector<std::string> args = {
-        "--pcap",
-        "samples/arp.pcap",
-        "--db-url",
-        "",
-    };
-
     const auto result = parseArguments(args);
-    expect(result.error.has_value(), "empty --db-url should be rejected");
+    expect(result.error.has_value(), message);
     if (result.error.has_value()) {
-        expect(result.error->find("--db-url cannot be empty") != std::string::npos,
-            "error should explain that --db-url cannot be empty");
+        expect(result.error->find(expected) != std::string::npos,
+            "error should contain: " + expected);
     }
 }
 
-void parsesValidDatabaseUrl()
+void parsesPcapMode()
 {
-    const std::vector<std::string> args = {
-        "--pcap",
-        "samples/arp.pcap",
-        "--db-url",
-        "postgresql://postgres:123456@localhost:5432/asset_discovery",
-    };
-
-    const auto result = parseArguments(args);
-    expect(!result.error.has_value(), "valid --db-url should be accepted");
-    expect(result.options.databaseUrl.has_value(), "valid --db-url should be stored");
+    const auto result = parseArguments({"--pcap", "samples/arp.pcap"});
+    expect(!result.error.has_value(), "valid --pcap mode should be accepted");
+    expect(result.options.captureMode == asset_discovery::cli::CaptureMode::PcapOffline,
+        "pcap capture mode should be selected");
 }
 
-void parsesPacketFilter()
+void parsesImplicitLiveMode()
 {
-    const std::vector<std::string> args = {
+    const auto result = parseArguments({"--interface", "eth0"});
+    expect(!result.error.has_value(), "--interface should select live capture");
+    expect(result.options.captureMode == asset_discovery::cli::CaptureMode::Live,
+        "live capture mode should be selected");
+    expect(result.options.interfaceName == "eth0", "interface name should be stored");
+}
+
+void parsesRetainedLiveControls()
+{
+    const auto result = parseArguments({
         "--interface",
         "eth0",
-        "--duration",
-        "60",
         "--filter",
         "arp or udp port 67 or udp port 68",
-    };
+        "--capture-backend",
+        "af-packet",
+        "--output",
+        "json",
+        "--event-rate-limit",
+        "60",
+        "--event-queue-capacity",
+        "2048",
+        "--flip-flop-window",
+        "30",
+        "--reappearance-threshold",
+        "300",
+        "--local-net",
+        "192.168.1.0/24",
+        "--ignore-net",
+        "192.168.1.100/32",
+    });
 
-    const auto result = parseArguments(args);
-    expect(!result.error.has_value(), "valid --filter should be accepted");
-    expect(result.options.packetFilter.has_value(), "valid --filter should be stored");
+    expect(!result.error.has_value(), "retained live tuning options should be accepted");
+    expect(result.options.packetFilter == "arp or udp port 67 or udp port 68",
+        "packet filter should be stored");
+    expect(result.options.captureBackend == CaptureBackendSelection::AfPacket,
+        "af-packet backend selection should be stored");
+    expect(result.options.outputFormat == asset_discovery::cli::OutputFormat::Json,
+        "json output format should be stored");
+    expect(result.options.eventRateLimitSeconds == 60, "event rate limit should be stored");
+    expect(result.options.eventQueueCapacity == 2048, "event queue capacity should be stored");
+    expect(result.options.flipFlopWindowSeconds == 30, "flip-flop window should be stored");
+    expect(result.options.reappearanceThresholdSeconds == 300, "reappearance threshold should be stored");
+    expect(result.options.localNetworks.size() == 1, "local network should be stored");
+    expect(result.options.ignoredNetworks.size() == 1, "ignored network should be stored");
 }
 
-void rejectsEmptyPacketFilter()
+void rejectsMissingAndConflictingInputs()
 {
-    const std::vector<std::string> args = {
-        "--pcap",
-        "samples/arp.pcap",
-        "--filter",
-        "",
-    };
+    expectErrorContains({}, "provide exactly one input source", "missing input should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--interface", "eth0"},
+        "provide exactly one input source",
+        "conflicting inputs should be rejected");
+}
 
-    const auto result = parseArguments(args);
-    expect(result.error.has_value(), "empty --filter should be rejected");
-    if (result.error.has_value()) {
-        expect(result.error->find("--filter cannot be empty") != std::string::npos,
-            "error should explain that --filter cannot be empty");
-    }
+void rejectsCaptureBackendForOfflinePcap()
+{
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--capture-backend", "pcap"},
+        "--capture-backend is only valid",
+        "--capture-backend should be live-only");
+}
+
+void rejectsInvalidRetainedControls()
+{
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--filter", ""},
+        "--filter cannot be empty",
+        "empty --filter should be rejected");
+    expectErrorContains(
+        {"--interface", "eth0", "--capture-backend", "raw"},
+        "expected one of: auto, pcap, af-packet",
+        "unknown backend should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--output", "xml"},
+        "expected one of: table, json, csv",
+        "unknown output format should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--event-rate-limit", "0"},
+        "--event-rate-limit must be a positive integer",
+        "zero event rate limit should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--event-queue-capacity", "-1"},
+        "--event-queue-capacity must be a positive integer",
+        "negative event queue capacity should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--flip-flop-window", "many"},
+        "--flip-flop-window must be a positive integer",
+        "non-integer flip-flop window should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--reappearance-threshold", "0"},
+        "--reappearance-threshold must be a positive integer",
+        "zero reappearance threshold should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--local-net", "192.168.1.0"},
+        "--local-net requires a valid IPv4 CIDR value",
+        "invalid local CIDR should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--ignore-net", "10.0.0.0/33"},
+        "--ignore-net requires a valid IPv4 CIDR value",
+        "invalid ignored CIDR should be rejected");
+}
+
+void rejectsRemovedLiveFlags()
+{
+    expectErrorContains(
+        {"--interface", "eth0", "--duration", "60"},
+        "--duration has been removed",
+        "removed --duration should be rejected");
+    expectErrorContains(
+        {"--interface", "eth0", "--live"},
+        "--live is no longer required",
+        "removed --live should be rejected");
+    expectErrorContains(
+        {"--interface", "eth0", "--idle-timeout", "30"},
+        "--idle-timeout has been removed",
+        "removed --idle-timeout should be rejected");
+    expectErrorContains(
+        {"--interface", "eth0", "--max-assets", "10"},
+        "--max-assets has been removed",
+        "removed --max-assets should be rejected");
+}
+
+void rejectsRemovedDatabaseAndEventFlags()
+{
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--db-url", "postgresql://example"},
+        "--db-url has been removed",
+        "removed --db-url should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--events", "stdout"},
+        "--events has been removed",
+        "removed --events should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--events-json", "logs/events.ndjson"},
+        "--events-json has been removed",
+        "removed --events-json should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--syslog"},
+        "--syslog has been removed",
+        "removed --syslog should be rejected");
+    expectErrorContains(
+        {"--pcap", "samples/arp.pcap", "--events-db"},
+        "--events-db has been removed",
+        "removed --events-db should be rejected");
+}
+
+void usageShowsSimplifiedForms()
+{
+    const auto usage = usageText("asset-discovery");
+    expect(usage.find("--interface <name> [--filter") != std::string::npos,
+        "usage should show implicit live form");
+    expect(usage.find("--duration") == std::string::npos,
+        "usage should not mention --duration");
+    expect(usage.find("--events-json") == std::string::npos,
+        "usage should not mention removed event sink flags");
+    expect(usage.find("ASSET_DISCOVERY_EVENTS_JSON") != std::string::npos,
+        "usage should document event path environment override");
 }
 
 } // namespace
 
 int main()
 {
-    rejectsEmptyDatabaseUrl();
-    parsesValidDatabaseUrl();
-    parsesPacketFilter();
-    rejectsEmptyPacketFilter();
+    parsesPcapMode();
+    parsesImplicitLiveMode();
+    parsesRetainedLiveControls();
+    rejectsMissingAndConflictingInputs();
+    rejectsCaptureBackendForOfflinePcap();
+    rejectsInvalidRetainedControls();
+    rejectsRemovedLiveFlags();
+    rejectsRemovedDatabaseAndEventFlags();
+    usageShowsSimplifiedForms();
 
     if (failures > 0) {
         std::cerr << failures << " argument test expectation(s) failed\n";
