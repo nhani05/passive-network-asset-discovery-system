@@ -23,6 +23,43 @@ bool needsValue(const std::string& option, std::size_t index, std::size_t size)
     return option.rfind("--", 0) == 0 && index + 1 >= size;
 }
 
+bool isOptionOrAssignment(const std::string& argument, const std::string& option)
+{
+    return argument == option || argument.rfind(option + "=", 0) == 0;
+}
+
+std::optional<std::string> removedOptionError(const std::string& argument)
+{
+    if (isOptionOrAssignment(argument, "--duration")) {
+        return "--duration has been removed; live capture now runs until interrupted";
+    }
+    if (isOptionOrAssignment(argument, "--live")) {
+        return "--live is no longer required; --interface starts live capture";
+    }
+    if (isOptionOrAssignment(argument, "--idle-timeout")) {
+        return "--idle-timeout has been removed; live capture no longer stops on idle timeout";
+    }
+    if (isOptionOrAssignment(argument, "--max-assets")) {
+        return "--max-assets has been removed; live capture no longer stops after an asset count";
+    }
+    if (isOptionOrAssignment(argument, "--db-url")) {
+        return "--db-url has been removed; configure PostgreSQL with .env, DATABASE_URL, PG*, or DB_* environment variables";
+    }
+    if (isOptionOrAssignment(argument, "--events")) {
+        return "--events has been removed; realtime stdout events are enabled by default";
+    }
+    if (isOptionOrAssignment(argument, "--events-json")) {
+        return "--events-json has been removed; NDJSON event output is enabled by default; set ASSET_DISCOVERY_EVENTS_JSON to change the path";
+    }
+    if (isOptionOrAssignment(argument, "--syslog")) {
+        return "--syslog has been removed; syslog events are auto-enabled when supported";
+    }
+    if (isOptionOrAssignment(argument, "--events-db")) {
+        return "--events-db has been removed; database event writes are enabled when database environment exists";
+    }
+    return std::nullopt;
+}
+
 std::optional<capture::CaptureBackendSelection> parseBackendSelection(const std::string& value)
 {
     if (value == "auto") {
@@ -51,6 +88,10 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             return {options, std::nullopt};
         }
 
+        if (const auto error = removedOptionError(arg); error.has_value()) {
+            return {options, *error};
+        }
+
         if (arg == "--pcap") {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--pcap requires a file path"};
@@ -64,47 +105,6 @@ ParseResult parseArguments(const std::vector<std::string>& args)
                 return {options, "--interface requires an interface name"};
             }
             options.interfaceName = args[++i];
-            continue;
-        }
-
-        if (arg == "--duration") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--duration requires a positive number of seconds"};
-            }
-            const auto parsed = parsePositiveInteger(args[++i]);
-            if (!parsed.has_value()) {
-                return {options, "--duration must be a positive integer"};
-            }
-            options.durationSeconds = *parsed;
-            continue;
-        }
-
-        if (arg == "--live") {
-            options.captureMode = CaptureMode::LiveInfinite;
-            continue;
-        }
-
-        if (arg == "--idle-timeout") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--idle-timeout requires a positive number of seconds"};
-            }
-            const auto parsed = parsePositiveInteger(args[++i]);
-            if (!parsed.has_value()) {
-                return {options, "--idle-timeout must be a positive integer"};
-            }
-            options.idleTimeoutSeconds = *parsed;
-            continue;
-        }
-
-        if (arg == "--max-assets") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--max-assets requires a positive asset count"};
-            }
-            const auto parsed = parsePositiveInteger(args[++i]);
-            if (!parsed.has_value()) {
-                return {options, "--max-assets must be a positive integer"};
-            }
-            options.maxAssets = *parsed;
             continue;
         }
 
@@ -150,15 +150,77 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
-        if (arg == "--db-url") {
+        if (arg == "--event-rate-limit") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--db-url requires a PostgreSQL connection string"};
+                return {options, "--event-rate-limit requires a positive number of seconds"};
+            }
+            const auto parsed = parsePositiveInteger(args[++i]);
+            if (!parsed.has_value()) {
+                return {options, "--event-rate-limit must be a positive integer"};
+            }
+            options.eventRateLimitSeconds = *parsed;
+            continue;
+        }
+
+        if (arg == "--event-queue-capacity") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--event-queue-capacity requires a positive event count"};
+            }
+            const auto parsed = parsePositiveInteger(args[++i]);
+            if (!parsed.has_value()) {
+                return {options, "--event-queue-capacity must be a positive integer"};
+            }
+            options.eventQueueCapacity = *parsed;
+            continue;
+        }
+
+        if (arg == "--flip-flop-window") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--flip-flop-window requires a positive number of seconds"};
+            }
+            const auto parsed = parsePositiveInteger(args[++i]);
+            if (!parsed.has_value()) {
+                return {options, "--flip-flop-window must be a positive integer"};
+            }
+            options.flipFlopWindowSeconds = *parsed;
+            continue;
+        }
+
+        if (arg == "--reappearance-threshold") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--reappearance-threshold requires a positive number of seconds"};
+            }
+            const auto parsed = parsePositiveInteger(args[++i]);
+            if (!parsed.has_value()) {
+                return {options, "--reappearance-threshold must be a positive integer"};
+            }
+            options.reappearanceThresholdSeconds = *parsed;
+            continue;
+        }
+
+        if (arg == "--local-net") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--local-net requires an IPv4 CIDR value"};
             }
             const auto value = args[++i];
-            if (value.empty()) {
-                return {options, "--db-url cannot be empty; use DATABASE_URL in .env or pass a valid connection string"};
+            const auto network = asset::parseIpv4Network(value);
+            if (!network.has_value()) {
+                return {options, "--local-net requires a valid IPv4 CIDR value"};
             }
-            options.databaseUrl = value;
+            options.localNetworks.push_back(*network);
+            continue;
+        }
+
+        if (arg == "--ignore-net") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--ignore-net requires an IPv4 CIDR value"};
+            }
+            const auto value = args[++i];
+            const auto network = asset::parseIpv4Network(value);
+            if (!network.has_value()) {
+                return {options, "--ignore-net requires a valid IPv4 CIDR value"};
+            }
+            options.ignoredNetworks.push_back(*network);
             continue;
         }
 
@@ -169,21 +231,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
         return {options, "provide exactly one input source: --pcap <file> or --interface <name>"};
     }
 
-    const bool liveRequested = options.captureMode == CaptureMode::LiveInfinite;
-
     if (options.pcapPath.has_value()) {
-        if (options.durationSeconds.has_value()) {
-            return {options, "--duration is only valid with --interface <name>"};
-        }
-        if (liveRequested) {
-            return {options, "--live is only valid with --interface <name>"};
-        }
-        if (options.idleTimeoutSeconds.has_value()) {
-            return {options, "--idle-timeout is only valid with --interface <name> --live"};
-        }
-        if (options.maxAssets.has_value()) {
-            return {options, "--max-assets is only valid with --interface <name> --live"};
-        }
         if (options.captureBackend != capture::CaptureBackendSelection::Auto) {
             return {options, "--capture-backend is only valid with --interface capture"};
         }
@@ -191,25 +239,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
         return {options, std::nullopt};
     }
 
-    if (options.durationSeconds.has_value() && liveRequested) {
-        return {options, "choose either --duration <seconds> or --live with --interface, not both"};
-    }
-
-    if (!options.durationSeconds.has_value() && !liveRequested) {
-        return {options, "--interface requires either --duration <seconds> or --live"};
-    }
-
-    if (!liveRequested) {
-        if (options.idleTimeoutSeconds.has_value()) {
-            return {options, "--idle-timeout is only valid with --interface <name> --live"};
-        }
-        if (options.maxAssets.has_value()) {
-            return {options, "--max-assets is only valid with --interface <name> --live"};
-        }
-        options.captureMode = CaptureMode::LiveTimed;
-    } else {
-        options.captureMode = CaptureMode::LiveInfinite;
-    }
+    options.captureMode = CaptureMode::Live;
 
     return {options, std::nullopt};
 }
@@ -218,20 +248,25 @@ std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
     output << "Usage:\n"
-           << "  " << executableName << " --pcap <file> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]\n"
-           << "  " << executableName << " --interface <name> --duration <seconds> [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv] [--db-url <url>]\n"
-           << "  " << executableName << " --interface <name> --live [--idle-timeout <seconds>] [--max-assets <count>] [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv] [--db-url <url>]\n"
+           << "  " << executableName << " --pcap <file> [--filter <bpf>] [--output table|json|csv]\n"
+           << "  " << executableName << " --interface <name> [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv]\n"
            << "\nOptions:\n"
            << "  --pcap <file>              Read packets from a PCAP file.\n"
-           << "  --interface <name>         Capture packets from a live interface.\n"
-           << "  --duration <seconds>       Live timed capture duration.\n"
-           << "  --live                     Capture until stopped by Ctrl+C or a live stop condition.\n"
-           << "  --idle-timeout <seconds>   In --live mode, stop after no accepted packet is seen for this many seconds.\n"
-           << "  --max-assets <count>       In --live mode, stop after discovering this many assets.\n"
+           << "  --interface <name>         Capture packets from a live interface until SIGINT or SIGTERM.\n"
            << "  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.\n"
            << "  --capture-backend <name>   Live capture backend: auto, pcap, or af-packet. Defaults to auto.\n"
            << "  --output table|json|csv    Output format. Defaults to table.\n"
-           << "  --db-url <url>             Write assets to PostgreSQL with the psql client.\n"
+           << "  --event-rate-limit <sec>   Suppress duplicate low-value events within this window.\n"
+           << "  --event-queue-capacity <n> Live event queue capacity. Defaults to 1024.\n"
+           << "  --flip-flop-window <sec>   Window for detecting IP/MAC flip-flop events.\n"
+           << "  --reappearance-threshold <sec> Threshold for asset_reappeared events.\n"
+           << "  --local-net <cidr>         Local IPv4 network for non-local source detection. Repeatable.\n"
+           << "  --ignore-net <cidr>        Ignored IPv4 network for non-local source detection. Repeatable.\n"
+           << "\nDefault outputs:\n"
+           << "  Realtime events are written to stdout, syslog when supported, and NDJSON at\n"
+           << "  ASSET_DISCOVERY_EVENTS_JSON or logs/events.ndjson. PostgreSQL writes use\n"
+           << "  .env, DATABASE_URL, PG*, or DB_* environment variables when present.\n"
+           << "\n"
            << "  -h, --help                 Show this help text.\n";
     return output.str();
 }

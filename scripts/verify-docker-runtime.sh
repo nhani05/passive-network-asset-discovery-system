@@ -7,14 +7,6 @@ filter_expression="${CAPTURE_FILTER:-arp or udp port 67 or udp port 68}"
 echo "Building Docker image: ${image_name}"
 docker build -t "${image_name}" .
 
-echo "Running PCAP fixture inside the container"
-docker run --rm \
-    -v "$PWD/samples:/samples:ro" \
-    "${image_name}" \
-    --pcap /samples/arp.pcap \
-    --filter "${filter_expression}" \
-    --output table
-
 echo "Validating Docker Compose configuration"
 docker compose config >/dev/null
 
@@ -35,6 +27,24 @@ while [ "${attempt}" -le 60 ]; do
 done
 
 echo "Resetting demo assets table for deterministic evidence"
+docker compose exec -T db psql -U postgres -d asset_discovery \
+    -c "drop table if exists assets;"
+
+echo "Running PCAP fixture inside the container (table output)"
+docker run --rm \
+    --network asset-net \
+    -v "$PWD/samples:/samples:ro" \
+    -e DB_HOST=db \
+    -e DB_PORT=5432 \
+    -e DB_NAME=asset_discovery \
+    -e DB_USER=postgres \
+    -e DB_PASSWORD=123456 \
+    "${image_name}" \
+    --pcap /samples/arp.pcap \
+    --filter "${filter_expression}" \
+    --output table
+
+echo "Resetting demo assets table again"
 docker compose exec -T db psql -U postgres -d asset_discovery \
     -c "drop table if exists assets;"
 

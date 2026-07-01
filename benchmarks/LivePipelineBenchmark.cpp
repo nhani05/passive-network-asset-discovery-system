@@ -1,6 +1,7 @@
 #include "application/live/LiveCapturePipeline.hpp"
 #include "infrastructure/capture/PacketCapture.hpp"
 
+#include <chrono>
 #include <charconv>
 #include <iostream>
 #include <optional>
@@ -219,12 +220,20 @@ int runLiveBackendBenchmark(const BenchmarkOptions& options)
     config.interfaceName = *options.interfaceName;
     config.packetFilter = options.packetFilter;
     config.requestedBackend = options.backend;
-    config.liveOptions.durationSeconds = options.durationSeconds;
+
+    auto startTime = std::chrono::steady_clock::now();
+    config.liveOptions.stopRequested = [startTime, duration = options.durationSeconds]() {
+        if (!duration.has_value()) {
+            return false;
+        }
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
+        return elapsed >= *duration;
+    };
 
     const auto result = asset_discovery::live::runLiveCapturePipeline(
         *backendResult.backend,
         std::move(config),
-        std::nullopt,
         std::move(backendResult.initialStats),
         pipelineOptions(options));
 

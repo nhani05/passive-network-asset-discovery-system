@@ -47,8 +47,8 @@ endif()
 
 file(READ "${WORK_DIR}/postgres-write.log" logged_sql)
 file(READ "${WORK_DIR}/postgres-write-attempts" write_attempts)
-if(NOT write_attempts STREQUAL "2")
-    message(FATAL_ERROR "Expected PostgreSQL write to retry once, got ${write_attempts} attempt(s)")
+if(NOT write_attempts STREQUAL "3")
+    message(FATAL_ERROR "Expected event and asset PostgreSQL writes with one retry, got ${write_attempts} attempt(s)")
 endif()
 
 string(FIND "${logged_sql}" "CREATE TABLE IF NOT EXISTS assets" schema_position)
@@ -74,6 +74,11 @@ endif()
 string(FIND "${logged_sql}" "INSERT INTO assets" insert_position)
 if(insert_position EQUAL -1)
     message(FATAL_ERROR "Expected INSERT SQL in log, got: ${logged_sql}")
+endif()
+
+string(FIND "${logged_sql}" "INSERT INTO asset_events" event_insert_position)
+if(event_insert_position EQUAL -1)
+    message(FATAL_ERROR "Expected asset_events INSERT SQL in log, got: ${logged_sql}")
 endif()
 
 string(FIND "${command_output}" "\"mac_address\": \"02:42:ac:11:00:02\"" output_position)

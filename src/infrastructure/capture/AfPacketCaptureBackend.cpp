@@ -1,6 +1,5 @@
 #include "infrastructure/capture/AfPacketCaptureBackend.hpp"
 
-#include <chrono>
 #include <cerrno>
 #include <cstring>
 #include <memory>
@@ -37,8 +36,6 @@ namespace asset_discovery::capture {
 namespace {
 
 #if ASSET_DISCOVERY_HAS_AF_PACKET == 1
-using Clock = std::chrono::steady_clock;
-
 constexpr int pollTimeoutMilliseconds = 250;
 constexpr std::uint32_t defaultBlockSize = 1U << 20U;
 constexpr std::uint32_t defaultFrameSize = 2048U;
@@ -263,28 +260,10 @@ void fillPacketStatistics(int fd, BackendStats* stats)
     }
 }
 
-bool shouldStop(
-    const LiveCaptureOptions& options,
-    Clock::time_point startTime,
-    Clock::time_point lastAcceptedPacketTime)
+bool shouldStop(const LiveCaptureOptions& options)
 {
     if (options.stopRequested && options.stopRequested()) {
         return true;
-    }
-
-    const auto now = Clock::now();
-    if (options.durationSeconds.has_value()) {
-        const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
-        if (elapsed >= *options.durationSeconds) {
-            return true;
-        }
-    }
-
-    if (options.idleTimeoutSeconds.has_value()) {
-        const auto idleElapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastAcceptedPacketTime).count();
-        if (idleElapsed >= *options.idleTimeoutSeconds) {
-            return true;
-        }
     }
 
     return false;
@@ -378,11 +357,9 @@ std::optional<std::string> AfPacketCaptureBackend::captureLive(
     }
     fd.release();
 
-    const auto startTime = Clock::now();
-    auto lastAcceptedPacketTime = startTime;
     std::uint32_t blockIndex = 0;
 
-    while (!shouldStop(config.liveOptions, startTime, lastAcceptedPacketTime)) {
+    while (!shouldStop(config.liveOptions)) {
         auto* block = ring->block(blockIndex);
         if ((block->hdr.bh1.block_status & TP_STATUS_USER) == 0) {
             pollfd descriptor = {};
@@ -416,7 +393,6 @@ std::optional<std::string> AfPacketCaptureBackend::captureLive(
             packet.bytes = {data, header->tp_snaplen};
             packet.owner = lease;
 
-            lastAcceptedPacketTime = Clock::now();
             callback(packet);
 
             if (header->tp_next_offset == 0) {

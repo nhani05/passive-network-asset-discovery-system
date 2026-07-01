@@ -65,10 +65,6 @@ services:
       - -c
     environment:
       CAPTURE_INTERFACE: ${CAPTURE_INTERFACE:-eth0}
-      CAPTURE_MODE: ${CAPTURE_MODE:-timed}
-      CAPTURE_DURATION: ${CAPTURE_DURATION:-60}
-      CAPTURE_IDLE_TIMEOUT: ${CAPTURE_IDLE_TIMEOUT:-}
-      CAPTURE_MAX_ASSETS: ${CAPTURE_MAX_ASSETS:-}
       CAPTURE_FILTER: ${CAPTURE_FILTER:-arp or udp port 67 or udp port 68}
     cap_add:
       - NET_ADMIN
@@ -76,18 +72,7 @@ services:
     command:
       - |
         set -eu
-        if [ "$${CAPTURE_MODE:-timed}" = "live" ]; then
-          set -- --interface "$${CAPTURE_INTERFACE}" --live
-          if [ -n "$${CAPTURE_IDLE_TIMEOUT:-}" ]; then
-            set -- "$$@" --idle-timeout "$${CAPTURE_IDLE_TIMEOUT}"
-          fi
-          if [ -n "$${CAPTURE_MAX_ASSETS:-}" ]; then
-            set -- "$$@" --max-assets "$${CAPTURE_MAX_ASSETS}"
-          fi
-        else
-          set -- --interface "$${CAPTURE_INTERFACE}" --duration "$${CAPTURE_DURATION}"
-        fi
-        exec asset-discovery "$$@" --filter "$${CAPTURE_FILTER}" --output table
+        exec asset-discovery --interface "${CAPTURE_INTERFACE}" --filter "${CAPTURE_FILTER}" --output table
 
 networks:
   default:

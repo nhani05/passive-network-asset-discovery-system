@@ -9,8 +9,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(ASSET_DISCOVERY_REQUIRE_PCAP "Stop configuration when libpcap is unavailable" OFF)
 
 add_library(asset_discovery_domain
+    src/domain/AssetEvent.cpp
+    src/domain/AssetEventDetector.cpp
     src/domain/AssetObservation.cpp
     src/domain/AssetStore.cpp
+    src/domain/EventRateLimiter.cpp
 )
 
 target_include_directories(asset_discovery_domain PUBLIC include)
@@ -51,6 +54,13 @@ add_library(asset_discovery_parser
 target_include_directories(asset_discovery_parser PUBLIC include)
 target_link_libraries(asset_discovery_parser PUBLIC asset_discovery_parser_core asset_discovery_parser_plugins)
 
+add_library(asset_discovery_monitor
+    src/application/monitor/AssetMonitor.cpp
+)
+
+target_include_directories(asset_discovery_monitor PUBLIC include)
+target_link_libraries(asset_discovery_monitor PUBLIC asset_discovery_domain)
+
 add_library(asset_discovery_live
     src/application/live/LiveCapturePipeline.cpp
 )
@@ -59,11 +69,13 @@ target_include_directories(asset_discovery_live PUBLIC include)
 target_link_libraries(asset_discovery_live PUBLIC
     asset_discovery_capture
     asset_discovery_domain
+    asset_discovery_monitor
     asset_discovery_parser
 )
 
 add_library(asset_discovery_output
     src/infrastructure/output/CsvRenderer.cpp
+    src/infrastructure/output/EventSink.cpp
     src/infrastructure/output/JsonRenderer.cpp
     src/infrastructure/output/TableRenderer.cpp
 )
@@ -76,7 +88,7 @@ add_library(asset_discovery_storage
 )
 
 target_include_directories(asset_discovery_storage PUBLIC include)
-target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_domain)
+target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_domain asset_discovery_output)
 
 add_library(asset_discovery_capture
     src/infrastructure/capture/AfPacketCaptureBackend.cpp
@@ -95,6 +107,7 @@ add_library(asset_discovery_cli
 )
 
 target_include_directories(asset_discovery_cli PUBLIC include)
+target_link_libraries(asset_discovery_cli PUBLIC asset_discovery_domain)
 
 add_executable(asset-discovery
     src/main.cpp
@@ -106,6 +119,7 @@ target_link_libraries(asset-discovery PRIVATE
     asset_discovery_cli
     asset_discovery_domain
     asset_discovery_live
+    asset_discovery_monitor
     asset_discovery_output
     asset_discovery_parser
     asset_discovery_storage

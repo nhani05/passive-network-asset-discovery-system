@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/AssetEventDetector.hpp"
 #include "infrastructure/capture/PacketCapture.hpp"
 
 #include <optional>
@@ -16,8 +17,7 @@ enum class OutputFormat {
 
 enum class CaptureMode {
     PcapOffline,
-    LiveTimed,
-    LiveInfinite,
+    Live,
 };
 
 // CLI options after validating relationships between arguments.
@@ -25,11 +25,13 @@ struct Options {
     std::optional<std::string> pcapPath;
     std::optional<std::string> interfaceName;
     std::optional<CaptureMode> captureMode;
-    std::optional<int> durationSeconds;
-    std::optional<int> idleTimeoutSeconds;
-    std::optional<int> maxAssets;
     std::optional<std::string> packetFilter;
-    std::optional<std::string> databaseUrl;
+    std::optional<int> eventRateLimitSeconds;
+    std::optional<int> eventQueueCapacity;
+    std::optional<int> flipFlopWindowSeconds;
+    std::optional<int> reappearanceThresholdSeconds;
+    std::vector<asset::Ipv4Network> localNetworks;
+    std::vector<asset::Ipv4Network> ignoredNetworks;
     capture::CaptureBackendSelection captureBackend = capture::CaptureBackendSelection::Auto;
     OutputFormat outputFormat = OutputFormat::Table;
     bool helpRequested = false;

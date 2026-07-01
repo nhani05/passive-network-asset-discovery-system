@@ -194,12 +194,19 @@ CAPTURE_MODE=live CAPTURE_IDLE_TIMEOUT=30 CAPTURE_MAX_ASSETS=10 \
   docker compose --profile live run --rm live-capture
 ```
 
-Tài liệu Sprint và output contract nằm ở:
+Tài liệu Sprint, thiết kế và hướng dẫn được tổ chức lại như sau:
 
-- `docs/SPRINT2.md`
-- `docs/SPRINT3.md`
-- `docs/SPRINT4.md`
-- `docs/asset-output-contract.md`
-- `docs/system-design.md`
-- `docs/build-deploy-demo-guide.md`
-- `docs/final-submission-checklist.md`
+* **Sprints Notes:**
+  * [docs/sprints/SPRINT2.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/sprints/SPRINT2.md)
+  * [docs/sprints/SPRINT3.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/sprints/SPRINT3.md)
+  * [docs/sprints/SPRINT4.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/sprints/SPRINT4.md)
+* **Thiết kế & Đặc tả (Design & Spec):**
+  * [docs/design-spec/system-design.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/system-design.md)
+  * [docs/design-spec/asset-events.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/asset-events.md)
+  * [docs/design-spec/asset-output-contract.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/asset-output-contract.md)
+  * [docs/design-spec/system-programming-improvement-proposal.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/system-programming-improvement-proposal.md)
+  * [docs/design-spec/docker-packaging-guide.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/docker-packaging-guide.md)
+* **Hướng dẫn Demo:**
+  * [docs/build-deploy-demo-guide.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/build-deploy-demo-guide.md) (Mục lục dẫn hướng chi tiết)
+* **Checklist Bàn giao:**
+  * [docs/final-submission-checklist.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/final-submission-checklist.md)
