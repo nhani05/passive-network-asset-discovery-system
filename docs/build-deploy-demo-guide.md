@@ -298,12 +298,12 @@ Kỳ vọng: output mặc định là `table`, tương tự mục 3.1.
 Kỳ vọng thấy 4 asset:
 
 ```text
-MAC                IPs                          Hostname          First Seen         Last Seen          Sources
----------------------------------------------------------------------------------------------------------------
-02:42:ac:11:00:01  192.168.1.1                                    1699606801.1000    1699606801.1000    arp
-02:42:ac:11:00:02  192.168.1.10;192.168.1.11                      1699606800.0       1699606807.7000    arp
-02:42:ac:11:00:03  192.168.1.20                  laptop-user       1699606802.2000    1699606803.3000    arp,dhcp
-02:42:ac:11:00:04  192.168.1.30                  camera-01         1699606804.4000    1699606804.4000    dhcp
+MAC                IPs                     Hostname          First Seen        Last Seen         Sources
+--------------------------------------------------------------------------------------------------------
+02:42:ac:11:00:01  192.168.1.1                               1699606801.1000   1699606801.1000   arp
+02:42:ac:11:00:02  192.168.1.10,192.168.1.11                 1699606800.0      1699606807.7000   arp
+02:42:ac:11:00:03  192.168.1.20            laptop-user       1699606802.2000   1699606803.3000   arp,dhcp
+02:42:ac:11:00:04  192.168.1.30            camera-01         1699606804.4000   1699606804.4000   dhcp
 ```
 
 Giải thích từng asset:
@@ -311,7 +311,7 @@ Giải thích từng asset:
 | MAC | IP | Hostname | Sources | Ghi chú |
 |-----|-----|----------|---------|---------|
 | `02:42:ac:11:00:01` | `192.168.1.1` | (trống) | `arp` | Gateway, chỉ thấy qua ARP reply |
-| `02:42:ac:11:00:02` | `192.168.1.10`, `192.168.1.11` | (trống) | `arp` | 2 IP vì ARP request từ 2 IP khác nhau cùng MAC |
+| `02:42:ac:11:00:02` | `192.168.1.10`, `192.168.1.11` | (trống) | `arp` | 2 IP vì ARP request từ 2 IP khác nhau cùng MAC; table dùng `,` phân cách |
 | `02:42:ac:11:00:03` | `192.168.1.20` | `laptop-user` | `arp,dhcp` | Hostname từ DHCP option 12, xuất hiện cả ARP và DHCP |
 | `02:42:ac:11:00:04` | `192.168.1.30` | `camera-01` | `dhcp` | Chỉ xuất hiện trong DHCP, có hostname |
 
@@ -1248,8 +1248,8 @@ Kỳ vọng output:
 ```text
 Usage:
   asset-discovery --pcap <file> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]
-  asset-discovery --interface <name> --duration <seconds> [--filter <bpf>] [--output table|json|csv] [--db-url <url>]
-  asset-discovery --interface <name> --live [--idle-timeout <seconds>] [--max-assets <count>] [--filter <bpf>] [--output table|json|csv] [--db-url <url>]
+  asset-discovery --interface <name> --duration <seconds> [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv] [--db-url <url>]
+  asset-discovery --interface <name> --live [--idle-timeout <seconds>] [--max-assets <count>] [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv] [--db-url <url>]
 
 Options:
   --pcap <file>              Read packets from a PCAP file.
@@ -1259,6 +1259,7 @@ Options:
   --idle-timeout <seconds>   In --live mode, stop after no accepted packet is seen for this many seconds.
   --max-assets <count>       In --live mode, stop after discovering this many assets.
   --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.
+  --capture-backend <name>   Live capture backend: auto, pcap, or af-packet. Defaults to auto.
   --output table|json|csv    Output format. Defaults to table.
   --db-url <url>             Write assets to PostgreSQL with the psql client.
   -h, --help                 Show this help text.
