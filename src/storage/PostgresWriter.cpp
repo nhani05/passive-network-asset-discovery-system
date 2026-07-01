@@ -1,4 +1,5 @@
 #include "pnad/storage/PostgresWriter.hpp"
+#include "pnad/error/AppError.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -272,7 +273,7 @@ void DatabaseEventSink::write(const asset::AssetEvent& event)
 {
     const auto error = writeEventsToPostgres(databaseUrl_, {event});
     if (error.has_value()) {
-        throw std::runtime_error(*error);
+        throw DatabaseError(*error);
     }
 }
 

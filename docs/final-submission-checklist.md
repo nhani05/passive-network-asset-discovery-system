@@ -46,7 +46,7 @@ scripts/verify-docker-runtime.sh
 Nếu host có quyền live capture:
 
 ```sh
-sudo ./build/asset-discovery --interface eth0 --duration 10 \
+sudo ./build/asset-discovery --interface eth0 \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```
