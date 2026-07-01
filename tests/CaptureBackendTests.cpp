@@ -1,5 +1,5 @@
-#include "infrastructure/capture/AfPacketCaptureBackend.hpp"
-#include "infrastructure/capture/PacketCapture.hpp"
+#include "pnad/capture/AfPacketCaptureBackend.hpp"
+#include "pnad/capture/PacketCapture.hpp"
 
 #include <iostream>
 #include <string>

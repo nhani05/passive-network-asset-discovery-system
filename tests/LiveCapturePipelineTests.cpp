@@ -1,7 +1,7 @@
-#include "application/live/LiveCapturePipeline.hpp"
-#include "application/live/BoundedQueue.hpp"
-#include "domain/AssetEvent.hpp"
-#include "infrastructure/output/JsonRenderer.hpp"
+#include "pnad/app/LiveCapturePipeline.hpp"
+#include "pnad/system/BoundedQueue.hpp"
+#include "pnad/event/AssetEvent.hpp"
+#include "pnad/discovery/JsonRenderer.hpp"
 
 #include <atomic>
 #include <chrono>

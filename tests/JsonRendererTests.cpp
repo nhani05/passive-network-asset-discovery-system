@@ -1,4 +1,4 @@
-#include "infrastructure/output/JsonRenderer.hpp"
+#include "pnad/discovery/JsonRenderer.hpp"
 
 #include <iostream>
 #include <string>

@@ -10,17 +10,14 @@ Hệ thống phân tích traffic thụ động từ file PCAP hoặc network int
 
 | Layer | Module | Đường dẫn | Trách nhiệm |
 | --- | --- | --- |
-| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--filter`, `--capture-backend`, `--output`, và các option điều chỉnh; kiểm tra quan hệ option và từ chối các cờ cũ. |
-| Domain | Asset model/event model | `include/domain`, `src/domain` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`, `AssetEvent`, `AssetEventDetector`; gộp observation theo MAC và phát hiện thay đổi IP/MAC. |
-| Application | Live pipeline | `include/application/live`, `src/application/live` | Tách live capture thành producer-consumer pipeline với bounded queue, parser worker pool, aggregator single-writer, event writer, và metrics throughput/drop. |
-| Application | Asset monitor | `include/application/monitor`, `src/application/monitor` | Áp dụng observation theo thứ tự detect event trước, update `AssetStore` sau, rồi chuyển event đến callback. |
-| Application | Parser core | `include/application/parser`, `src/application/parser` | Build `PacketContext`, điều phối `ParserEngine`/`ParserRegistry`, expose parser facade `parseEthernetObservations()`. |
-| Plugins | Parser plugins | `include/plugins/parser`, `src/plugins/parser` | Built-in ARP/DHCP/DNS plugins và composition root `createDefaultParserRegistry()`. |
-| Infrastructure | Packet decoders | `include/infrastructure/packet`, `src/infrastructure/packet` | Decode Ethernet và ARP payload dùng chung cho context builder/plugins. |
-| Infrastructure | Capture | `include/infrastructure/capture`, `src/infrastructure/capture` | Đọc PCAP offline hoặc live capture qua backend được chọn; áp dụng BPF filter; chuẩn hóa packet thành `OfflinePacket` hoặc `PacketView`. |
-| Infrastructure | Output | `include/infrastructure/output`, `src/infrastructure/output` | Render asset state ở dạng table, JSON, hoặc CSV. |
-| Infrastructure | Event output | `include/infrastructure/output`, `src/infrastructure/output` | Ghi event ra stdout, NDJSON, hoặc syslog thông qua `EventSink`/`EventDispatcher`. |
-| Infrastructure | Storage | `include/infrastructure/storage`, `src/infrastructure/storage` | Tạo schema tối thiểu, upsert asset, và insert `asset_events` vào PostgreSQL thông qua client `psql`. |
+| Interface | CLI | `include/pnad/cli`, `src/cli` | Parse `--pcap`, `--interface`, `--filter`, `--capture-backend`, `--output`, và các option điều chỉnh; kiểm tra quan hệ option và từ chối các cờ cũ. |
+| Domain / Discovery | Asset / Discovery | `include/pnad/discovery`, `src/discovery` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`, và `AssetMonitor`; quản lý danh sách asset và gộp observation theo MAC. |
+| Application | Live pipeline | `include/pnad/app`, `src/app` | Tách live capture thành producer-consumer pipeline với bounded queue, parser worker pool, aggregator single-writer, event writer, và metrics throughput/drop. |
+| Domain / Event | Event detection | `include/pnad/event`, `src/event` | Định nghĩa `AssetEvent`, `AssetEventDetector`, `EventRateLimiter` và các event sinks để phát hiện và ghi nhận sự kiện thay đổi IP/MAC hoặc các bất thường. |
+| Packet / Parser | Packet Processing | `include/pnad/packet`, `src/packet` | Decode Ethernet/ARP frame; điều phối `ParserEngine`/`ParserRegistry` và chứa các built-in parser plugins (ARP, DHCP, DNS). |
+| Infrastructure | Capture | `include/pnad/capture`, `src/capture` | Đọc PCAP offline hoặc live capture qua backend được chọn (PCAP / AF_PACKET); áp dụng BPF filter. |
+| Infrastructure | Storage | `include/pnad/storage`, `src/storage` | Lưu trữ asset và asset_events vào PostgreSQL thông qua client `psql`. |
+| System | Concurrency & Utils | `include/pnad/system` | Chứa các lớp hỗ trợ concurrency như `BoundedQueue` và kiểu span byte `ByteView`. |
 | Composition | Main | `src/main.cpp` | Nối CLI, capture, parser facade, asset store, output renderer, và storage writer thành một luồng chạy. |
 
 ## Luồng Dữ Liệu
@@ -140,7 +137,7 @@ Live metrics được ghi ra stderr sau capture, còn stdout mặc định chứ
 - Live capture dùng non-blocking polling với sleep ngắn khi chưa có packet để kiểm tra stop flag từ tín hiệu SIGINT/SIGTERM ổn định.
 - Parser build `PacketContext` một lần từ `ByteView` để decode Ethernet, IPv4, UDP và transport payload khi hợp lệ, tránh copy full frame trên hot path.
 - Mỗi parser plugin có `match(PacketContext)` để lọc packet trước khi chạy `parse(PacketContext)`.
-- Parser core chỉ biết `ParserInterface` và `ParserRegistry`; built-in plugin registration nằm trong `plugins/parser/BuiltinParserPlugins`.
+- Parser core chỉ biết `ParserInterface` và `ParserRegistry`; built-in plugin registration nằm trong `pnad/packet/BuiltinParserPlugins`.
 - Registry hiện là static built-in registry, không dùng dynamic `.so`/`.dll`, để tránh ABI/runtime complexity trong scope C++17 hiện tại.
 - Built-in plugin hiện có: ARP, DHCP, DNS endpoint observation.
 - Parser plugins chạy trong worker pool của live capture, nên `match(PacketContext)` và `parse(PacketContext)` phải stateless hoặc tự thread-safe; plugin không được mutate shared state nếu không tự đồng bộ. Observation tạo ra phải copy dữ liệu cần giữ lâu, không được giữ pointer vào `PacketView` hoặc AF_PACKET ring.

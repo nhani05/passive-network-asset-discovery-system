@@ -1,5 +1,5 @@
-#include "application/live/LiveCapturePipeline.hpp"
-#include "infrastructure/capture/PacketCapture.hpp"
+#include "pnad/app/LiveCapturePipeline.hpp"
+#include "pnad/capture/PacketCapture.hpp"
 
 #include <chrono>
 #include <charconv>

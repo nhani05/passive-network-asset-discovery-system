@@ -1,4 +1,4 @@
-#include "infrastructure/output/TableRenderer.hpp"
+#include "pnad/discovery/TableRenderer.hpp"
 
 #include <iostream>
 #include <string>
