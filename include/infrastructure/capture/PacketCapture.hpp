@@ -75,8 +75,6 @@ struct BackendAvailability {
 };
 
 struct LiveCaptureOptions {
-    std::optional<int> durationSeconds;
-    std::optional<int> idleTimeoutSeconds;
     std::function<bool()> stopRequested;
 };
 

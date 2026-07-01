@@ -1,11 +1,14 @@
 #pragma once
 
+#include "application/monitor/AssetMonitor.hpp"
+#include "domain/AssetEvent.hpp"
 #include "domain/AssetObservation.hpp"
 #include "domain/AssetStore.hpp"
 #include "infrastructure/capture/PacketCapture.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,7 +27,11 @@ struct LivePipelineOptions {
     std::size_t packetBatchSize = 128;
     std::size_t packetQueueCapacity = 1024;
     std::size_t observationQueueCapacity = 1024;
+    std::size_t eventQueueCapacity = 1024;
     std::size_t parserWorkerCount = 0;
+    monitor::AssetMonitorConfig monitorConfig;
+    std::function<void(const asset::AssetEvent&)> eventCallback;
+    std::function<void()> eventFlushCallback;
 };
 
 struct LivePipelineStats {
@@ -34,8 +41,12 @@ struct LivePipelineStats {
     std::uint64_t packetsParsed = 0;
     std::uint64_t observationsProduced = 0;
     std::uint64_t observationsApplied = 0;
+    std::uint64_t eventsProduced = 0;
+    std::uint64_t eventsEnqueued = 0;
+    std::uint64_t eventsDroppedQueueFull = 0;
     std::size_t packetQueueHighWatermark = 0;
     std::size_t observationQueueHighWatermark = 0;
+    std::size_t eventQueueHighWatermark = 0;
     double elapsedSeconds = 0.0;
     bool backendStatsAvailable = false;
     std::string backendRequested;
@@ -51,6 +62,7 @@ struct LivePipelineStats {
     std::size_t packetBatchSize = 0;
     std::size_t packetQueueCapacity = 0;
     std::size_t observationQueueCapacity = 0;
+    std::size_t eventQueueCapacity = 0;
     std::size_t parserWorkerCount = 0;
 };
 
@@ -65,7 +77,6 @@ LivePipelineOptions normalizeLivePipelineOptions(LivePipelineOptions options);
 LivePipelineResult runLiveCapturePipeline(
     const capture::CaptureBackend& backend,
     capture::CaptureConfig captureConfig,
-    std::optional<int> maxAssets,
     capture::BackendStats initialBackendStats = {},
     LivePipelineOptions options = {});
 

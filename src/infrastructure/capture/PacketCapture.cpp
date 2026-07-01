@@ -257,29 +257,11 @@ std::optional<std::string> PcapCaptureBackend::captureLive(
         return output.str();
     }
 
-    const auto startTime = std::chrono::steady_clock::now();
-    auto lastAcceptedPacketTime = startTime;
-
     pcap_pkthdr* header = nullptr;
     const unsigned char* data = nullptr;
     while (true) {
         if (options.stopRequested && options.stopRequested()) {
             break;
-        }
-
-        const auto now = std::chrono::steady_clock::now();
-        if (options.durationSeconds.has_value()) {
-            const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
-            if (elapsed >= *options.durationSeconds) {
-                break;
-            }
-        }
-
-        if (options.idleTimeoutSeconds.has_value()) {
-            const auto idleElapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastAcceptedPacketTime).count();
-            if (idleElapsed >= *options.idleTimeoutSeconds) {
-                break;
-            }
         }
 
         const int status = pcap_next_ex(handle, &header, &data);
@@ -309,7 +291,6 @@ std::optional<std::string> PcapCaptureBackend::captureLive(
                 ++stats->packetsCopied;
             }
 
-            lastAcceptedPacketTime = std::chrono::steady_clock::now();
             callback(view);
             continue;
         }

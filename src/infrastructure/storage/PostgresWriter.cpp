@@ -7,6 +7,7 @@
 #include <fstream>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 
 namespace asset_discovery::storage {
@@ -23,6 +24,35 @@ std::string quoteSqlString(const std::string& value)
         }
     }
     output += "'";
+    return output;
+}
+
+std::string quoteJsonString(const std::string& value)
+{
+    std::string output = "\"";
+    for (const char character : value) {
+        switch (character) {
+        case '\\':
+            output += "\\\\";
+            break;
+        case '"':
+            output += "\\\"";
+            break;
+        case '\n':
+            output += "\\n";
+            break;
+        case '\r':
+            output += "\\r";
+            break;
+        case '\t':
+            output += "\\t";
+            break;
+        default:
+            output += character;
+            break;
+        }
+    }
+    output += '"';
     return output;
 }
 
@@ -53,6 +83,27 @@ std::string postgresTextArray(const std::set<std::string>& values)
         first = false;
     }
     output << "]::text[]";
+    return output.str();
+}
+
+std::string postgresOptionalText(const std::optional<std::string>& value)
+{
+    return value.has_value() ? quoteSqlString(*value) : "NULL";
+}
+
+std::string postgresMetadataJson(const std::map<std::string, std::string>& metadata)
+{
+    std::ostringstream output;
+    output << "{";
+    bool first = true;
+    for (const auto& item : metadata) {
+        if (!first) {
+            output << ",";
+        }
+        output << quoteJsonString(item.first) << ":" << quoteJsonString(item.second);
+        first = false;
+    }
+    output << "}";
     return output.str();
 }
 
@@ -95,6 +146,24 @@ std::string postgresSchemaSql()
         "    last_seen TEXT NOT NULL,\n"
         "    discovery_sources TEXT[] NOT NULL DEFAULT '{}',\n"
         "    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()\n"
+        ");\n"
+        "CREATE TABLE IF NOT EXISTS asset_events (\n"
+        "    id BIGSERIAL PRIMARY KEY,\n"
+        "    event_time TEXT NOT NULL,\n"
+        "    event_type TEXT NOT NULL,\n"
+        "    severity TEXT NOT NULL,\n"
+        "    ip_address TEXT,\n"
+        "    mac_address TEXT,\n"
+        "    old_ip TEXT,\n"
+        "    new_ip TEXT,\n"
+        "    old_mac TEXT,\n"
+        "    new_mac TEXT,\n"
+        "    hostname TEXT,\n"
+        "    protocol TEXT,\n"
+        "    interface TEXT,\n"
+        "    message TEXT,\n"
+        "    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,\n"
+        "    created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n"
         ");\n";
 }
 
@@ -123,9 +192,37 @@ std::string postgresAssetsSql(const std::vector<asset::Asset>& assets)
     return sql.str();
 }
 
-std::optional<std::string> writeAssetsToPostgres(
+std::string postgresEventsSql(const std::vector<asset::AssetEvent>& events)
+{
+    std::ostringstream sql;
+    sql << "\\set ON_ERROR_STOP on\n";
+    sql << "SET client_min_messages TO warning;\n";
+    sql << postgresSchemaSql();
+    for (const auto& event : events) {
+        sql << "INSERT INTO asset_events (event_time, event_type, severity, ip_address, mac_address, "
+            << "old_ip, new_ip, old_mac, new_mac, hostname, protocol, interface, message, metadata) VALUES ("
+            << quoteSqlString(asset::formatEventTimestamp(event.timestamp)) << ", "
+            << quoteSqlString(asset::assetEventTypeName(event.type)) << ", "
+            << quoteSqlString(asset::assetEventSeverityName(event.severity)) << ", "
+            << postgresOptionalText(event.ipAddress) << ", "
+            << postgresOptionalText(event.macAddress) << ", "
+            << postgresOptionalText(event.oldIpAddress) << ", "
+            << postgresOptionalText(event.newIpAddress) << ", "
+            << postgresOptionalText(event.oldMacAddress) << ", "
+            << postgresOptionalText(event.newMacAddress) << ", "
+            << postgresOptionalText(event.hostname) << ", "
+            << (event.protocol.empty() ? "NULL" : quoteSqlString(event.protocol)) << ", "
+            << (event.interfaceName.empty() ? "NULL" : quoteSqlString(event.interfaceName)) << ", "
+            << (event.message.empty() ? "NULL" : quoteSqlString(event.message)) << ", "
+            << quoteSqlString(postgresMetadataJson(event.metadata)) << "::jsonb"
+            << ");\n";
+    }
+    return sql.str();
+}
+
+std::optional<std::string> runSqlThroughPsql(
     const std::optional<std::string>& databaseUrl,
-    const std::vector<asset::Asset>& assets)
+    const std::string& sqlText)
 {
     const auto path = tempSqlPath();
     {
@@ -133,7 +230,7 @@ std::optional<std::string> writeAssetsToPostgres(
         if (!sql) {
             return "could not create a temporary SQL file for PostgreSQL writes";
         }
-        sql << postgresAssetsSql(assets);
+        sql << sqlText;
     }
 
     std::string command = "psql -q";
@@ -147,6 +244,40 @@ std::optional<std::string> writeAssetsToPostgres(
         return "PostgreSQL write failed through psql";
     }
     return std::nullopt;
+}
+
+std::optional<std::string> writeAssetsToPostgres(
+    const std::optional<std::string>& databaseUrl,
+    const std::vector<asset::Asset>& assets)
+{
+    return runSqlThroughPsql(databaseUrl, postgresAssetsSql(assets));
+}
+
+std::optional<std::string> writeEventsToPostgres(
+    const std::optional<std::string>& databaseUrl,
+    const std::vector<asset::AssetEvent>& events)
+{
+    if (events.empty()) {
+        return std::nullopt;
+    }
+    return runSqlThroughPsql(databaseUrl, postgresEventsSql(events));
+}
+
+DatabaseEventSink::DatabaseEventSink(std::optional<std::string> databaseUrl)
+    : databaseUrl_(std::move(databaseUrl))
+{
+}
+
+void DatabaseEventSink::write(const asset::AssetEvent& event)
+{
+    const auto error = writeEventsToPostgres(databaseUrl_, {event});
+    if (error.has_value()) {
+        throw std::runtime_error(*error);
+    }
+}
+
+void DatabaseEventSink::flush()
+{
 }
 
 } // namespace asset_discovery::storage

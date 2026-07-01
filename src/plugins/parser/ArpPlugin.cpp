@@ -32,6 +32,11 @@ std::vector<AssetObservation> ArpPlugin::parse(const PacketContext& context) con
     }
 
     auto observation = observationFromArpPacket(*arp.packet, context.timestamp);
+    observation.metadata["ethernet.source_mac"] = context.ethernet->sourceMac;
+    observation.metadata["arp.sender_mac"] = arp.packet->senderMac;
+    observation.metadata["arp.sender_ip"] = arp.packet->senderIp;
+    observation.metadata["arp.target_mac"] = arp.packet->targetMac;
+    observation.metadata["arp.target_ip"] = arp.packet->targetIp;
     observation.metadata["arp.operation"] = std::to_string(arp.packet->operation);
     return {std::move(observation)};
 }

@@ -10,15 +10,17 @@ Hệ thống phân tích traffic thụ động từ file PCAP hoặc network int
 
 | Layer | Module | Đường dẫn | Trách nhiệm |
 | --- | --- | --- |
-| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--duration`, `--live`, `--idle-timeout`, `--max-assets`, `--filter`, `--capture-backend`, `--output`, `--db-url`; kiểm tra quan hệ option. |
-| Domain | Asset model | `include/domain`, `src/domain` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`; gộp observation theo MAC address và duy trì asset state. |
-| Application | Live pipeline | `include/application/live`, `src/application/live` | Tách live capture thành producer-consumer pipeline với bounded queue, parser worker pool, aggregator single-writer, và metrics throughput/drop. |
+| Interface | CLI | `include/interface/cli`, `src/interface/cli` | Parse `--pcap`, `--interface`, `--filter`, `--capture-backend`, `--output`, và các option điều chỉnh; kiểm tra quan hệ option và từ chối các cờ cũ. |
+| Domain | Asset model/event model | `include/domain`, `src/domain` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`, `AssetEvent`, `AssetEventDetector`; gộp observation theo MAC và phát hiện thay đổi IP/MAC. |
+| Application | Live pipeline | `include/application/live`, `src/application/live` | Tách live capture thành producer-consumer pipeline với bounded queue, parser worker pool, aggregator single-writer, event writer, và metrics throughput/drop. |
+| Application | Asset monitor | `include/application/monitor`, `src/application/monitor` | Áp dụng observation theo thứ tự detect event trước, update `AssetStore` sau, rồi chuyển event đến callback. |
 | Application | Parser core | `include/application/parser`, `src/application/parser` | Build `PacketContext`, điều phối `ParserEngine`/`ParserRegistry`, expose parser facade `parseEthernetObservations()`. |
 | Plugins | Parser plugins | `include/plugins/parser`, `src/plugins/parser` | Built-in ARP/DHCP/DNS plugins và composition root `createDefaultParserRegistry()`. |
 | Infrastructure | Packet decoders | `include/infrastructure/packet`, `src/infrastructure/packet` | Decode Ethernet và ARP payload dùng chung cho context builder/plugins. |
 | Infrastructure | Capture | `include/infrastructure/capture`, `src/infrastructure/capture` | Đọc PCAP offline hoặc live capture qua backend được chọn; áp dụng BPF filter; chuẩn hóa packet thành `OfflinePacket` hoặc `PacketView`. |
 | Infrastructure | Output | `include/infrastructure/output`, `src/infrastructure/output` | Render asset state ở dạng table, JSON, hoặc CSV. |
-| Infrastructure | Storage | `include/infrastructure/storage`, `src/infrastructure/storage` | Tạo schema tối thiểu và upsert asset vào PostgreSQL thông qua client `psql`. |
+| Infrastructure | Event output | `include/infrastructure/output`, `src/infrastructure/output` | Ghi event ra stdout, NDJSON, hoặc syslog thông qua `EventSink`/`EventDispatcher`. |
+| Infrastructure | Storage | `include/infrastructure/storage`, `src/infrastructure/storage` | Tạo schema tối thiểu, upsert asset, và insert `asset_events` vào PostgreSQL thông qua client `psql`. |
 | Composition | Main | `src/main.cpp` | Nối CLI, capture, parser facade, asset store, output renderer, và storage writer thành một luồng chạy. |
 
 ## Luồng Dữ Liệu
@@ -52,35 +54,33 @@ ParserEngine + ParserRegistry
 AssetObservation { macAddress, ipAddress, hostname, sourceId, eventType, confidence, metadata, timestamp }
         |
         v
+AssetMonitor
+        |
+        +--> AssetEventDetector -> EventDispatcher (mặc định gửi tới các sink như stdout, NDJSON, syslog, và database)
+        |
+        v
 AssetStore::applyObservation()
         |
         v
 Asset list
         |
-        +--> Table/JSON/CSV renderer
+        +--> Table/JSON/CSV renderer (kết quả summary)
         |
-        +--> PostgreSQL writer nếu có --db-url, DATABASE_URL, hoặc PG*/DB* env
+        +--> PostgreSQL writer (bắt buộc, tự động lưu thông qua cấu hình môi trường DATABASE_URL hoặc PG*/DB*)
 ```
 
-PCAP mode, live timed mode và live infinite mode dùng cùng parser, asset store, renderer, và storage writer. Điểm khác nhau nằm ở nguồn packet và stop policy. PCAP mode đọc file rồi build `AssetStore`, còn live capture đi qua concurrent pipeline để capture không bị block bởi parser hoặc aggregation.
+PCAP mode và live mode dùng cùng parser, asset monitor, renderer, và storage writer. Điểm khác nhau nằm ở nguồn packet và stop policy. PCAP mode đọc file rồi replay observation qua `AssetMonitor`, còn live capture chạy live vô hạn thông qua concurrent pipeline để capture không bị block bởi parser, aggregation hoặc event output.
 
 ## Capture Modes
 
-CLI hỗ trợ ba chế độ input rõ ràng:
+CLI hỗ trợ hai chế độ input:
 
-- PCAP offline: `--pcap <file>`, đọc hết file rồi render kết quả.
-- Live timed: `--interface <name> --duration <seconds>`, capture đến khi hết thời lượng.
-- Live infinite: `--interface <name> --live`, capture đến khi có stop condition.
+- PCAP offline: `--pcap <file>`, đọc hết file, ghi nhận event mặc định, lưu database, và render kết quả summary cuối cùng.
+- Live capture: `--interface <name>`, chạy live vô hạn cho tới khi có tín hiệu dừng SIGINT/SIGTERM hoặc lỗi runtime nghiêm trọng.
 
-Live capture có thể chọn backend bằng `--capture-backend auto|pcap|af-packet`. `pcap` là baseline portable qua libpcap/Npcap. `af-packet` là backend Linux dùng raw socket `AF_PACKET` với `TPACKET_V3`/`PACKET_RX_RING`, cần quyền root hoặc `CAP_NET_RAW`. `auto` thử dùng `af-packet` khi host hỗ trợ và đủ quyền, nếu không sẽ fallback về `pcap` khi libpcap khả dụng và ghi lý do fallback trong metrics.
+Live capture có thể chọn backend bằng `--capture-backend auto|pcap|af-packet`. `pcap` là portable qua libpcap. `af-packet` là backend Linux dùng raw socket `AF_PACKET` với `TPACKET_V3`/`PACKET_RX_RING`, cần quyền root hoặc `CAP_NET_RAW`. `auto` thử dùng `af-packet` khi host hỗ trợ và đủ quyền, nếu không sẽ fallback về `pcap` khi libpcap khả dụng và ghi lý do fallback trong metrics.
 
-Live infinite có thể dừng khi:
-
-- Không có packet được chấp nhận sau BPF filter trong `--idle-timeout <seconds>`.
-- Asset store đạt `--max-assets <count>`.
-- Người vận hành nhấn Ctrl+C/SIGINT.
-
-Ctrl+C trong live infinite mode chỉ đặt stop flag tối thiểu, vòng capture thoát theo hướng graceful, rồi `main` tiếp tục dùng cùng luồng render và PostgreSQL writer như PCAP/live timed. `--idle-timeout` không tính packet bị BPF filter loại ra, vì những packet này không được đưa vào pipeline phân tích.
+Live capture dừng khi nhận tín hiệu SIGINT hoặc SIGTERM (ví dụ: Ctrl+C hoặc lệnh kill). Vòng capture thoát theo hướng graceful, các queue và sink được flush và drain sạch sẽ, sau đó `main` thực hiện ghi asset snapshot cuối cùng vào PostgreSQL và render kết quả output summary.
 
 ## Live Capture Concurrency
 
@@ -112,7 +112,16 @@ Live capture dùng mô hình producer-consumer để tách stage đọc packet k
         v
 ┌────────────────────────┐
 │ Asset Aggregator       │
-│ owns AssetStore        │
+│ owns AssetMonitor      │
+└───────┬────────────────┘
+        │ AssetEvent
+        v
+┌────────────────────────┐
+│ Bounded Event Queue    │
+└───────┬────────────────┘
+        v
+┌────────────────────────┐
+│ Event Writer Thread    │
 └────────────────────────┘
 ```
 
@@ -120,15 +129,15 @@ Capture thread chỉ đọc packet đã qua BPF filter, chuẩn hóa thành `Pac
 
 Parser worker pool dequeue `PacketBatch`, gọi `parseEthernetObservations()` song song, rồi enqueue `ObservationBatch`. Parser workers không cập nhật `AssetStore`.
 
-Aggregator thread là single writer duy nhất của `AssetStore`. Sau khi capture dừng, pipeline close packet queue, drain parser workers, close observation queue, join aggregator, rồi main flow mới lấy asset list để ghi PostgreSQL hoặc render output.
+Aggregator thread là single writer duy nhất của `AssetMonitor` và `AssetStore`. Aggregator detect event trước khi apply observation, đẩy event vào bounded event queue bằng non-blocking push, rồi event writer thread ghi ra các default event sinks (stdout, NDJSON, syslog, database). Sau khi capture dừng, pipeline close packet queue, drain parser workers, close observation queue, join aggregator, close/drain event queue, flush sink, rồi main flow mới lấy asset list để ghi PostgreSQL và render output summary.
 
-Live metrics được ghi ra stderr sau capture, còn stdout vẫn chỉ chứa table/JSON/CSV asset output. Metrics gồm packet captured/enqueued/parsed, observation produced/applied, queue drop, batch drop, high watermark, elapsed time, throughput, backend requested/selected/fallback reason, copied packet count, kernel drop counters, và libpcap/AF_PACKET counters khi backend hỗ trợ.
+Live metrics được ghi ra stderr sau capture, còn stdout mặc định chứa realtime event lines trong lúc chạy, và in summary table/JSON/CSV sau khi dừng. Metrics gồm packet captured/enqueued/parsed, observation produced/applied, event produced/enqueued/drop counters, queue drop, batch drop, high watermark, elapsed time, throughput, backend requested/selected/fallback reason, copied packet count, kernel drop counters, và libpcap/AF_PACKET counters khi backend hỗ trợ.
 
 ## Xử Lý Packet
 
 - Capture backend chỉ chấp nhận Ethernet datalink hiện tại.
 - BPF filter được compile bằng libpcap trước khi đọc packet; `af-packet` attach classic BPF vào socket bằng `SO_ATTACH_FILTER` khi filter được cấu hình.
-- Live capture dùng non-blocking polling với sleep ngắn khi chưa có packet để kiểm tra duration, idle timeout và stop flag ổn định.
+- Live capture dùng non-blocking polling với sleep ngắn khi chưa có packet để kiểm tra stop flag từ tín hiệu SIGINT/SIGTERM ổn định.
 - Parser build `PacketContext` một lần từ `ByteView` để decode Ethernet, IPv4, UDP và transport payload khi hợp lệ, tránh copy full frame trên hot path.
 - Mỗi parser plugin có `match(PacketContext)` để lọc packet trước khi chạy `parse(PacketContext)`.
 - Parser core chỉ biết `ParserInterface` và `ParserRegistry`; built-in plugin registration nằm trong `plugins/parser/BuiltinParserPlugins`.
@@ -163,6 +172,8 @@ Schema nằm ở `db/schema.sql`. Bảng `assets` dùng `mac_address` làm khóa
 - `updated_at` theo thời điểm ghi database.
 
 Writer dùng câu lệnh `INSERT ... ON CONFLICT (mac_address) DO UPDATE` để chạy lại cùng PCAP mà không tạo duplicate MAC.
+
+Bảng `asset_events` tự động lưu lịch sử event khi cấu hình database hợp lệ. Bảng này tách khỏi `assets`: `assets` là trạng thái cuối, còn `asset_events` là timeline những thay đổi như `new_asset`, `mac_changed_for_ip`, `ip_mac_flip_flop`, mismatch ARP/Ethernet hoặc non-local source IP.
 
 ## Docker Và Runtime
 

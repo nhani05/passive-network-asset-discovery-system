@@ -1,7 +1,10 @@
 #include "application/live/LiveCapturePipeline.hpp"
 #include "application/live/BoundedQueue.hpp"
+#include "domain/AssetEvent.hpp"
 #include "infrastructure/output/JsonRenderer.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
@@ -9,6 +12,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -25,6 +29,8 @@ using asset_discovery::live::LivePipelineOptions;
 using asset_discovery::live::formatLivePipelineMetrics;
 using asset_discovery::live::processPacketsConcurrently;
 using asset_discovery::output::renderAssetJson;
+using asset_discovery::asset::AssetEvent;
+using asset_discovery::asset::AssetEventType;
 
 int failures = 0;
 
@@ -242,12 +248,74 @@ void keepsBorrowedPacketLeaseUntilWorkersFinish()
     asset_discovery::capture::BackendStats backendStats;
     backendStats.requestedBackend = "fake";
 
-    const auto result = runLiveCapturePipeline(backend, config, std::nullopt, backendStats, options);
+    const auto result = runLiveCapturePipeline(backend, config, backendStats, options);
 
     expect(!result.error.has_value(), "fake live backend should process without error");
     expect(result.assets.size() == 1, "borrowed packet should parse before lease is released");
     expect(*releases == 1, "borrowed packet owner should release exactly once after pipeline drains");
     expect(result.stats.backendSelected == "fake", "metrics should retain selected backend");
+}
+
+void dispatchesEventsThroughWriterThread()
+{
+    const std::vector<OfflinePacket> packets = {
+        arpPacket("02:42:ac:11:00:07", "192.168.1.15", 15),
+        arpPacket("02:42:ac:11:00:08", "192.168.1.16", 16),
+    };
+    std::atomic<int> newAssetEvents{0};
+    std::atomic<bool> flushed{false};
+
+    LivePipelineOptions options;
+    options.packetBatchSize = 1;
+    options.packetQueueCapacity = 4;
+    options.observationQueueCapacity = 4;
+    options.eventQueueCapacity = 4;
+    options.parserWorkerCount = 1;
+    options.eventCallback = [&](const AssetEvent& event) {
+        if (event.type == AssetEventType::NewAsset) {
+            newAssetEvents.fetch_add(1);
+        }
+    };
+    options.eventFlushCallback = [&]() {
+        flushed.store(true);
+    };
+
+    const auto result = processPacketsConcurrently(packets, options);
+
+    expect(!result.error.has_value(), "pipeline with event writer should process without error");
+    expect(result.assets.size() == 2, "event writer should not change final asset output");
+    expect(newAssetEvents.load() == 2, "event callback should receive new asset events");
+    expect(flushed.load(), "event writer should flush before result is returned");
+    expect(result.stats.eventsProduced == 2, "stats should count produced events");
+    expect(result.stats.eventsEnqueued == 2, "stats should count enqueued events");
+    expect(result.stats.eventQueueHighWatermark >= 1, "stats should record event queue high watermark");
+}
+
+void countsEventQueueDrops()
+{
+    const std::vector<OfflinePacket> packets = {
+        arpPacket("02:42:ac:11:00:09", "192.168.1.17", 17),
+        arpPacket("02:42:ac:11:00:0a", "192.168.1.18", 18),
+        arpPacket("02:42:ac:11:00:0b", "192.168.1.19", 19),
+        arpPacket("02:42:ac:11:00:0c", "192.168.1.20", 20),
+    };
+
+    LivePipelineOptions options;
+    options.packetBatchSize = 4;
+    options.packetQueueCapacity = 4;
+    options.observationQueueCapacity = 4;
+    options.eventQueueCapacity = 1;
+    options.parserWorkerCount = 1;
+    options.eventCallback = [](const AssetEvent&) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    };
+
+    const auto result = processPacketsConcurrently(packets, options);
+
+    expect(!result.error.has_value(), "pipeline should continue when event queue drops");
+    expect(result.assets.size() == 4, "event drops should not drop asset observations");
+    expect(result.stats.eventsProduced == 4, "stats should count all produced events");
+    expect(result.stats.eventsDroppedQueueFull >= 1, "stats should count event queue drops");
 }
 
 void releasesBorrowedPacketLeaseWhenBatchDrops()
@@ -271,6 +339,8 @@ int main()
     parsesPacketsAndAggregatesAssets();
     keepsMetricsSeparateFromJsonAssets();
     keepsBorrowedPacketLeaseUntilWorkersFinish();
+    dispatchesEventsThroughWriterThread();
+    countsEventQueueDrops();
     releasesBorrowedPacketLeaseWhenBatchDrops();
 
     if (failures != 0) {
