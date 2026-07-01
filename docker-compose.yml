@@ -1,10 +1,11 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: asset_discovery
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: ${PGDATABASE:-asset_discovery}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-123456}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d asset_discovery"]
       interval: 5s
@@ -20,13 +21,17 @@ services:
 
   pcap-demo:
     build: .
+    restart: "no"
     environment:
-      PGHOST: ${PGHOST}
-      PGPORT: ${PGPORT:-5432}
-      PGDATABASE: ${PGDATABASE}
-      PGUSER: ${PGUSER}
-      PGPASSWORD: ${PGPASSWORD}
-      PGSSLMODE: ${PGSSLMODE:-require}
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE:-asset_discovery}
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-123456}
+      PGSSLMODE: disable
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./samples:/samples:ro
     entrypoint:

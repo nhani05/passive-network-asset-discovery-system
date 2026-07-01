@@ -17,15 +17,15 @@ Sprint 4 tập trung hoàn thiện bộ bàn giao: Docker runtime, Compose Postg
 ## Lệnh Kiểm Chứng Local
 
 ```sh
-cmake -S . -B build -DASSET_DISCOVERY_REQUIRE_PCAP=OFF
+cmake -S . -B build -DASSET_DISCOVERY_REQUIRE_PCAP=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Kết quả kiểm chứng ngày 2026-06-29:
+Kết quả kiểm chứng ngày 2026-07-01:
 
 ```text
-100% tests passed, 0 tests failed out of 19
+100% tests passed, 0 tests failed out of 26
 ```
 
 Chạy ARP fixture:
@@ -113,7 +113,7 @@ scripts/verify-docker-runtime.sh
 Script này in evidence cho PCAP output và PostgreSQL query.
 Để evidence lặp lại được, script reset bảng demo `assets` trong Compose database trước khi ghi lại fixture.
 
-Kết quả kiểm chứng ngày 2026-06-29:
+Kết quả kiểm chứng ngày 2026-07-01:
 
 ```text
 Docker runtime verification completed

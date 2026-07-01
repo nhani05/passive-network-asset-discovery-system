@@ -18,7 +18,7 @@ Checklist này dùng cho Sprint 4/M4 Delivery.
 ## Lệnh Kiểm Chứng Từ Checkout Sạch
 
 ```sh
-cmake -S . -B build -DASSET_DISCOVERY_REQUIRE_PCAP=OFF
+cmake -S . -B build -DASSET_DISCOVERY_REQUIRE_PCAP=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
