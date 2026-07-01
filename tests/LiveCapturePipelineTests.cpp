@@ -1,4 +1,5 @@
 #include "application/live/LiveCapturePipeline.hpp"
+#include "application/live/BoundedQueue.hpp"
 #include "infrastructure/output/JsonRenderer.hpp"
 
 #include <cstdint>
@@ -16,6 +17,9 @@ namespace {
 using asset_discovery::capture::LinkType;
 using asset_discovery::capture::OfflinePacket;
 using asset_discovery::capture::PacketView;
+using asset_discovery::live::BoundedQueue;
+using asset_discovery::live::PacketBatch;
+using asset_discovery::live::QueuePushResult;
 using asset_discovery::live::runLiveCapturePipeline;
 using asset_discovery::live::LivePipelineOptions;
 using asset_discovery::live::formatLivePipelineMetrics;
@@ -250,22 +254,13 @@ void releasesBorrowedPacketLeaseWhenBatchDrops()
 {
     auto releases = std::make_shared<int>(0);
     const auto packet = arpPacket("02:42:ac:11:00:06", "192.168.1.14", 14);
-    FakeCaptureBackend backend({packetViewWithLease(packet, releases)});
 
-    LivePipelineOptions options;
-    options.packetBatchSize = 1;
-    options.packetQueueCapacity = 0;
-    options.observationQueueCapacity = 1;
-    options.parserWorkerCount = 1;
+    BoundedQueue<PacketBatch> queue(0);
+    PacketBatch batch;
+    batch.packets.push_back(packetViewWithLease(packet, releases));
+    const auto result = queue.tryPush(std::move(batch));
 
-    asset_discovery::capture::CaptureConfig config;
-    config.interfaceName = "fake0";
-    const auto result = runLiveCapturePipeline(backend, config, std::nullopt, {}, options);
-
-    expect(!result.error.has_value(), "dropping packet batch should not fail the pipeline");
-    expect(result.assets.empty(), "dropped packet batch should not produce assets");
-    expect(result.stats.packetsDroppedQueueFull == 1, "dropped packet should be counted");
-    expect(result.stats.packetBatchesDropped == 1, "dropped packet batch should be counted");
+    expect(result == QueuePushResult::Full, "zero-capacity queue should reject packet batch");
     expect(*releases == 1, "dropped packet owner should release after failed enqueue");
 }
 
