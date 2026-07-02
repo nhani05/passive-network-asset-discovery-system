@@ -2,6 +2,9 @@
 
 Tài liệu này hướng dẫn chạy các kịch bản demo kiểm chứng khả năng tự phát hiện lỗi, xác thực tham số đầu vào và cơ chế từ chối các cờ dòng lệnh cũ (đã bị loại bỏ) qua hệ thống custom exceptions và error boundary.
 
+> [!NOTE]
+> Với các lỗi xảy ra sau bước parse CLI như BPF sai hoặc file PCAP không tồn tại, hãy đảm bảo `.env` hoặc biến môi trường PostgreSQL đã được cấu hình trước. Runtime hiện yêu cầu DB config trước khi mở PCAP/live interface.
+
 ---
 
 ## 1. Lỗi Cú Pháp Bộ Lọc BPF (BPF Syntax Error)
@@ -136,3 +139,24 @@ Khi nâng cấp CLI rút gọn, các cờ cũ nếu người dùng cố tình nh
   [CONFIG ERROR] --filter cannot be empty
   ```
 
+### 5.4. Kết hợp `--config` và `--profile`:
+```bash
+./build/asset-discovery --config configs/live.yaml --profile live --interface eth0
+```
+* **Kỳ vọng:** Exit với mã lỗi 2 (`exit code = 2`):
+  ```text
+  [CONFIG ERROR] --config and --profile cannot be combined
+  ```
+
+### 5.5. Config chứa source không hợp lệ:
+Nếu file YAML khai báo `capture.interface` hoặc `capture.pcap`, chương trình sẽ từ chối vì nguồn packet phải luôn nằm trên CLI.
+
+```yaml
+capture:
+  interface: eth0
+```
+
+* **Kỳ vọng:** Config load fail trước khi capture:
+  ```text
+  [CONFIG ERROR] <path>:2: packet sources must be supplied on the CLI
+  ```

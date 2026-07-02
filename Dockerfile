@@ -30,7 +30,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /usr/sbin/nologin asset
 
+RUN mkdir -p /work/logs && chown -R asset:asset /work
+
 COPY --from=build /src/build/asset-discovery /usr/local/bin/asset-discovery
+COPY --from=build --chown=asset:asset /src/configs /work/configs
 
 USER asset
 WORKDIR /work

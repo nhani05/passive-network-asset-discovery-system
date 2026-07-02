@@ -66,10 +66,16 @@ Tài liệu này tổng hợp các lỗi phổ biến thường gặp trong quá
   ```
   Sau đó cập nhật cấu hình file `.env` của bạn: `PGPORT=5433`.
 
-### 3.3. Muốn tắt hoàn toàn ghi DB nhưng chương trình vẫn tự động ghi
-* **Giải pháp khắc phục:** Chương trình tự ghi DB khi thấy biến môi trường PostgreSQL. Hãy xóa biến bằng cách:
+### 3.3. Lỗi thiếu PostgreSQL configuration
+* **Triệu chứng:** Chương trình dừng trước khi đọc PCAP/live capture:
+  ```text
+  [CONFIG ERROR] PostgreSQL configuration is required; set DATABASE_URL or PG*/DB_* values in .env or the process environment
+  ```
+* **Giải pháp khắc phục:** Tạo `.env` hoặc export biến môi trường PostgreSQL trước khi chạy:
   ```bash
-  env -u PGHOST -u PGPORT -u PGDATABASE -u PGUSER -u PGPASSWORD ./build/asset-discovery ...
+  cp .env.example .env
+  docker compose up -d db
+  ./build/asset-discovery --pcap samples/arp.pcap
   ```
 
 ---
@@ -87,4 +93,5 @@ Tài liệu này tổng hợp các lỗi phổ biến thường gặp trong quá
 * **Triệu chứng:** Đầu ra báo metrics `packets_dropped_queue_full` lớn hơn 0.
 * **Giải pháp khắc phục:**
   * Chạy binary được build ở chế độ tối ưu **Release** (xem Phần 2).
-  * Tăng dung lượng hàng đợi đệm của ứng dụng bằng cờ `--event-queue-capacity 5000` hoặc tăng số parser workers trong benchmark.
+  * Tăng dung lượng hàng đợi event trong `configs/live.yaml` bằng `events.queue_capacity`, hoặc override nhanh bằng `--event-queue-capacity 5000`.
+  * Tăng số parser workers trong benchmark nếu đang đo bằng `asset-discovery-live-benchmark`.

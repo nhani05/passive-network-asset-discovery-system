@@ -71,6 +71,30 @@ std::optional<UdpDatagram> decodeUdpDatagram(const Ipv4Packet& ipv4)
     return datagram;
 }
 
+std::optional<TcpSegment> decodeTcpSegment(const Ipv4Packet& ipv4)
+{
+    if (ipv4.protocol != ipv4ProtocolTcp || ipv4.fragmented || ipv4.payload.size < tcpMinimumHeaderLength) {
+        return std::nullopt;
+    }
+
+    const std::size_t headerLength = static_cast<std::size_t>(ipv4.payload[12] >> 4U) * 4U;
+    if (headerLength < tcpMinimumHeaderLength || ipv4.payload.size < headerLength) {
+        return std::nullopt;
+    }
+
+    TcpSegment segment;
+    segment.sourcePort = readBigEndianUInt16(ipv4.payload, 0);
+    segment.destinationPort = readBigEndianUInt16(ipv4.payload, 2);
+    segment.headerLength = headerLength;
+    const auto flags = ipv4.payload[13];
+    segment.fin = (flags & 0x01U) != 0U;
+    segment.syn = (flags & 0x02U) != 0U;
+    segment.rst = (flags & 0x04U) != 0U;
+    segment.ack = (flags & 0x10U) != 0U;
+    segment.payload = ipv4.payload.subview(headerLength);
+    return segment;
+}
+
 } // namespace
 
 PacketContext buildPacketContext(
@@ -98,11 +122,17 @@ PacketContext buildPacketContext(
     context.ipv4 = std::move(*ipv4);
 
     const auto udp = decodeUdpDatagram(*context.ipv4);
-    if (!udp.has_value()) {
+    if (udp.has_value()) {
+        context.udp = std::move(*udp);
+        context.transportPayload = context.udp->payload;
         return context;
     }
-    context.udp = std::move(*udp);
-    context.transportPayload = context.udp->payload;
+
+    const auto tcp = decodeTcpSegment(*context.ipv4);
+    if (tcp.has_value()) {
+        context.tcp = std::move(*tcp);
+        context.transportPayload = context.tcp->payload;
+    }
     return context;
 }
 

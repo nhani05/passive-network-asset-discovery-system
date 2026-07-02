@@ -88,4 +88,4 @@ export ASSET_DISCOVERY_EVENTS_JSON=custom_logs/events.ndjson
 sudo ./build/asset-discovery --interface eth0
 ```
 
-Use `--local-net <cidr>` and `--ignore-net <cidr>` to control `non_local_source_ip` detection. Use `--event-rate-limit`, `--flip-flop-window`, and `--reappearance-threshold` to tune detector behavior.
+Use `configs/default.yaml`, `--config <file>`, or `--profile <name>` for normal event/network policy such as `network.local_nets`, `network.ignore_nets`, `events.rate_limit_sec`, `events.flip_flop_window_sec`, and `events.reappearance_threshold_sec`. The matching CLI flags remain available as advanced overrides for quick tests.

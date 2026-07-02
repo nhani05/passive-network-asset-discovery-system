@@ -67,4 +67,4 @@ CREATE TABLE IF NOT EXISTS assets (
 );
 ```
 
-Phần triển khai hiện tại ghi PostgreSQL qua `psql` bằng `--db-url <connection-string>`, `DATABASE_URL`, hoặc các biến môi trường chuẩn của `psql` (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`) được load từ file `.env` trong thư mục hiện tại.
+Phần triển khai hiện tại ghi PostgreSQL qua `psql` bằng `.env`, `DATABASE_URL`, các biến môi trường chuẩn của `psql` (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSERVICE`), hoặc alias `DB_*`. CLI không hỗ trợ `--db-url` để tránh lộ secret qua shell history hoặc process list.

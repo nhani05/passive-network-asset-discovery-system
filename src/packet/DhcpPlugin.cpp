@@ -2,6 +2,7 @@
 
 #include <iomanip>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -53,6 +54,69 @@ std::string formatIpv4Address(ByteView bytes, std::size_t offset)
     return output.str();
 }
 
+std::string formatHexBytes(ByteView bytes, std::size_t offset, std::size_t length)
+{
+    std::ostringstream output;
+    output << std::hex << std::setfill('0');
+    for (std::size_t i = 0; i < length; ++i) {
+        if (i > 0) {
+            output << ':';
+        }
+        output << std::setw(2) << static_cast<int>(bytes[offset + i]);
+    }
+    return output.str();
+}
+
+std::string formatDecimalList(ByteView bytes, std::size_t offset, std::size_t length)
+{
+    std::ostringstream output;
+    for (std::size_t i = 0; i < length; ++i) {
+        if (i > 0) {
+            output << ',';
+        }
+        output << static_cast<int>(bytes[offset + i]);
+    }
+    return output.str();
+}
+
+std::string joinOptions(const std::set<int>& options)
+{
+    std::ostringstream output;
+    bool first = true;
+    for (const auto option : options) {
+        if (!first) {
+            output << ',';
+        }
+        output << option;
+        first = false;
+    }
+    return output.str();
+}
+
+std::string messageTypeName(std::uint8_t messageType)
+{
+    switch (messageType) {
+    case 1:
+        return "discover";
+    case 2:
+        return "offer";
+    case 3:
+        return "request";
+    case 4:
+        return "decline";
+    case 5:
+        return "ack";
+    case 6:
+        return "nak";
+    case 7:
+        return "release";
+    case 8:
+        return "inform";
+    default:
+        return "unknown";
+    }
+}
+
 std::optional<AssetObservation> parseDhcpPayload(
     ByteView payload,
     ObservationTimestamp timestamp,
@@ -71,17 +135,20 @@ std::optional<AssetObservation> parseDhcpPayload(
     observation.eventType = ObservationEventType::Update;
     observation.confidence = 1.0F;
     observation.timestamp = timestamp;
-    observation.metadata["udp.source_port"] = std::to_string(udp.sourcePort);
-    observation.metadata["udp.destination_port"] = std::to_string(udp.destinationPort);
+    addObservedMetadata(observation, "udp.source_port", std::to_string(udp.sourcePort));
+    addObservedMetadata(observation, "udp.destination_port", std::to_string(udp.destinationPort));
 
     const auto yiaddr = formatIpv4Address(payload, 16);
     const auto ciaddr = formatIpv4Address(payload, 12);
+    addObservedMetadata(observation, "dhcp.ciaddr", ciaddr);
+    addObservedMetadata(observation, "dhcp.yiaddr", yiaddr);
     if (yiaddr != "0.0.0.0") {
         observation.ipAddress = yiaddr;
     } else if (ciaddr != "0.0.0.0") {
         observation.ipAddress = ciaddr;
     }
 
+    std::set<int> optionsSeen;
     std::size_t offset = dhcpFixedHeaderLength + 4;
     while (offset < payload.size) {
         const std::uint8_t option = payload[offset++];
@@ -98,16 +165,42 @@ std::optional<AssetObservation> parseDhcpPayload(
         if (payload.size - offset < length) {
             return std::nullopt;
         }
+        optionsSeen.insert(static_cast<int>(option));
         if (option == 12) {
             observation.hostname = std::string(payload.begin() + static_cast<std::ptrdiff_t>(offset),
                 payload.begin() + static_cast<std::ptrdiff_t>(offset + length));
-            observation.metadata["dhcp.option.hostname"] = *observation.hostname;
+            addObservedMetadata(observation, "dhcp.option.hostname", *observation.hostname);
         } else if (option == 50 && length == 4 && !observation.ipAddress.has_value()) {
-            observation.ipAddress = formatIpv4Address(payload, offset);
+            const auto requestedIp = formatIpv4Address(payload, offset);
+            observation.ipAddress = requestedIp;
+            addObservedMetadata(observation, "dhcp.requested_ip", requestedIp);
+        } else if (option == 50 && length == 4) {
+            addObservedMetadata(observation, "dhcp.requested_ip", formatIpv4Address(payload, offset));
         } else if (option == 53 && length == 1) {
-            observation.metadata["dhcp.message_type"] = std::to_string(payload[offset]);
+            addObservedMetadata(observation, "dhcp.message_type", std::to_string(payload[offset]));
+            addObservedMetadata(observation, "dhcp.message_type_name", messageTypeName(payload[offset]));
+        } else if (option == 54 && length == 4) {
+            addObservedMetadata(observation, "dhcp.server_identifier", formatIpv4Address(payload, offset));
+        } else if (option == 51 && length == 4) {
+            addObservedMetadata(observation, "dhcp.lease_time_seconds", std::to_string(readBigEndianUInt32(payload, offset)));
+        } else if (option == 58 && length == 4) {
+            addObservedMetadata(observation, "dhcp.renewal_time_seconds", std::to_string(readBigEndianUInt32(payload, offset)));
+        } else if (option == 59 && length == 4) {
+            addObservedMetadata(observation, "dhcp.rebinding_time_seconds", std::to_string(readBigEndianUInt32(payload, offset)));
+        } else if (option == 60) {
+            addObservedMetadata(observation,
+                "dhcp.vendor_class_identifier",
+                std::string(payload.begin() + static_cast<std::ptrdiff_t>(offset),
+                    payload.begin() + static_cast<std::ptrdiff_t>(offset + length)));
+        } else if (option == 61) {
+            addObservedMetadata(observation, "dhcp.client_identifier", formatHexBytes(payload, offset, length));
+        } else if (option == 55) {
+            addObservedMetadata(observation, "dhcp.parameter_request_list", formatDecimalList(payload, offset, length));
         }
         offset += length;
+    }
+    if (!optionsSeen.empty()) {
+        addObservedMetadata(observation, "dhcp.options_seen", joinOptions(optionsSeen));
     }
 
     if (observation.macAddress == "00:00:00:00:00:00") {

@@ -31,9 +31,8 @@ docker run --rm --user 0:0 --net=host --cap-add=NET_ADMIN --cap-add=NET_RAW \
   -e DB_USER=postgres \
   -e DB_PASSWORD=123456 \
   passive-asset-discovery \
-  --interface eth0 \
-  --filter "arp or udp port 67 or udp port 68" \
-  --output table
+  --profile live \
+  --interface eth0
 ```
 
 * **Thử nghiệm:** Sang Terminal 2 của máy host chạy ping hoặc arping để sinh traffic mạng (tương tự Phần 7).
@@ -67,7 +66,7 @@ CAPTURE_INTERFACE=eth0 CAPTURE_FILTER="arp" docker compose --profile live run --
 | Biến môi trường | Giá trị mặc định | Vai trò |
 | :--- | :--- | :--- |
 | `CAPTURE_INTERFACE` | `eth0` | Card mạng trên host dùng để capture |
-| `CAPTURE_FILTER` | `arp or udp port 67 or udp port 68` | Biểu thức bộ lọc BPF |
+| `CAPTURE_FILTER` | `arp or udp port 67 or udp port 68` | CLI override nhanh cho BPF filter; mặc định policy nằm trong `configs/live.yaml` |
 
 ---
 

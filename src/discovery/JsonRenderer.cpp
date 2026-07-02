@@ -64,6 +64,20 @@ void appendStringArray(std::ostringstream& output, const std::set<std::string>& 
     output << "]";
 }
 
+void appendStringVector(std::ostringstream& output, const std::vector<std::string>& values)
+{
+    output << "[";
+    bool first = true;
+    for (const auto& value : values) {
+        if (!first) {
+            output << ", ";
+        }
+        output << "\"" << escapeJsonString(value) << "\"";
+        first = false;
+    }
+    output << "]";
+}
+
 void appendSourceArray(std::ostringstream& output, const std::set<std::string>& sources)
 {
     output << "[";
@@ -78,7 +92,74 @@ void appendSourceArray(std::ostringstream& output, const std::set<std::string>& 
     output << "]";
 }
 
+void appendMetadataRecords(
+    std::ostringstream& output,
+    const std::map<std::string, parser::MetadataRecord>& records)
+{
+    output << "{";
+    bool first = true;
+    for (const auto& item : records) {
+        const auto& record = item.second;
+        if (!first) {
+            output << ", ";
+        }
+        output << "\"" << escapeJsonString(item.first) << "\": {";
+        output << "\"key\": \"" << escapeJsonString(record.key) << "\", ";
+        output << "\"values\": ";
+        appendStringArray(output, record.values);
+        output << ", \"source\": \"" << escapeJsonString(record.source) << "\", ";
+        output << "\"confidence_category\": \"" << escapeJsonString(record.confidenceCategory) << "\", ";
+        output << "\"first_seen\": \"" << escapeJsonString(asset::formatTimestamp(record.firstSeen)) << "\", ";
+        output << "\"last_seen\": \"" << escapeJsonString(asset::formatTimestamp(record.lastSeen)) << "\"";
+        output << "}";
+        first = false;
+    }
+    output << "}";
+}
+
+void appendDerivedHints(std::ostringstream& output, const std::vector<parser::DerivedHint>& hints)
+{
+    output << "[";
+    bool first = true;
+    for (const auto& hint : hints) {
+        if (!first) {
+            output << ", ";
+        }
+        output << "{";
+        output << "\"category\": \"" << escapeJsonString(hint.category) << "\", ";
+        output << "\"value\": \"" << escapeJsonString(hint.value) << "\", ";
+        output << "\"confidence\": \"" << escapeJsonString(hint.confidence) << "\", ";
+        output << "\"reason\": \"" << escapeJsonString(hint.reason) << "\", ";
+        output << "\"evidence_keys\": ";
+        appendStringVector(output, hint.evidenceKeys);
+        output << "}";
+        first = false;
+    }
+    output << "]";
+}
+
 } // namespace
+
+std::string renderObservedMetadataJson(const parser::StructuredMetadata& metadata)
+{
+    std::ostringstream output;
+    appendMetadataRecords(output, metadata.observed);
+    return output.str();
+}
+
+std::string renderReferenceMetadataJson(const parser::StructuredMetadata& metadata)
+{
+    std::ostringstream output;
+    appendMetadataRecords(output, metadata.reference);
+    return output.str();
+}
+
+std::string renderDerivedHintsJson(const parser::StructuredMetadata& metadata)
+{
+    std::ostringstream output;
+    appendDerivedHints(output, metadata.derivedHints);
+    return output.str();
+}
 
 std::string renderAssetJson(const std::vector<asset::Asset>& assets)
 {
@@ -102,6 +183,15 @@ std::string renderAssetJson(const std::vector<asset::Asset>& assets)
         output << "    \"last_seen\": \"" << escapeJsonString(asset::formatTimestamp(asset.lastSeen)) << "\",\n";
         output << "    \"discovery_sources\": ";
         appendSourceArray(output, asset.sources);
+        output << ",\n";
+        output << "    \"observed_metadata\": ";
+        appendMetadataRecords(output, asset.structuredMetadata.observed);
+        output << ",\n";
+        output << "    \"reference_metadata\": ";
+        appendMetadataRecords(output, asset.structuredMetadata.reference);
+        output << ",\n";
+        output << "    \"derived_hints\": ";
+        appendDerivedHints(output, asset.structuredMetadata.derivedHints);
         output << "\n";
         output << "  }";
         if (index + 1 < assets.size()) {

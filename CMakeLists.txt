@@ -42,6 +42,9 @@ add_library(asset_discovery_parser_plugins
     src/packet/BuiltinParserPlugins.cpp
     src/packet/DhcpPlugin.cpp
     src/packet/DnsPlugin.cpp
+    src/packet/NetbiosPlugin.cpp
+    src/packet/SsdpPlugin.cpp
+    src/packet/TcpPlugin.cpp
 )
 
 target_include_directories(asset_discovery_parser_plugins PUBLIC include)
@@ -108,6 +111,18 @@ add_library(asset_discovery_cli
 
 target_include_directories(asset_discovery_cli PUBLIC include)
 target_link_libraries(asset_discovery_cli PUBLIC asset_discovery_domain)
+target_compile_definitions(asset_discovery_cli PUBLIC ASSET_DISCOVERY_VERSION="${PROJECT_VERSION}")
+
+add_library(asset_discovery_config
+    src/config/AppConfig.cpp
+)
+
+target_include_directories(asset_discovery_config PUBLIC include)
+target_link_libraries(asset_discovery_config PUBLIC
+    asset_discovery_capture
+    asset_discovery_cli
+    asset_discovery_domain
+)
 
 add_executable(asset-discovery
     src/main.cpp
@@ -117,6 +132,7 @@ target_include_directories(asset-discovery PRIVATE include)
 target_link_libraries(asset-discovery PRIVATE
     asset_discovery_capture
     asset_discovery_cli
+    asset_discovery_config
     asset_discovery_domain
     asset_discovery_live
     asset_discovery_monitor
