@@ -3,6 +3,7 @@
 #include "pnad/discovery/AssetStore.hpp"
 #include "pnad/capture/PacketCapture.hpp"
 #include "pnad/cli/Arguments.hpp"
+#include "pnad/config/AppConfig.hpp"
 #include "pnad/discovery/CsvRenderer.hpp"
 #include "pnad/event/EventSink.hpp"
 #include "pnad/discovery/JsonRenderer.hpp"
@@ -190,24 +191,18 @@ asset_discovery::asset::AssetStore buildAssetStore(
 }
 
 asset_discovery::monitor::AssetMonitorConfig makeMonitorConfig(
-    const asset_discovery::cli::Options& options)
+    const asset_discovery::config::AppConfig& config)
 {
-    asset_discovery::monitor::AssetMonitorConfig config;
-    if (options.interfaceName.has_value()) {
-        config.detector.interfaceName = *options.interfaceName;
+    asset_discovery::monitor::AssetMonitorConfig monitorConfig;
+    if (config.capture.interfaceName.has_value()) {
+        monitorConfig.detector.interfaceName = *config.capture.interfaceName;
     }
-    if (options.eventRateLimitSeconds.has_value()) {
-        config.eventRateLimitSeconds = *options.eventRateLimitSeconds;
-    }
-    if (options.flipFlopWindowSeconds.has_value()) {
-        config.detector.flipFlopWindowSeconds = *options.flipFlopWindowSeconds;
-    }
-    if (options.reappearanceThresholdSeconds.has_value()) {
-        config.detector.reappearanceThresholdSeconds = *options.reappearanceThresholdSeconds;
-    }
-    config.detector.localNetworks = options.localNetworks;
-    config.detector.ignoredNetworks = options.ignoredNetworks;
-    return config;
+    monitorConfig.eventRateLimitSeconds = config.events.rateLimitSeconds;
+    monitorConfig.detector.flipFlopWindowSeconds = config.events.flipFlopWindowSeconds;
+    monitorConfig.detector.reappearanceThresholdSeconds = config.events.reappearanceThresholdSeconds;
+    monitorConfig.detector.localNetworks = config.network.localNetworks;
+    monitorConfig.detector.ignoredNetworks = config.network.ignoredNetworks;
+    return monitorConfig;
 }
 
 struct EventDispatcherResult {
@@ -241,13 +236,13 @@ std::optional<std::string> ensureEventLogParentDirectory(const std::string& path
 }
 
 EventDispatcherResult buildEventDispatcher(
-    const std::optional<std::string>& databaseUrl)
+    const std::optional<std::string>& databaseUrl,
+    const std::string& ndjsonPath)
 {
     auto dispatcher = std::make_unique<asset_discovery::output::EventDispatcher>();
 
     dispatcher->addSink(std::make_unique<asset_discovery::output::ConsoleEventSink>(std::cout));
 
-    const auto ndjsonPath = defaultEventNdjsonPath();
     if (const auto error = ensureEventLogParentDirectory(ndjsonPath); error.has_value()) {
         return {nullptr, *error};
     }
@@ -271,10 +266,10 @@ EventDispatcherResult buildEventDispatcher(
 
 std::vector<asset_discovery::asset::Asset> processOfflinePackets(
     const std::vector<asset_discovery::capture::OfflinePacket>& packets,
-    const asset_discovery::cli::Options& options,
+    const asset_discovery::config::AppConfig& config,
     asset_discovery::output::EventDispatcher* eventDispatcher)
 {
-    auto monitorConfig = makeMonitorConfig(options);
+    auto monitorConfig = makeMonitorConfig(config);
     asset_discovery::monitor::AssetMonitor monitor(
         std::move(monitorConfig),
         eventDispatcher != nullptr && !eventDispatcher->empty()
@@ -329,12 +324,11 @@ std::string renderAssets(
 }
 
 void writeAndRenderAssets(
-    const asset_discovery::cli::Options& options,
+    const asset_discovery::config::AppConfig& config,
     const std::vector<asset_discovery::asset::Asset>& assets)
 {
-    const auto databaseUrl = resolveDatabaseUrl();
-    writeDatabaseIfRequested(databaseUrl, assets);
-    std::cout << renderAssets(assets, options.outputFormat);
+    writeDatabaseIfRequested(config.database.url, assets);
+    std::cout << renderAssets(assets, config.output.format);
 }
 
 } // namespace
@@ -359,17 +353,33 @@ int main(int argc, char* argv[])
             return 0;
         }
 
+        if (result.options.versionRequested) {
+            std::cout << asset_discovery::cli::versionText();
+            return 0;
+        }
+
         if (result.error.has_value()) {
             throw asset_discovery::ConfigError(*result.error);
         }
 
-        const auto captureMode = *result.options.captureMode;
         const auto databaseUrl = resolveDatabaseUrl();
-        if (!hasDatabaseConfiguration(databaseUrl)) {
-            throw asset_discovery::ConfigError("PostgreSQL configuration is required; set DATABASE_URL or PG*/DB_* values in .env or the process environment");
-        }
+        asset_discovery::config::RuntimeEnvironment runtimeEnvironment;
+        runtimeEnvironment.databaseUrl = databaseUrl;
+        runtimeEnvironment.databaseConfigured = hasDatabaseConfiguration(databaseUrl);
+        runtimeEnvironment.eventNdjsonPath = defaultEventNdjsonPath();
 
-        auto eventDispatcherResult = buildEventDispatcher(databaseUrl);
+        const auto configResult = asset_discovery::config::buildAppConfig(
+            result.options,
+            runtimeEnvironment);
+        if (configResult.error.has_value()) {
+            throw asset_discovery::ConfigError(*configResult.error);
+        }
+        const auto& appConfig = configResult.config;
+        const auto captureMode = asset_discovery::config::captureMode(appConfig);
+
+        auto eventDispatcherResult = buildEventDispatcher(
+            appConfig.database.url,
+            appConfig.eventNdjsonPath);
         if (eventDispatcherResult.error.has_value()) {
             throw asset_discovery::DatabaseError(*eventDispatcherResult.error);
         }
@@ -383,20 +393,20 @@ int main(int argc, char* argv[])
             }
 
             const auto pcapResult = backend.readPcapFile(
-                *result.options.pcapPath,
-                result.options.packetFilter);
+                *appConfig.capture.pcapPath,
+                appConfig.capture.packetFilter);
             if (pcapResult.error.has_value()) {
                 throw asset_discovery::PcapError(*pcapResult.error);
             }
 
             const auto assets = processOfflinePackets(
                 pcapResult.packets,
-                result.options,
+                appConfig,
                 eventDispatcher && !eventDispatcher->empty() ? eventDispatcher.get() : nullptr);
-            writeAndRenderAssets(result.options, assets);
+            writeAndRenderAssets(appConfig, assets);
             return 0;
         } else if (captureMode == asset_discovery::cli::CaptureMode::Live) {
-            auto backendResult = asset_discovery::capture::createCaptureBackend(result.options.captureBackend);
+            auto backendResult = asset_discovery::capture::createCaptureBackend(appConfig.capture.backend);
             if (backendResult.error.has_value() || !backendResult.backend) {
                 throw asset_discovery::CaptureError(backendResult.error.value_or("capture backend could not be created"));
             }
@@ -412,16 +422,14 @@ int main(int argc, char* argv[])
             const SignalHandler previousTerminateHandler = std::signal(SIGTERM, handleLiveCaptureSignal);
 
             asset_discovery::capture::CaptureConfig captureConfig;
-            captureConfig.interfaceName = *result.options.interfaceName;
+            captureConfig.interfaceName = *appConfig.capture.interfaceName;
             captureConfig.liveOptions = liveOptions;
-            captureConfig.packetFilter = result.options.packetFilter;
-            captureConfig.requestedBackend = result.options.captureBackend;
+            captureConfig.packetFilter = appConfig.capture.packetFilter;
+            captureConfig.requestedBackend = appConfig.capture.backend;
 
             asset_discovery::live::LivePipelineOptions livePipelineOptions;
-            livePipelineOptions.monitorConfig = makeMonitorConfig(result.options);
-            if (result.options.eventQueueCapacity.has_value()) {
-                livePipelineOptions.eventQueueCapacity = static_cast<std::size_t>(*result.options.eventQueueCapacity);
-            }
+            livePipelineOptions.monitorConfig = makeMonitorConfig(appConfig);
+            livePipelineOptions.eventQueueCapacity = static_cast<std::size_t>(appConfig.events.queueCapacity);
             if (eventDispatcher && !eventDispatcher->empty()) {
                 livePipelineOptions.eventCallback = [&eventDispatcher](const asset_discovery::asset::AssetEvent& event) {
                     eventDispatcher->dispatch(event);
@@ -457,7 +465,7 @@ int main(int argc, char* argv[])
             }
 
             const auto assets = liveResult.assets;
-            writeAndRenderAssets(result.options, assets);
+            writeAndRenderAssets(appConfig, assets);
             return 0;
         }
     }

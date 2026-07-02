@@ -24,6 +24,8 @@ enum class CaptureMode {
 struct Options {
     std::optional<std::string> pcapPath;
     std::optional<std::string> interfaceName;
+    std::optional<std::string> configPath;
+    std::optional<std::string> profileName;
     std::optional<CaptureMode> captureMode;
     std::optional<std::string> packetFilter;
     std::optional<int> eventRateLimitSeconds;
@@ -33,8 +35,11 @@ struct Options {
     std::vector<asset::Ipv4Network> localNetworks;
     std::vector<asset::Ipv4Network> ignoredNetworks;
     capture::CaptureBackendSelection captureBackend = capture::CaptureBackendSelection::Auto;
-    OutputFormat outputFormat = OutputFormat::Table;
+    OutputFormat outputFormat = OutputFormat::Json;
+    bool captureBackendProvided = false;
+    bool outputFormatProvided = false;
     bool helpRequested = false;
+    bool versionRequested = false;
 };
 
 // Parse errors are returned as text so main can choose how to display them.
@@ -46,6 +51,7 @@ struct ParseResult {
 // Parse argv-style arguments, excluding the executable name.
 ParseResult parseArguments(const std::vector<std::string>& args);
 std::string usageText(const std::string& executableName);
+std::string versionText();
 std::string outputFormatName(OutputFormat format);
 
 } // namespace asset_discovery::cli
