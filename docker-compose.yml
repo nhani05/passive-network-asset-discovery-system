@@ -41,7 +41,7 @@ services:
       - |
         for attempt in $$(seq 1 30); do
           if pg_isready -h "$${PGHOST}" -p "$${PGPORT}" -U "$${PGUSER}" -d "$${PGDATABASE}" >/dev/null 2>&1; then
-            asset-discovery --pcap /samples/multi-asset.pcap --filter "arp or udp port 67 or udp port 68" --output table
+            asset-discovery --profile pcap --pcap /samples/multi-asset.pcap --output table
             status=$$?
             if [ "$$status" -ne 0 ]; then
               exit "$$status"
@@ -66,13 +66,19 @@ services:
     environment:
       CAPTURE_INTERFACE: ${CAPTURE_INTERFACE:-eth0}
       CAPTURE_FILTER: ${CAPTURE_FILTER:-arp or udp port 67 or udp port 68}
+      PGHOST: ${PGHOST:-localhost}
+      PGPORT: ${PGPORT:-5432}
+      PGDATABASE: ${PGDATABASE:-asset_discovery}
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-123456}
+      PGSSLMODE: disable
     cap_add:
       - NET_ADMIN
       - NET_RAW
     command:
       - |
         set -eu
-        exec asset-discovery --interface "${CAPTURE_INTERFACE}" --filter "${CAPTURE_FILTER}" --output table
+        exec asset-discovery --profile live --interface "${CAPTURE_INTERFACE}" --filter "${CAPTURE_FILTER}"
 
 networks:
   default:

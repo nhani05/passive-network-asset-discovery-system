@@ -98,6 +98,12 @@ add_executable(arguments-tests
 target_link_libraries(arguments-tests PRIVATE asset_discovery_cli)
 add_test(NAME arguments-tests COMMAND arguments-tests)
 
+add_executable(app-config-tests
+    AppConfigTests.cpp
+)
+target_link_libraries(app-config-tests PRIVATE asset_discovery_config)
+add_test(NAME app-config-tests COMMAND app-config-tests)
+
 add_executable(capture-backend-tests
     CaptureBackendTests.cpp
 )

@@ -9,6 +9,7 @@ namespace {
 using asset_discovery::capture::CaptureBackendSelection;
 using asset_discovery::cli::parseArguments;
 using asset_discovery::cli::usageText;
+using asset_discovery::cli::versionText;
 
 int failures = 0;
 
@@ -90,21 +91,43 @@ void parsesRetainedLiveControls()
     expect(result.options.ignoredNetworks.size() == 1, "ignored network should be stored");
 }
 
-void rejectsMissingAndConflictingInputs()
+void defersSourceSelectionValidation()
 {
-    expectErrorContains({}, "provide exactly one input source", "missing input should be rejected");
-    expectErrorContains(
-        {"--pcap", "samples/arp.pcap", "--interface", "eth0"},
-        "provide exactly one input source",
-        "conflicting inputs should be rejected");
+    const auto missing = parseArguments({});
+    expect(!missing.error.has_value(), "missing source should be validated after config merge");
+    expect(!missing.options.captureMode.has_value(), "missing source should not select capture mode");
+
+    const auto conflicting = parseArguments({"--pcap", "samples/arp.pcap", "--interface", "eth0"});
+    expect(!conflicting.error.has_value(), "conflicting sources should be validated after config merge");
+    expect(!conflicting.options.captureMode.has_value(), "conflicting sources should not select capture mode");
+
+    const auto backendWithPcap = parseArguments({"--pcap", "samples/arp.pcap", "--capture-backend", "pcap"});
+    expect(!backendWithPcap.error.has_value(), "backend/source relationship should be validated after config merge");
+    expect(backendWithPcap.options.captureBackendProvided, "backend presence should be tracked");
 }
 
-void rejectsCaptureBackendForOfflinePcap()
+void parsesConfigProfileAndVersion()
+{
+    const auto config = parseArguments({"--config", "configs/live.yaml", "--interface", "eth0"});
+    expect(!config.error.has_value(), "--config should parse");
+    expect(config.options.configPath == "configs/live.yaml", "config path should be stored");
+
+    const auto profile = parseArguments({"--profile", "live", "--interface", "eth0"});
+    expect(!profile.error.has_value(), "--profile should parse");
+    expect(profile.options.profileName == "live", "profile name should be stored");
+
+    const auto version = parseArguments({"--version"});
+    expect(!version.error.has_value(), "--version should parse without input");
+    expect(version.options.versionRequested, "version request should be tracked");
+    expect(versionText().find("asset-discovery ") == 0, "version text should include executable name");
+}
+
+void rejectsConfigProfileConflict()
 {
     expectErrorContains(
-        {"--pcap", "samples/arp.pcap", "--capture-backend", "pcap"},
-        "--capture-backend is only valid",
-        "--capture-backend should be live-only");
+        {"--config", "configs/live.yaml", "--profile", "live", "--interface", "eth0"},
+        "--config and --profile cannot be combined",
+        "config/profile conflict should be rejected");
 }
 
 void rejectsInvalidRetainedControls()
@@ -194,8 +217,14 @@ void rejectsRemovedDatabaseAndEventFlags()
 void usageShowsSimplifiedForms()
 {
     const auto usage = usageText("asset-discovery");
-    expect(usage.find("--interface <name> [--filter") != std::string::npos,
+    expect(usage.find("--interface <name> [--config <file>|--profile <name>]") != std::string::npos,
         "usage should show implicit live form");
+    expect(usage.find("Common options:") != std::string::npos,
+        "usage should show common options section");
+    expect(usage.find("Advanced overrides:") != std::string::npos,
+        "usage should show advanced overrides section");
+    expect(usage.find("--version") != std::string::npos,
+        "usage should show version option");
     expect(usage.find("--duration") == std::string::npos,
         "usage should not mention --duration");
     expect(usage.find("--events-json") == std::string::npos,
@@ -211,8 +240,9 @@ int main()
     parsesPcapMode();
     parsesImplicitLiveMode();
     parsesRetainedLiveControls();
-    rejectsMissingAndConflictingInputs();
-    rejectsCaptureBackendForOfflinePcap();
+    defersSourceSelectionValidation();
+    parsesConfigProfileAndVersion();
+    rejectsConfigProfileConflict();
     rejectsInvalidRetainedControls();
     rejectsRemovedLiveFlags();
     rejectsRemovedDatabaseAndEventFlags();

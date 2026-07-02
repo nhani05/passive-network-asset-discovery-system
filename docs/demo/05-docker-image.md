@@ -22,13 +22,24 @@ docker build -t passive-asset-discovery .
 
 ## 2. Phân Tích PCAP Offline Bằng Docker Container
 
-Để container có thể đọc được file PCAP nằm trên host, chúng ta mount thư mục `samples/` của host vào container ở chế độ chỉ đọc (`ro`).
+Để container có thể đọc được file PCAP nằm trên host, chúng ta mount thư mục `samples/` của host vào container ở chế độ chỉ đọc (`ro`). Runtime hiện yêu cầu PostgreSQL configuration, vì vậy hãy khởi động service `db` và chạy container trong network `asset-net`:
+
+```bash
+docker compose up -d db
+```
 
 ### 2.1. Đọc file PCAP ARP đơn giản (Đầu ra Bảng)
 ```bash
 docker run --rm \
+  --network asset-net \
   -v "$PWD/samples:/samples:ro" \
+  -e DB_HOST=db \
+  -e DB_PORT=5432 \
+  -e DB_NAME=asset_discovery \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=123456 \
   passive-asset-discovery \
+  --profile pcap \
   --pcap /samples/arp.pcap \
   --output table
 ```
@@ -37,8 +48,15 @@ docker run --rm \
 ### 2.2. Đọc file PCAP đa thiết bị (Đầu ra JSON)
 ```bash
 docker run --rm \
+  --network asset-net \
   -v "$PWD/samples:/samples:ro" \
+  -e DB_HOST=db \
+  -e DB_PORT=5432 \
+  -e DB_NAME=asset_discovery \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=123456 \
   passive-asset-discovery \
+  --profile pcap \
   --pcap /samples/multi-asset.pcap \
   --output json
 ```
@@ -46,8 +64,15 @@ docker run --rm \
 ### 2.3. Đọc file PCAP áp dụng bộ lọc BPF
 ```bash
 docker run --rm \
+  --network asset-net \
   -v "$PWD/samples:/samples:ro" \
+  -e DB_HOST=db \
+  -e DB_PORT=5432 \
+  -e DB_NAME=asset_discovery \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=123456 \
   passive-asset-discovery \
+  --profile pcap \
   --pcap /samples/multi-asset.pcap \
   --filter "arp" \
   --output table
@@ -56,8 +81,15 @@ docker run --rm \
 ### 2.4. Đọc file PCAP (Đầu ra CSV)
 ```bash
 docker run --rm \
+  --network asset-net \
   -v "$PWD/samples:/samples:ro" \
+  -e DB_HOST=db \
+  -e DB_PORT=5432 \
+  -e DB_NAME=asset_discovery \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=123456 \
   passive-asset-discovery \
+  --profile pcap \
   --pcap /samples/multi-asset.pcap \
   --output csv
 ```
@@ -73,16 +105,16 @@ docker run --rm passive-asset-discovery --help
 
 Để container chạy ứng dụng có thể kết nối với PostgreSQL đang chạy trên host/container khác, chúng cần chung mạng Docker.
 
-Giả sử PostgreSQL đang chạy trong mạng Docker Compose `asset-net` (được tạo tự động bởi Compose hoặc tạo thủ công):
+Giả sử PostgreSQL đang chạy trong mạng Docker Compose `asset-net`:
 
 ```bash
 # Đảm bảo database đang chạy
 docker compose up -d db
 
-# Chạy container app trong cùng mạng của Compose (thông thường là <folder_name>_default)
+# Chạy container app trong cùng mạng của Compose
 # Truyền thông tin kết nối qua các biến môi trường DB_*
 docker run --rm \
-  --network passive-network-asset-discovery-system_default \
+  --network asset-net \
   -v "$PWD/samples:/samples:ro" \
   -e DB_HOST=db \
   -e DB_PORT=5432 \
@@ -90,8 +122,8 @@ docker run --rm \
   -e DB_USER=postgres \
   -e DB_PASSWORD=123456 \
   passive-asset-discovery \
+  --profile pcap \
   --pcap /samples/multi-asset.pcap \
-  --filter "arp or udp port 67 or udp port 68" \
   --output json
 
 # Kiểm tra dữ liệu trong DB

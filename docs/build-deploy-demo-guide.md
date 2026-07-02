@@ -1,6 +1,6 @@
 # Hướng Dẫn Build, Deploy, Và Demo Chi Tiết (Mục Lục)
 
-Tài liệu hướng dẫn demo đã được tổ chức lại và chia nhỏ thành **12 phần con** để giúp quá trình theo dõi, thực thi các kịch bản demo và kiểm chứng từng tính năng của hệ thống được dễ dàng, trực quan nhất.
+Tài liệu hướng dẫn demo đã được tổ chức lại và chia nhỏ thành **13 phần con** để giúp quá trình theo dõi, thực thi các kịch bản demo và kiểm chứng từng tính năng của hệ thống được dễ dàng, trực quan nhất.
 
 ---
 
@@ -20,8 +20,9 @@ Vui lòng bấm vào liên kết của từng phần để xem hướng dẫn th
 | **08** | [Phần 8: Demo Live Capture Trong Docker](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/demo/08-live-capture-docker.md) | Phân bổ quyền đặc trị mạng cho container (`--net=host`), chạy live qua Compose live profile, và lưu ý giới hạn Docker Desktop. |
 | **09** | [Phần 9: Demo Xử Lý Lỗi & Xác Thực](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/demo/09-error-handling.md) | Kiểm chứng phản hồi khi nhập sai cú pháp BPF, thiếu file, tham số xung đột, và cơ chế từ chối/báo lỗi di chuyển cho các cờ cũ. |
 | **10** | [Phần 10: Demo CLI Help Menu](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/demo/10-help-text.md) | Kiểm tra hiển thị thông tin trợ giúp sử dụng cờ `-h`/`--help` trên native và container. |
-| **11** | [Phần 11: Checklist Bằng Chứng Demo](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/demo/11-evidence-checklist.md) | Bảng tổng hợp 16 bằng chứng cần thu thập (screenshots/logs) trong quá trình thực hiện demo báo cáo. |
+| **11** | [Phần 11: Checklist Bằng Chứng Demo](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/demo/11-evidence-checklist.md) | Bảng tổng hợp 17 bằng chứng cần thu thập (screenshots/logs) trong quá trình thực hiện demo báo cáo. |
 | **12** | [Phần 12: Hướng Dẫn Giải Quyết Sự Cố](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/demo/12-troubleshooting.md) | Cách khắc phục các vấn đề phổ biến nhất về thư viện `libpcap`, quyền raw socket, kết nối DB cổng 5432, và drop gói tin. |
+| **13** | [Phần 13: Tham Số CLI, Config Và Giá Trị Mặc Định](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/demo/13-cli-parameters.md) | Giải thích đầy đủ CLI hiện tại, default values, YAML config/profile, precedence, env vars và các cờ đã remove. |
 
 ---
 
@@ -38,6 +39,7 @@ graph TD
     E --> F[05. Build Docker Image & Chạy Container]
     F --> G[06. Chạy Docker Compose Demo]
     G --> H[08. Chạy Live Capture Trong Docker]
-    H --> I[11. Thu Thập Đầy Đủ 16 Bằng Chứng]
+    H --> I[13. Đối Chiếu CLI/Config Defaults]
+    I --> J[11. Thu Thập Đầy Đủ 17 Bằng Chứng]
 ```
 *(Nếu gặp bất kỳ lỗi nào trong quá trình thực hiện, vui lòng tra cứu nhanh tại **Phần 12: Troubleshooting**).*

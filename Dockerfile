@@ -31,6 +31,7 @@ RUN apt-get update \
     && useradd --create-home --shell /usr/sbin/nologin asset
 
 COPY --from=build /src/build/asset-discovery /usr/local/bin/asset-discovery
+COPY --from=build /src/configs /work/configs
 
 USER asset
 WORKDIR /work

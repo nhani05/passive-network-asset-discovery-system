@@ -1,0 +1,20 @@
+# Live profile: keep capture source explicit, tune only policy/runtime defaults.
+
+capture:
+  filter: "arp or udp port 67 or udp port 68"
+  backend: auto
+
+output:
+  format: json
+
+events:
+  rate_limit_sec: 60
+  queue_capacity: 1024
+  flip_flop_window_sec: 300
+  reappearance_threshold_sec: 15552000
+
+network:
+  local_nets: []
+  ignore_nets:
+    - "127.0.0.0/8"
+    - "169.254.0.0/16"

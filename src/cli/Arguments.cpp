@@ -3,6 +3,10 @@
 #include <charconv>
 #include <sstream>
 
+#ifndef ASSET_DISCOVERY_VERSION
+#define ASSET_DISCOVERY_VERSION "unknown"
+#endif
+
 namespace asset_discovery::cli {
 namespace {
 
@@ -88,6 +92,11 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             return {options, std::nullopt};
         }
 
+        if (arg == "--version") {
+            options.versionRequested = true;
+            return {options, std::nullopt};
+        }
+
         if (const auto error = removedOptionError(arg); error.has_value()) {
             return {options, *error};
         }
@@ -105,6 +114,22 @@ ParseResult parseArguments(const std::vector<std::string>& args)
                 return {options, "--interface requires an interface name"};
             }
             options.interfaceName = args[++i];
+            continue;
+        }
+
+        if (arg == "--config") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--config requires a file path"};
+            }
+            options.configPath = args[++i];
+            continue;
+        }
+
+        if (arg == "--profile") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--profile requires a profile name"};
+            }
+            options.profileName = args[++i];
             continue;
         }
 
@@ -130,6 +155,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
                 return {options, "capture backend '" + value + "' is not supported; expected one of: auto, pcap, af-packet"};
             }
             options.captureBackend = *backend;
+            options.captureBackendProvided = true;
             continue;
         }
 
@@ -147,6 +173,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             } else {
                 return {options, "output format '" + value + "' is not supported; expected one of: table, json, csv"};
             }
+            options.outputFormatProvided = true;
             continue;
         }
 
@@ -227,19 +254,18 @@ ParseResult parseArguments(const std::vector<std::string>& args)
         return {options, "unknown argument '" + arg + "'"};
     }
 
-    if (options.pcapPath.has_value() == options.interfaceName.has_value()) {
-        return {options, "provide exactly one input source: --pcap <file> or --interface <name>"};
+    if (options.configPath.has_value() && options.profileName.has_value()) {
+        return {options, "--config and --profile cannot be combined"};
     }
 
-    if (options.pcapPath.has_value()) {
-        if (options.captureBackend != capture::CaptureBackendSelection::Auto) {
-            return {options, "--capture-backend is only valid with --interface capture"};
-        }
+    if (options.pcapPath.has_value() && !options.interfaceName.has_value()) {
         options.captureMode = CaptureMode::PcapOffline;
         return {options, std::nullopt};
     }
 
-    options.captureMode = CaptureMode::Live;
+    if (options.interfaceName.has_value() && !options.pcapPath.has_value()) {
+        options.captureMode = CaptureMode::Live;
+    }
 
     return {options, std::nullopt};
 }
@@ -248,14 +274,19 @@ std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
     output << "Usage:\n"
-           << "  " << executableName << " --pcap <file> [--filter <bpf>] [--output table|json|csv]\n"
-           << "  " << executableName << " --interface <name> [--filter <bpf>] [--capture-backend auto|pcap|af-packet] [--output table|json|csv]\n"
-           << "\nOptions:\n"
+           << "  " << executableName << " --pcap <file> [--config <file>|--profile <name>] [--filter <bpf>] [--output table|json|csv]\n"
+           << "  " << executableName << " --interface <name> [--config <file>|--profile <name>] [--filter <bpf>] [--capture-backend auto|pcap|af-packet]\n"
+           << "  " << executableName << " --version\n"
+           << "\nCommon options:\n"
            << "  --pcap <file>              Read packets from a PCAP file.\n"
            << "  --interface <name>         Capture packets from a live interface until SIGINT or SIGTERM.\n"
+           << "  --config <file>            Load policy/runtime defaults from a YAML config file.\n"
+           << "  --profile <name>           Load configs/<name>.yaml. Cannot be combined with --config.\n"
            << "  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.\n"
            << "  --capture-backend <name>   Live capture backend: auto, pcap, or af-packet. Defaults to auto.\n"
-           << "  --output table|json|csv    Output format. Defaults to table.\n"
+           << "  --output table|json|csv    Output format. Defaults to json.\n"
+           << "  --version                  Show version information.\n"
+           << "\nAdvanced overrides:\n"
            << "  --event-rate-limit <sec>   Suppress duplicate low-value events within this window.\n"
            << "  --event-queue-capacity <n> Live event queue capacity. Defaults to 1024.\n"
            << "  --flip-flop-window <sec>   Window for detecting IP/MAC flip-flop events.\n"
@@ -269,6 +300,11 @@ std::string usageText(const std::string& executableName)
            << "\n"
            << "  -h, --help                 Show this help text.\n";
     return output.str();
+}
+
+std::string versionText()
+{
+    return std::string("asset-discovery ") + ASSET_DISCOVERY_VERSION + "\n";
 }
 
 std::string outputFormatName(OutputFormat format)

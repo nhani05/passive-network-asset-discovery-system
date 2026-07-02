@@ -96,6 +96,9 @@ Chạy ép hiệu năng (stress-test) offline bằng cách sử dụng luồng g
 
 Chạy so sánh trực tiếp hiệu năng giữa hai backend capture `pcap` (libpcap truyền thống) và `af-packet` (Linux AF_PACKET/TPACKET_V3):
 
+> [!NOTE]
+> Các lệnh dưới đây dùng binary benchmark riêng `asset-discovery-live-benchmark`, không phải CLI chính `asset-discovery`. Vì vậy benchmark vẫn có `--duration` và `--backend` để giới hạn thời gian đo hiệu năng.
+
 ```bash
 # Benchmark với backend libpcap
 sudo ./build-release/asset-discovery-live-benchmark \

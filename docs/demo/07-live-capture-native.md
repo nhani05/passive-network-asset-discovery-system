@@ -25,11 +25,8 @@ Tài liệu này hướng dẫn chi tiết từng bước kịch bản chạy th
 Tìm tên interface mạng của bạn bằng lệnh `ip -br link` (ví dụ ở đây dùng `eth0`). Chạy lệnh sau ở Terminal 1:
 
 ```bash
-# Khởi chạy live capture trên interface eth0, lọc ARP và DHCP
-sudo ./build/asset-discovery --interface eth0 \
-  --capture-backend auto \
-  --filter "arp or udp port 67 or udp port 68" \
-  --output table
+# Khởi chạy live capture trên interface eth0 với policy trong configs/live.yaml
+sudo ./build/asset-discovery --profile live --interface eth0
 ```
 
 * **Trạng thái kỳ vọng ban đầu:**
@@ -121,10 +118,10 @@ Bạn có thể ép buộc hệ thống sử dụng một backend bắt gói tin
 
 * **Backend libpcap:** (Tương thích cao, chạy qua libpcap API)
   ```bash
-  sudo ./build/asset-discovery --interface eth0 --capture-backend pcap
+  sudo ./build/asset-discovery --profile live --interface eth0 --capture-backend pcap
   ```
 * **Backend AF_PACKET:** (Hiệu năng cao trên Linux, bỏ qua các bước copy dư thừa nhờ Ring Buffer)
   ```bash
-  sudo ./build/asset-discovery --interface eth0 --capture-backend af-packet
+  sudo ./build/asset-discovery --profile live --interface eth0 --capture-backend af-packet
   ```
   *(Lưu ý: af-packet yêu cầu quyền root hoàn toàn hoặc `CAP_NET_RAW`).*
