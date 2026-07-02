@@ -10,7 +10,8 @@ Hệ thống phân tích traffic thụ động từ file PCAP hoặc network int
 
 | Layer | Module | Đường dẫn | Trách nhiệm |
 | --- | --- | --- |
-| Interface | CLI | `include/pnad/cli`, `src/cli` | Parse `--pcap`, `--interface`, `--filter`, `--capture-backend`, `--output`, và các option điều chỉnh; kiểm tra quan hệ option và từ chối các cờ cũ. |
+| Interface | CLI | `include/pnad/cli`, `src/cli` | Parse source selector (`--pcap`/`--interface`), quick overrides, `--config`, `--profile`, `--version`, và từ chối các cờ cũ. |
+| Application | Config | `include/pnad/config`, `src/config` | Load built-in defaults, `configs/default.yaml`, explicit config/profile, environment values, và CLI overrides thành `AppConfig` đã validate. |
 | Domain / Discovery | Asset / Discovery | `include/pnad/discovery`, `src/discovery` | Định nghĩa `AssetObservation`, `Asset`, `AssetStore`, và `AssetMonitor`; quản lý danh sách asset và gộp observation theo MAC. |
 | Application | Live pipeline | `include/pnad/app`, `src/app` | Tách live capture thành producer-consumer pipeline với bounded queue, parser worker pool, aggregator single-writer, event writer, và metrics throughput/drop. |
 | Domain / Event | Event detection | `include/pnad/event`, `src/event` | Định nghĩa `AssetEvent`, `AssetEventDetector`, `EventRateLimiter` và các event sinks để phát hiện và ghi nhận sự kiện thay đổi IP/MAC hoặc các bất thường. |
@@ -70,7 +71,7 @@ PCAP mode và live mode dùng cùng parser, asset monitor, renderer, và storage
 
 ## Capture Modes
 
-CLI hỗ trợ hai chế độ input:
+CLI hỗ trợ hai chế độ input, nguồn packet luôn phải truyền rõ trên command line:
 
 - PCAP offline: `--pcap <file>`, đọc hết file, ghi nhận event mặc định, lưu database, và render kết quả summary cuối cùng.
 - Live capture: `--interface <name>`, chạy live vô hạn cho tới khi có tín hiệu dừng SIGINT/SIGTERM hoặc lỗi runtime nghiêm trọng.
@@ -78,6 +79,20 @@ CLI hỗ trợ hai chế độ input:
 Live capture có thể chọn backend bằng `--capture-backend auto|pcap|af-packet`. `pcap` là portable qua libpcap. `af-packet` là backend Linux dùng raw socket `AF_PACKET` với `TPACKET_V3`/`PACKET_RX_RING`, cần quyền root hoặc `CAP_NET_RAW`. `auto` thử dùng `af-packet` khi host hỗ trợ và đủ quyền, nếu không sẽ fallback về `pcap` khi libpcap khả dụng và ghi lý do fallback trong metrics.
 
 Live capture dừng khi nhận tín hiệu SIGINT hoặc SIGTERM (ví dụ: Ctrl+C hoặc lệnh kill). Vòng capture thoát theo hướng graceful, các queue và sink được flush và drain sạch sẽ, sau đó `main` thực hiện ghi asset snapshot cuối cùng vào PostgreSQL và render kết quả output summary.
+
+## Application Configuration
+
+Các tuning ít thay đổi được đưa vào YAML config thay vì bắt người vận hành truyền trên CLI mỗi lần chạy. Thứ tự merge là:
+
+```text
+built-in defaults
+  -> configs/default.yaml nếu tồn tại
+  -> --config <file> hoặc --profile <name>
+  -> .env/process environment
+  -> CLI overrides
+```
+
+Schema YAML hiện hỗ trợ `capture.filter`, `capture.backend`, `output.format`, `events.rate_limit_sec`, `events.queue_capacity`, `events.flip_flop_window_sec`, `events.reappearance_threshold_sec`, `network.local_nets`, và `network.ignore_nets`. Config không được khai báo packet source (`capture.interface`/`capture.pcap`) hoặc database URL; database và event file path vẫn đi qua `.env`, `DATABASE_URL`, `PG*`, `DB_*`, và `ASSET_DISCOVERY_EVENTS_JSON`.
 
 ## Live Capture Concurrency
 
