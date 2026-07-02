@@ -39,12 +39,35 @@ void preservesArbitrarySourcesInSql()
     asset.sources.insert(sourceIdArp);
     asset.sources.insert(sourceIdDns);
 
+    asset_discovery::parser::MetadataRecord record;
+    record.key = "dhcp.hostname";
+    record.values.insert("test-host");
+    record.source = "dhcp.option.12";
+    record.confidenceCategory = "observed";
+    record.firstSeen = {100, 200};
+    record.lastSeen = {100, 200};
+    asset.structuredMetadata.observed["dhcp.hostname"] = record;
+
+    asset_discovery::parser::DerivedHint hint;
+    hint.category = "os";
+    hint.value = "linux";
+    hint.confidence = "high";
+    hint.reason = "mDNS name";
+    hint.evidenceKeys = {"mdns.services"};
+    asset.structuredMetadata.derivedHints.push_back(hint);
+
     const auto sql = postgresAssetsSql({asset});
 
     expect(contains(sql, "CREATE TABLE IF NOT EXISTS assets"), "SQL helper should include schema");
+    expect(contains(sql, "observed_metadata JSONB NOT NULL DEFAULT '{}'::jsonb"), "schema should include observed_metadata");
+    expect(contains(sql, "reference_metadata JSONB NOT NULL DEFAULT '{}'::jsonb"), "schema should include reference_metadata");
+    expect(contains(sql, "derived_hints JSONB NOT NULL DEFAULT '[]'::jsonb"), "schema should include derived_hints");
     expect(contains(sql, "SET client_min_messages TO warning"), "SQL helper should suppress expected schema notices");
     expect(contains(sql, "INSERT INTO assets"), "SQL helper should include asset insert");
     expect(contains(sql, "ARRAY['arp','dns']::text[]"), "SQL helper should preserve arbitrary source ids");
+    expect(contains(sql, "observed_metadata, reference_metadata, derived_hints"), "INSERT should specify metadata columns");
+    expect(contains(sql, "'{\"dhcp.hostname\": {\"key\": \"dhcp.hostname\", \"values\": [\"test-host\"], \"source\": \"dhcp.option.12\", \"confidence_category\": \"observed\", \"first_seen\": \"100.200\", \"last_seen\": \"100.200\"}}'::jsonb"), "SQL should include serialized observed_metadata");
+    expect(contains(sql, "'[{\"category\": \"os\", \"value\": \"linux\", \"confidence\": \"high\", \"reason\": \"mDNS name\", \"evidence_keys\": [\"mdns.services\"]}]'::jsonb"), "SQL should include serialized derived_hints");
 }
 
 void writesAssetEventsSql()

@@ -42,6 +42,9 @@ add_library(asset_discovery_parser_plugins
     src/packet/BuiltinParserPlugins.cpp
     src/packet/DhcpPlugin.cpp
     src/packet/DnsPlugin.cpp
+    src/packet/NetbiosPlugin.cpp
+    src/packet/SsdpPlugin.cpp
+    src/packet/TcpPlugin.cpp
 )
 
 target_include_directories(asset_discovery_parser_plugins PUBLIC include)

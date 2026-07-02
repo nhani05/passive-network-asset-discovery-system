@@ -1,5 +1,6 @@
 #include "pnad/storage/PostgresWriter.hpp"
 #include "pnad/error/AppError.hpp"
+#include "pnad/discovery/JsonRenderer.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -146,6 +147,9 @@ std::string postgresSchemaSql()
         "    first_seen TEXT NOT NULL,\n"
         "    last_seen TEXT NOT NULL,\n"
         "    discovery_sources TEXT[] NOT NULL DEFAULT '{}',\n"
+        "    observed_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,\n"
+        "    reference_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,\n"
+        "    derived_hints JSONB NOT NULL DEFAULT '[]'::jsonb,\n"
         "    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()\n"
         ");\n"
         "CREATE TABLE IF NOT EXISTS asset_events (\n"
@@ -175,19 +179,25 @@ std::string postgresAssetsSql(const std::vector<asset::Asset>& assets)
     sql << "SET client_min_messages TO warning;\n";
     sql << postgresSchemaSql();
     for (const auto& asset : assets) {
-        sql << "INSERT INTO assets (mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources, updated_at) VALUES ("
+        sql << "INSERT INTO assets (mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources, observed_metadata, reference_metadata, derived_hints, updated_at) VALUES ("
             << quoteSqlString(asset.macAddress) << ", "
             << postgresTextArray(asset.ipAddresses) << ", "
             << (asset.hostname.has_value() ? quoteSqlString(*asset.hostname) : "NULL") << ", "
             << quoteSqlString(asset::formatTimestamp(asset.firstSeen)) << ", "
             << quoteSqlString(asset::formatTimestamp(asset.lastSeen)) << ", "
-            << postgresTextArray(asset.sources) << ", now()) "
+            << postgresTextArray(asset.sources) << ", "
+            << quoteSqlString(asset_discovery::output::renderObservedMetadataJson(asset.structuredMetadata)) << "::jsonb, "
+            << quoteSqlString(asset_discovery::output::renderReferenceMetadataJson(asset.structuredMetadata)) << "::jsonb, "
+            << quoteSqlString(asset_discovery::output::renderDerivedHintsJson(asset.structuredMetadata)) << "::jsonb, now()) "
             << "ON CONFLICT (mac_address) DO UPDATE SET "
             << "ip_addresses = EXCLUDED.ip_addresses, "
             << "hostname = COALESCE(EXCLUDED.hostname, assets.hostname), "
             << "first_seen = LEAST(assets.first_seen, EXCLUDED.first_seen), "
             << "last_seen = GREATEST(assets.last_seen, EXCLUDED.last_seen), "
             << "discovery_sources = EXCLUDED.discovery_sources, "
+            << "observed_metadata = EXCLUDED.observed_metadata, "
+            << "reference_metadata = EXCLUDED.reference_metadata, "
+            << "derived_hints = EXCLUDED.derived_hints, "
             << "updated_at = now();\n";
     }
     return sql.str();
