@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS assets (
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL,
     discovery_sources TEXT[] NOT NULL DEFAULT '{}',
+    observed_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reference_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    derived_hints JSONB NOT NULL DEFAULT '[]'::jsonb,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

@@ -21,6 +21,7 @@ struct Asset {
     ObservationTimestamp lastSeen;
     std::set<std::string> sources;
     std::map<std::string, std::string> metadata;
+    parser::StructuredMetadata structuredMetadata;
 };
 
 bool timestampLess(const ObservationTimestamp& left, const ObservationTimestamp& right);
