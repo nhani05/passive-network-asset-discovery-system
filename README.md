@@ -508,6 +508,7 @@ Benchmark live/offline dùng chung pipeline concurrent để đo throughput, que
 - [docs/design-spec/asset-events.md](docs/design-spec/asset-events.md): event model và event sink.
 - [docs/design-spec/asset-output-contract.md](docs/design-spec/asset-output-contract.md): contract output asset.
 - [docs/design-spec/docker-packaging-guide.md](docs/design-spec/docker-packaging-guide.md): hướng dẫn packaging Docker.
+- [docs/bao-cao/](docs/bao-cao/): các chương báo cáo từ [chương 1](docs/bao-cao/chuong-1-mo-dau.md) đến [chương 7](docs/bao-cao/chuong-7-ket-luan-va-huong-phat-trien.md).
 - [docs/build-deploy-demo-guide.md](docs/build-deploy-demo-guide.md): mục lục demo.
 - [docs/demo/01-preparation.md](docs/demo/01-preparation.md) đến [docs/demo/13-cli-parameters.md](docs/demo/13-cli-parameters.md): kịch bản demo chi tiết.
 - [docs/final-submission-checklist.md](docs/final-submission-checklist.md): checklist bàn giao.

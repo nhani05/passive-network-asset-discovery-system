@@ -7,6 +7,8 @@ docs/*
 !docs/sprints/
 !docs/design-spec/
 !docs/demo/
+!docs/bao-cao/
+!docs/bao-cao/**
 !docs/build-deploy-demo-guide.md
 !docs/final-submission-checklist.md
 openspec/
