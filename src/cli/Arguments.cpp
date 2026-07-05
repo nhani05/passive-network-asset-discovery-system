@@ -72,9 +72,6 @@ std::optional<capture::CaptureBackendSelection> parseBackendSelection(const std:
     if (value == "pcap") {
         return capture::CaptureBackendSelection::Pcap;
     }
-    if (value == "af-packet") {
-        return capture::CaptureBackendSelection::AfPacket;
-    }
     return std::nullopt;
 }
 
@@ -145,14 +142,22 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
+        if (arg == "--sqlite") {
+            if (needsValue(arg, i, args.size())) {
+                return {options, "--sqlite requires a database file path"};
+            }
+            options.sqlitePath = args[++i];
+            continue;
+        }
+
         if (arg == "--capture-backend") {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--capture-backend requires one of: auto, pcap, af-packet"};
+                return {options, "--capture-backend requires one of: auto, pcap"};
             }
             const auto value = args[++i];
             const auto backend = parseBackendSelection(value);
             if (!backend.has_value()) {
-                return {options, "capture backend '" + value + "' is not supported; expected one of: auto, pcap, af-packet"};
+                return {options, "capture backend '" + value + "' is not supported; expected one of: auto, pcap"};
             }
             options.captureBackend = *backend;
             options.captureBackendProvided = true;
@@ -274,8 +279,8 @@ std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
     output << "Usage:\n"
-           << "  " << executableName << " --pcap <file> [--config <file>|--profile <name>] [--filter <bpf>] [--output table|json|csv]\n"
-           << "  " << executableName << " --interface <name> [--config <file>|--profile <name>] [--filter <bpf>] [--capture-backend auto|pcap|af-packet]\n"
+           << "  " << executableName << " --pcap <file> [--config <file>|--profile <name>] [--filter <bpf>] [--sqlite <file>] [--output table|json|csv]\n"
+           << "  " << executableName << " --interface <name> [--config <file>|--profile <name>] [--filter <bpf>] [--sqlite <file>] [--capture-backend auto|pcap]\n"
            << "  " << executableName << " --version\n"
            << "\nCommon options:\n"
            << "  --pcap <file>              Read packets from a PCAP file.\n"
@@ -283,7 +288,8 @@ std::string usageText(const std::string& executableName)
            << "  --config <file>            Load policy/runtime defaults from a YAML config file.\n"
            << "  --profile <name>           Load configs/<name>.yaml. Cannot be combined with --config.\n"
            << "  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.\n"
-           << "  --capture-backend <name>   Live capture backend: auto, pcap, or af-packet. Defaults to auto.\n"
+           << "  --sqlite <file>            Save assets and events in a local SQLite database file.\n"
+           << "  --capture-backend <name>   Live capture backend: auto or pcap. Defaults to auto.\n"
            << "  --output table|json|csv    Output format. Defaults to json.\n"
            << "  --version                  Show version information.\n"
            << "\nAdvanced overrides:\n"

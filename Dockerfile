@@ -9,6 +9,7 @@ RUN apt-get update \
         cmake \
         pkg-config \
         libpcap-dev \
+        libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -27,6 +28,7 @@ RUN apt-get update \
         iputils-ping \
         libpcap0.8 \
         postgresql-client \
+        libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /usr/sbin/nologin asset
 

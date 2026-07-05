@@ -28,6 +28,7 @@ struct Options {
     std::optional<std::string> profileName;
     std::optional<CaptureMode> captureMode;
     std::optional<std::string> packetFilter;
+    std::optional<std::string> sqlitePath;
     std::optional<int> eventRateLimitSeconds;
     std::optional<int> eventQueueCapacity;
     std::optional<int> flipFlopWindowSeconds;

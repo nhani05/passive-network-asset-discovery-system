@@ -1,0 +1,16 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>CaptureCenterView.qml</file>
+        <file>LiveCaptureView.qml</file>
+        <file>PcapAnalysisView.qml</file>
+        <file>DashboardView.qml</file>
+        <file>AssetInventoryView.qml</file>
+        <file>AssetDetailView.qml</file>
+        <file>SecurityCenterView.qml</file>
+        <file>PreferencesView.qml</file>
+        <file>NetworkMapView.qml</file>
+        <file>ReportsExportView.qml</file>
+        <file>SystemHealthView.qml</file>
+    </qresource>
+</RCC>

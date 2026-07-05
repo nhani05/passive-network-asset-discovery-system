@@ -18,7 +18,6 @@ enum class LinkType {
 enum class CaptureBackendSelection {
     Auto,
     Pcap,
-    AfPacket,
 };
 
 // Timestamp is preserved from the packet source without timezone conversion.

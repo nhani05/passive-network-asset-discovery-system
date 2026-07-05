@@ -10,6 +10,7 @@
 #include "pnad/discovery/TableRenderer.hpp"
 #include "pnad/packet/PacketParserFacade.hpp"
 #include "pnad/storage/PostgresWriter.hpp"
+#include "pnad/storage/SQLiteWriter.hpp"
 #include "pnad/error/AppError.hpp"
 
 #include <csignal>
@@ -140,6 +141,16 @@ std::optional<std::string> resolveDatabaseUrl()
     return std::nullopt;
 }
 
+std::optional<std::string> resolveSqlitePath()
+{
+    const char* value = std::getenv("SQLITE_DATABASE_PATH");
+    if (value != nullptr && *value != '\0') {
+        return std::string(value);
+    }
+
+    return std::nullopt;
+}
+
 bool hasPostgresConnectionEnvironment()
 {
     static const char* const names[] = {
@@ -237,6 +248,7 @@ std::optional<std::string> ensureEventLogParentDirectory(const std::string& path
 
 EventDispatcherResult buildEventDispatcher(
     const std::optional<std::string>& databaseUrl,
+    const std::optional<std::string>& sqlitePath,
     const std::string& ndjsonPath)
 {
     auto dispatcher = std::make_unique<asset_discovery::output::EventDispatcher>();
@@ -259,7 +271,11 @@ EventDispatcherResult buildEventDispatcher(
         }
     }
 
-    dispatcher->addSink(std::make_unique<asset_discovery::storage::DatabaseEventSink>(databaseUrl));
+    if (sqlitePath.has_value()) {
+        dispatcher->addSink(std::make_unique<asset_discovery::storage::SQLiteWriter>(*sqlitePath));
+    } else if (hasDatabaseConfiguration(databaseUrl)) {
+        dispatcher->addSink(std::make_unique<asset_discovery::storage::DatabaseEventSink>(databaseUrl));
+    }
 
     return {std::move(dispatcher), std::nullopt};
 }
@@ -299,12 +315,20 @@ std::vector<asset_discovery::asset::Asset> processOfflinePackets(
 }
 
 void writeDatabaseIfRequested(
-    const std::optional<std::string>& databaseUrl,
+    const asset_discovery::config::AppConfig& config,
     const std::vector<asset_discovery::asset::Asset>& assets)
 {
-    const auto error = asset_discovery::storage::writeAssetsToPostgres(databaseUrl, assets);
-    if (error.has_value()) {
-        throw asset_discovery::DatabaseError(*error);
+    if (config.database.sqlitePath.has_value()) {
+        asset_discovery::storage::SQLiteWriter writer(*config.database.sqlitePath);
+        const auto error = writer.writeAssets(assets);
+        if (error.has_value()) {
+            throw asset_discovery::DatabaseError(*error);
+        }
+    } else if (config.database.configured) {
+        const auto error = asset_discovery::storage::writeAssetsToPostgres(config.database.url, assets);
+        if (error.has_value()) {
+            throw asset_discovery::DatabaseError(*error);
+        }
     }
 }
 
@@ -327,7 +351,7 @@ void writeAndRenderAssets(
     const asset_discovery::config::AppConfig& config,
     const std::vector<asset_discovery::asset::Asset>& assets)
 {
-    writeDatabaseIfRequested(config.database.url, assets);
+    writeDatabaseIfRequested(config, assets);
     std::cout << renderAssets(assets, config.output.format);
 }
 
@@ -363,8 +387,10 @@ int main(int argc, char* argv[])
         }
 
         const auto databaseUrl = resolveDatabaseUrl();
+        const auto sqlitePath = resolveSqlitePath();
         asset_discovery::config::RuntimeEnvironment runtimeEnvironment;
         runtimeEnvironment.databaseUrl = databaseUrl;
+        runtimeEnvironment.sqlitePath = sqlitePath;
         runtimeEnvironment.databaseConfigured = hasDatabaseConfiguration(databaseUrl);
         runtimeEnvironment.eventNdjsonPath = defaultEventNdjsonPath();
 
@@ -379,6 +405,7 @@ int main(int argc, char* argv[])
 
         auto eventDispatcherResult = buildEventDispatcher(
             appConfig.database.url,
+            appConfig.database.sqlitePath,
             appConfig.eventNdjsonPath);
         if (eventDispatcherResult.error.has_value()) {
             throw asset_discovery::DatabaseError(*eventDispatcherResult.error);

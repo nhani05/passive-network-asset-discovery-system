@@ -98,9 +98,6 @@ std::optional<capture::CaptureBackendSelection> parseBackend(const std::string& 
     if (value == "pcap") {
         return capture::CaptureBackendSelection::Pcap;
     }
-    if (value == "af-packet") {
-        return capture::CaptureBackendSelection::AfPacket;
-    }
     return std::nullopt;
 }
 
@@ -416,6 +413,9 @@ ConfigPatch patchFromCliOptions(const cli::Options& options)
     if (!options.ignoredNetworks.empty()) {
         patch.ignoredNetworks = options.ignoredNetworks;
     }
+    if (options.sqlitePath.has_value()) {
+        patch.sqlitePath = options.sqlitePath;
+    }
     return patch;
 }
 
@@ -425,6 +425,9 @@ ConfigPatch patchFromEnvironment(const RuntimeEnvironment& environment)
     patch.eventNdjsonPath = environment.eventNdjsonPath;
     patch.databaseUrl = environment.databaseUrl;
     patch.databaseConfigured = environment.databaseConfigured;
+    if (environment.sqlitePath.has_value()) {
+        patch.sqlitePath = environment.sqlitePath;
+    }
     return patch;
 }
 
@@ -472,6 +475,9 @@ void applyPatch(AppConfig& config, const ConfigPatch& patch)
     if (patch.databaseConfigured.has_value()) {
         config.database.configured = *patch.databaseConfigured;
     }
+    if (patch.sqlitePath.has_value()) {
+        config.database.sqlitePath = *patch.sqlitePath;
+    }
 }
 
 std::optional<std::string> validateConfig(const AppConfig& config)
@@ -498,8 +504,8 @@ std::optional<std::string> validateConfig(const AppConfig& config)
     if (config.events.reappearanceThresholdSeconds <= 0) {
         return "events.reappearance_threshold_sec must be a positive integer";
     }
-    if (!config.database.configured) {
-        return "PostgreSQL configuration is required; set DATABASE_URL or PG*/DB_* values in .env or the process environment";
+    if (!config.database.configured && !config.database.sqlitePath.has_value()) {
+        return "PostgreSQL or SQLite configuration is required; set DATABASE_URL or SQLITE_DATABASE_PATH/--sqlite";
     }
     return std::nullopt;
 }

@@ -278,7 +278,7 @@ void validatesMergedConfig()
 
     options = {};
     options.pcapPath = "samples/arp.pcap";
-    expectBuildErrorContains(options, RuntimeEnvironment{}, buildOptions, "PostgreSQL configuration is required",
+    expectBuildErrorContains(options, RuntimeEnvironment{}, buildOptions, "PostgreSQL or SQLite configuration is required",
         "missing database environment should be rejected");
 }
 

@@ -37,6 +37,7 @@ struct NetworkPolicySettings {
 
 struct DatabaseRuntimeSettings {
     std::optional<std::string> url;
+    std::optional<std::string> sqlitePath;
     bool configured = false;
 };
 
@@ -64,6 +65,7 @@ struct ConfigPatch {
     std::optional<std::string> eventNdjsonPath;
     std::optional<std::optional<std::string>> databaseUrl;
     std::optional<bool> databaseConfigured;
+    std::optional<std::optional<std::string>> sqlitePath;
 };
 
 struct ConfigResult {
@@ -78,6 +80,7 @@ struct PatchResult {
 
 struct RuntimeEnvironment {
     std::optional<std::string> databaseUrl;
+    std::optional<std::string> sqlitePath;
     bool databaseConfigured = false;
     std::string eventNdjsonPath = "logs/events.ndjson";
 };

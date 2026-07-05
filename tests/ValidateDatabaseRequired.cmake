@@ -38,7 +38,7 @@ if(command_result EQUAL 0)
 endif()
 
 set(combined_output "${command_output}${command_error}")
-string(FIND "${combined_output}" "PostgreSQL configuration is required" error_position)
+string(FIND "${combined_output}" "PostgreSQL or SQLite configuration is required" error_position)
 if(error_position EQUAL -1)
     message(FATAL_ERROR "Expected required database configuration error, got: ${combined_output}")
 endif()

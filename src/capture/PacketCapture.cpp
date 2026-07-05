@@ -1,7 +1,5 @@
 #include "pnad/capture/PacketCapture.hpp"
 
-#include "pnad/capture/AfPacketCaptureBackend.hpp"
-
 #include <chrono>
 #include <cstring>
 #include <memory>
@@ -93,10 +91,32 @@ std::string PcapCaptureBackend::backendName() const
 
 BackendAvailability PcapCaptureBackend::availability() const
 {
-    if (pcapAvailable()) {
-        return {true, {}};
+    if (!pcapAvailable()) {
+        return {false, "libpcap backend is not available in this build"};
     }
+#if ASSET_DISCOVERY_HAS_PCAP == 1
+    // Probe for actual runtime capture permissions by asking libpcap to
+    // enumerate interfaces.  On Linux this internally opens an AF_PACKET
+    // socket and will fail with a permission error when the process lacks
+    // CAP_NET_RAW (i.e. is not root and has not been granted capabilities).
+    pcap_if_t* alldevs = nullptr;
+    char errorBuffer[PCAP_ERRBUF_SIZE] = {};
+    const int result = pcap_findalldevs(&alldevs, errorBuffer);
+    if (alldevs != nullptr) {
+        pcap_freealldevs(alldevs);
+    }
+    if (result != 0) {
+        std::string reason = "pcap requires root or CAP_NET_RAW";
+        if (std::strlen(errorBuffer) > 0) {
+            reason += ": ";
+            reason += errorBuffer;
+        }
+        return {false, reason};
+    }
+    return {true, {}};
+#else
     return {false, "libpcap backend is not available in this build"};
+#endif
 }
 
 bool PcapCaptureBackend::supportsOfflinePcap() const
@@ -332,57 +352,14 @@ CaptureBackendFactoryResult createCaptureBackend(CaptureBackendSelection request
     CaptureBackendFactoryResult result;
     result.initialStats.requestedBackend = captureBackendSelectionName(requested);
 
-    if (requested == CaptureBackendSelection::Pcap) {
-        auto backend = std::make_unique<PcapCaptureBackend>();
-        const auto availability = backend->availability();
-        if (!availability.available) {
-            result.error = availability.reason;
-            return result;
-        }
-        result.initialStats.selectedBackend = backend->backendName();
-        result.backend = std::move(backend);
+    auto backend = std::make_unique<PcapCaptureBackend>();
+    const auto availability = backend->availability();
+    if (!availability.available) {
+        result.error = availability.reason;
         return result;
     }
-
-    if (requested == CaptureBackendSelection::AfPacket) {
-        auto backend = std::make_unique<AfPacketCaptureBackend>();
-        const auto availability = backend->availability();
-        if (!availability.available) {
-            result.error = availability.reason;
-            return result;
-        }
-        result.initialStats.selectedBackend = backend->backendName();
-        result.backend = std::move(backend);
-        return result;
-    }
-
-    auto afPacket = std::make_unique<AfPacketCaptureBackend>();
-    const auto afPacketAvailability = afPacket->availability();
-    if (afPacketAvailability.available) {
-        result.initialStats.selectedBackend = afPacket->backendName();
-        result.backend = std::move(afPacket);
-        return result;
-    }
-
-    auto pcap = std::make_unique<PcapCaptureBackend>();
-    const auto pcapAvailability = pcap->availability();
-    if (pcapAvailability.available) {
-        result.initialStats.selectedBackend = pcap->backendName();
-        result.initialStats.fallbackReason = afPacketAvailability.reason;
-        result.backend = std::move(pcap);
-        return result;
-    }
-
-    result.error = "no capture backend is available";
-    if (!afPacketAvailability.reason.empty() || !pcapAvailability.reason.empty()) {
-        result.error = "no capture backend is available";
-        if (!afPacketAvailability.reason.empty()) {
-            *result.error += "; af-packet: " + afPacketAvailability.reason;
-        }
-        if (!pcapAvailability.reason.empty()) {
-            *result.error += "; pcap: " + pcapAvailability.reason;
-        }
-    }
+    result.initialStats.selectedBackend = backend->backendName();
+    result.backend = std::move(backend);
     return result;
 }
 
@@ -402,8 +379,6 @@ std::string captureBackendSelectionName(CaptureBackendSelection selection)
         return "auto";
     case CaptureBackendSelection::Pcap:
         return "pcap";
-    case CaptureBackendSelection::AfPacket:
-        return "af-packet";
     }
     return "auto";
 }
@@ -415,9 +390,6 @@ std::optional<CaptureBackendSelection> parseCaptureBackendSelection(const std::s
     }
     if (value == "pcap") {
         return CaptureBackendSelection::Pcap;
-    }
-    if (value == "af-packet") {
-        return CaptureBackendSelection::AfPacket;
     }
     return std::nullopt;
 }
