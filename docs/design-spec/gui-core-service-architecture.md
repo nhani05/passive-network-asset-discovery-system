@@ -62,7 +62,7 @@ Khuyến nghị:
 ### 2. Event channel
 Sử dụng cho cập nhật realtime:
 - asset mới được phát hiện;
-- event mới;
+- event asset mới;
 - trạng thái running/stopped/error;
 - progress và warning.
 
@@ -72,8 +72,9 @@ Khuyến nghị:
 ## Shared state
 
 Để UI và backend tách biệt, nên dùng một shared state layer:
-- Database: SQLite cho local desktop demo, PostgreSQL cho sản phẩm service.
-- Snapshot API: backend trả về asset/event/session hiện tại khi client kết nối hoặc refresh.
+- Database: SQLite cho desktop và backend service.
+- Snapshot API: backend trả về asset/session hiện tại khi client kết nối hoặc refresh.
+- Realtime event không lưu vào database; WebSocket chỉ push trạng thái/asset mới đang diễn ra.
 
 ## Phân chia trách nhiệm
 
@@ -82,7 +83,7 @@ Khuyến nghị:
 | Presentation | GUI | Hiển thị, tương tác, điều hướng |
 | Control | GUI | Gửi lệnh điều khiển tới backend |
 | Processing | Core | Capture, parse, detect, persist |
-| Storage | Shared DB | Lưu state và lịch sử |
+| Storage | Shared DB | Lưu asset state và session metadata |
 | Streaming | WebSocket | Push realtime updates |
 
 ## Mức độ triển khai đề xuất

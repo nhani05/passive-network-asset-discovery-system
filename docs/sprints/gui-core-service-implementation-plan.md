@@ -41,7 +41,7 @@ Chuyển ứng dụng hiện tại từ mô hình single-process desktop sang m�
 
 - [ ] Thêm logging, error handling, retry.
 - [ ] Thêm health check và metrics.
-- [ ] Hỗ trợ cấu hình cho SQLite/PostgreSQL.
+- [ ] Hỗ trợ cấu hình SQLite local.
 - [ ] Viết test cho protocol và integration flow.
 
 ## Deliverables

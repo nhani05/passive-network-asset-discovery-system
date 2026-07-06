@@ -7,7 +7,7 @@ Checklist này dùng cho Sprint 4/M4 Delivery.
 - Source code C++17/CMake: `include/`, `src/`, `tests/`, `CMakeLists.txt`.
 - Docker image definition: `Dockerfile`.
 - Docker Compose demo: `docker-compose.yml`.
-- PostgreSQL schema: `db/schema.sql`.
+- SQLite schema/migrations: `src/storage/SQLiteWriter.cpp`.
 - Sample PCAP: `samples/arp.pcap`, `samples/multi-asset.pcap`.
 - Tài liệu đặc tả: [docs/design-spec/asset-output-contract.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/asset-output-contract.md) và [docs/design-spec/asset-events.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/asset-events.md).
 - Tài liệu thiết kế: [docs/design-spec/system-design.md](file:///home/nhani05/vdt/passive-network-asset-discovery-system/docs/design-spec/system-design.md).
@@ -18,19 +18,21 @@ Checklist này dùng cho Sprint 4/M4 Delivery.
 ## Lệnh Kiểm Chứng Từ Checkout Sạch
 
 ```sh
-cmake -S . -B build -DASSET_DISCOVERY_REQUIRE_PCAP=ON
+cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
 ```sh
 ./build/asset-discovery --pcap samples/arp.pcap \
+  --sqlite pnad.db \
   --filter "arp" \
   --output table
 ```
 
 ```sh
 ./build/asset-discovery --pcap samples/multi-asset.pcap \
+  --sqlite pnad.db \
   --filter "arp or udp port 67 or udp port 68" \
   --output json
 ```
@@ -43,37 +45,29 @@ docker compose config
 scripts/verify-docker-runtime.sh
 ```
 
-Nếu host có quyền live capture:
-
-```sh
-sudo ./build/asset-discovery --interface eth0 \
-  --filter "arp or udp port 67 or udp port 68" \
-  --output table
-```
+Live capture không còn trong scope demo; dùng các kịch bản PCAP ở trên.
 
 ## Evidence Cần Chụp Khi Demo
 
 - Terminal output của `ctest`.
 - Table output từ `samples/arp.pcap`.
 - JSON output từ `samples/multi-asset.pcap`.
-- Query PostgreSQL:
+- Query SQLite:
 
 ```sh
-psql "postgresql://postgres:123456@localhost:5432/asset_discovery" \
-  -c "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets order by mac_address;"
+sqlite3 pnad.db \
+  "select mac_address, ip_addresses, hostname, first_seen, last_seen, discovery_sources from assets order by mac_address;"
 ```
 
-- Docker output từ `scripts/verify-docker-runtime.sh`; script reset bảng demo `assets` để evidence lặp lại được.
-- Live capture output hoặc lỗi quyền capture nếu host không cho phép.
+- Docker output từ `scripts/verify-docker-runtime.sh`; script tạo SQLite DB tạm để evidence lặp lại được.
+- Bằng chứng không có bảng event log: `sqlite3 pnad.db ".tables"` không hiển thị `asset_events`.
 
 ## Known Limitations
 
 - Hệ thống chỉ passive monitoring, không chủ động scan host.
 - Metadata DHCP phụ thuộc fixture hoặc traffic thật có DHCP option phù hợp.
-- PostgreSQL persistence cần service PostgreSQL reachable và `psql` trong image/local PATH.
-- Compose database dùng credential demo, không phải cấu hình production.
-- Live capture phụ thuộc quyền hệ thống, interface host, và Docker networking.
-- Docker live capture được thiết kế cho Linux host; Docker Desktop có giới hạn khác.
+- CLI chính chỉ hỗ trợ PCAP offline.
+- SQLite path phải writable khi chạy native hoặc trong Docker volume.
 
 ## Release/Tag
 
