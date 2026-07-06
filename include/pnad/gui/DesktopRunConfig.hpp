@@ -13,10 +13,15 @@ namespace asset_discovery::gui {
 
 enum class DesktopRunMode {
     PcapAnalysis,
+    LiveCapture,
 };
 
 struct PcapAnalysisRequest {
     std::string pcapPath;
+};
+
+struct LiveCaptureRequest {
+    std::string interfaceName;
 };
 
 struct EnginePreferences {
@@ -31,6 +36,7 @@ struct ExportPreferences {
 struct DesktopRunConfig {
     DesktopRunMode mode = DesktopRunMode::PcapAnalysis;
     PcapAnalysisRequest pcapAnalysis;
+    LiveCaptureRequest liveCapture;
     EnginePreferences engine;
     ExportPreferences exportPreferences;
 };

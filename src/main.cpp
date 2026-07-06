@@ -138,7 +138,8 @@ EventDispatcherResult buildEventDispatcher()
 std::vector<asset_discovery::asset::Asset> processOfflinePackets(
     const std::vector<asset_discovery::capture::OfflinePacket>& packets,
     const asset_discovery::config::AppConfig& config,
-    asset_discovery::output::EventDispatcher* eventDispatcher)
+    asset_discovery::output::EventDispatcher* eventDispatcher,
+    asset_discovery::storage::SQLiteWriter* databaseWriter)
 {
     auto monitorConfig = makeMonitorConfig(config);
     asset_discovery::monitor::AssetMonitor monitor(
@@ -148,7 +149,19 @@ std::vector<asset_discovery::asset::Asset> processOfflinePackets(
                   [eventDispatcher](const asset_discovery::asset::AssetEvent& event) {
                       eventDispatcher->dispatch(event);
                   })
-            : asset_discovery::monitor::AssetMonitor::EventCallback{});
+            : asset_discovery::monitor::AssetMonitor::EventCallback{},
+        databaseWriter != nullptr
+            ? asset_discovery::monitor::AssetMonitor::AssetCallback(
+                  [databaseWriter](const asset_discovery::asset::Asset& asset, bool isNew) {
+                      if (!isNew) {
+                          return;
+                      }
+                      const auto error = databaseWriter->writeAssets({asset});
+                      if (error.has_value()) {
+                          throw asset_discovery::DatabaseError(*error);
+                      }
+                  })
+            : asset_discovery::monitor::AssetMonitor::AssetCallback{});
 
     for (const auto& packet : packets) {
         if (packet.linkType != asset_discovery::capture::LinkType::Ethernet) {
@@ -199,9 +212,17 @@ std::string renderAssets(
 
 void writeAndRenderAssets(
     const asset_discovery::config::AppConfig& config,
-    const std::vector<asset_discovery::asset::Asset>& assets)
+    const std::vector<asset_discovery::asset::Asset>& assets,
+    asset_discovery::storage::SQLiteWriter* databaseWriter)
 {
-    writeDatabaseIfRequested(config, assets);
+    if (databaseWriter != nullptr) {
+        const auto error = databaseWriter->writeAssets(assets);
+        if (error.has_value()) {
+            throw asset_discovery::DatabaseError(*error);
+        }
+    } else {
+        writeDatabaseIfRequested(config, assets);
+    }
     std::cout << renderAssets(assets, config.output.format);
 }
 
@@ -267,11 +288,18 @@ int main(int argc, char* argv[])
             throw asset_discovery::PcapError(*pcapResult.error);
         }
 
+        std::unique_ptr<asset_discovery::storage::SQLiteWriter> databaseWriter;
+        if (appConfig.database.sqlitePath.has_value()) {
+            databaseWriter = std::make_unique<asset_discovery::storage::SQLiteWriter>(
+                *appConfig.database.sqlitePath);
+        }
+
         const auto assets = processOfflinePackets(
             pcapResult.packets,
             appConfig,
-            eventDispatcher && !eventDispatcher->empty() ? eventDispatcher.get() : nullptr);
-        writeAndRenderAssets(appConfig, assets);
+            eventDispatcher && !eventDispatcher->empty() ? eventDispatcher.get() : nullptr,
+            databaseWriter.get());
+        writeAndRenderAssets(appConfig, assets, databaseWriter.get());
         return 0;
     }
     catch (const asset_discovery::ConfigError& e) {

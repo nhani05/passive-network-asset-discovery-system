@@ -50,7 +50,11 @@ config::PatchResult desktopPatch(const DesktopRunConfig& desktopConfig)
 {
     config::PatchResult result;
 
-    result.patch.pcapPath = desktopConfig.pcapAnalysis.pcapPath;
+    if (desktopConfig.mode == DesktopRunMode::LiveCapture) {
+        result.patch.interfaceName = desktopConfig.liveCapture.interfaceName;
+    } else {
+        result.patch.pcapPath = desktopConfig.pcapAnalysis.pcapPath;
+    }
 
     if (!desktopConfig.engine.captureFilter.empty()) {
         result.patch.packetFilter = desktopConfig.engine.captureFilter;
@@ -94,7 +98,14 @@ config::ConfigResult buildDesktopAppConfig(
     config::ConfigResult result;
     result.config = config::builtInDefaults();
 
-    if (desktopConfig.pcapAnalysis.pcapPath.empty()) {
+    if (desktopConfig.mode == DesktopRunMode::LiveCapture
+        && desktopConfig.liveCapture.interfaceName.empty()) {
+        result.error = "Choose a network interface before starting Live Capture.";
+        return result;
+    }
+
+    if (desktopConfig.mode == DesktopRunMode::PcapAnalysis
+        && desktopConfig.pcapAnalysis.pcapPath.empty()) {
         result.error = "Choose a PCAP file before starting analysis.";
         return result;
     }
@@ -117,6 +128,23 @@ config::ConfigResult buildDesktopAppConfig(
         return result;
     }
     config::applyPatch(result.config, patch.patch);
+
+    if (desktopConfig.mode == DesktopRunMode::LiveCapture) {
+        if (!result.config.capture.interfaceName.has_value()) {
+            result.error = "Choose a network interface before starting Live Capture.";
+            return result;
+        }
+        if (result.config.capture.packetFilter.has_value()
+            && result.config.capture.packetFilter->empty()) {
+            result.error = "Capture filter must not be empty.";
+            return result;
+        }
+        if (!result.config.database.sqlitePath.has_value()) {
+            result.error = "Choose a writable local database for desktop storage.";
+            return result;
+        }
+        return result;
+    }
 
     if (const auto validationError = config::validateConfig(result.config);
         validationError.has_value()) {

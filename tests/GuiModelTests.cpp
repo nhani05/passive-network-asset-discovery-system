@@ -152,6 +152,10 @@ void testUiNativeRunValidation()
     controller.setPcapPath(QString::fromStdString(testPcap));
     expectDebug(controller.validatePcapAnalysisRequest(), "PCAP Analysis validation should accept a selected PCAP file", controller.validationError().toStdString());
 
+    controller.setPcapPath("");
+    controller.setInterfaceName("test0");
+    expectDebug(controller.validateLiveCaptureRequest(), "Live Capture config validation should not require a PCAP file", controller.validationError().toStdString());
+
     std::remove("test_gui_validation.db");
     std::remove(testPcap.c_str());
     std::remove(unsupportedFile.c_str());

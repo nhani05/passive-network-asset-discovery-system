@@ -91,6 +91,7 @@ void GuiApplicationRuntime::connectRefreshMechanism()
                      this, [this]() {
                          if (captureController_->isRunning()) {
                              reloadModelsFromDatabase();
+                             refreshTimer_.start();
                          } else {
                              refreshTimer_.stop();
                          }

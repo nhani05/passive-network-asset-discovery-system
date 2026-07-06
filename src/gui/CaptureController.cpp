@@ -79,9 +79,32 @@ std::string getExecutablePath()
     return constants::gui::ApplicationName;
 }
 
-QString currentLogTimestamp()
+QString appDataSqlitePath()
 {
-    return QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dataDir.isEmpty()) {
+        dataDir = ".";
+    } else {
+        QDir().mkpath(dataDir);
+    }
+    return QDir(dataDir).filePath(QString::fromLatin1(constants::config::DefaultSqlitePath));
+}
+
+QString projectSqlitePathIfPresent()
+{
+    const QFileInfo candidate(QDir::current().filePath(QString::fromLatin1(constants::config::DefaultSqlitePath)));
+    return candidate.exists() ? candidate.absoluteFilePath() : QString();
+}
+
+QString defaultGuiSqlitePath()
+{
+    const QString projectPath = projectSqlitePathIfPresent();
+    return projectPath.isEmpty() ? appDataSqlitePath() : projectPath;
+}
+
+bool isAppDataSqlitePath(const QString& path)
+{
+    return QFileInfo(path).absoluteFilePath() == QFileInfo(appDataSqlitePath()).absoluteFilePath();
 }
 
 QStringList toStringList(const std::set<std::string>& values)
@@ -108,17 +131,6 @@ QVariantMap assetToDto(const asset::Asset& asset)
     dto.insert("rawObservedMetadata", QString::fromStdString(mapToJson(asset.metadata)));
     dto.insert("risk", "Normal");
     return dto;
-}
-
-QString assetDisplayName(const asset::Asset& asset)
-{
-    if (asset.hostname.has_value() && !asset.hostname->empty()) {
-        return QString::fromStdString(*asset.hostname);
-    }
-    if (!asset.ipAddresses.empty()) {
-        return QString::fromStdString(*asset.ipAddresses.begin());
-    }
-    return QString::fromStdString(asset.macAddress);
 }
 
 } // namespace
@@ -169,13 +181,7 @@ void CaptureController::loadDefaults()
     outputFormat_ = QString::fromLatin1(constants::cli::OutputJson);
     isLive_ = false;
 
-    QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (dataDir.isEmpty()) {
-        dataDir = ".";
-    } else {
-        QDir().mkpath(dataDir);
-    }
-    sqlitePath_ = dataDir + "/" + QString::fromLatin1(constants::config::DefaultSqlitePath);
+    sqlitePath_ = defaultGuiSqlitePath();
 
     statusText_ = "Stopped";
     lastError_ = "";
@@ -316,20 +322,27 @@ void CaptureController::runCaptureWorker()
             monitorConfig.interfaceName = appConfig.capture.interfaceName.value_or("");
 
             livePipelineOptions.monitorConfig = std::move(monitorConfig);
+            livePipelineOptions.eventCallback = [this](const asset::AssetEvent& event) {
+                emit eventLogMessage(
+                    QString::fromStdString(asset::formatEventTimestamp(event.timestamp)),
+                    QString::fromStdString(asset::assetEventSeverityName(event.severity)),
+                    QString::fromStdString(asset::assetEventTypeName(event.type)),
+                    QString::fromStdString(event.message));
+            };
             auto lastAssetUiEmit = std::chrono::steady_clock::time_point{};
-            livePipelineOptions.assetCallback = [this, lastAssetUiEmit](const asset::Asset& asset, bool isNew) mutable {
+            const auto liveSqlitePath = *appConfig.database.sqlitePath;
+            livePipelineOptions.assetCallback = [this, lastAssetUiEmit, liveSqlitePath](const asset::Asset& asset, bool isNew) mutable {
                 const auto now = std::chrono::steady_clock::now();
+                try {
+                    storage::SQLiteWriter writer(liveSqlitePath);
+                    writer.writeAssets({asset});
+                } catch (const std::exception& error) {
+                    qWarning() << "Failed to persist live asset update:" << error.what();
+                }
                 if (isNew || lastAssetUiEmit.time_since_epoch().count() == 0
                     || now - lastAssetUiEmit >= kCoreGuiUpdateInterval) {
                     emit assetDiscovered(assetToDto(asset), isNew);
                     lastAssetUiEmit = now;
-                }
-                if (isNew) {
-                    emit eventLogMessage(
-                        currentLogTimestamp(),
-                        "info",
-                        "asset.created",
-                        "New asset discovered: " + assetDisplayName(asset));
                 }
             };
 
@@ -355,18 +368,19 @@ void CaptureController::runCaptureWorker()
             sessionOptions.pipelineOptions.parserWorkerCount = 1;
             sessionOptions.monitorConfig.interfaceName = constants::capture::PcapInterfaceName;
 
-            auto pcapLoggedAssets = std::make_shared<std::set<std::string>>();
             core::CoreSession session({
-                {},
-                [this, pcapLoggedAssets](const asset::Asset& asset) {
-                    emit assetDiscovered(assetToDto(asset), true);
-                    if (pcapLoggedAssets->insert(asset.macAddress).second) {
-                        emit eventLogMessage(
-                            currentLogTimestamp(),
-                            "info",
-                            "asset.created",
-                            "New asset discovered: " + assetDisplayName(asset));
+                [this](const core::SessionEvent& event) {
+                    if (event.type != core::SessionEventType::AssetCreated) {
+                        return;
                     }
+                    emit eventLogMessage(
+                        QString::fromStdString(event.timestamp),
+                        QString::fromStdString(core::sessionEventSeverityName(event.severity)),
+                        QString::fromStdString(core::sessionEventTypeName(event.type)),
+                        QString::fromStdString(event.message));
+                },
+                [this](const asset::Asset& asset) {
+                    emit assetDiscovered(assetToDto(asset), true);
                 },
                 {},
                 {}
@@ -491,7 +505,11 @@ void CaptureController::loadSettingsFromDb()
 {
     QSettings settings("PNAD", "PNAD Desktop");
     if (settings.contains("sqlitePath")) {
-        setSqlitePath(settings.value("sqlitePath").toString());
+        const QString storedPath = settings.value("sqlitePath").toString();
+        const QString projectPath = projectSqlitePathIfPresent();
+        if (projectPath.isEmpty() || !isAppDataSqlitePath(storedPath)) {
+            setSqlitePath(storedPath);
+        }
     }
     if (settings.contains("interfaceName")) {
         setInterfaceName(settings.value("interfaceName").toString());
@@ -670,8 +688,9 @@ config::ConfigResult CaptureController::buildCurrentConfig() const
 DesktopRunConfig CaptureController::currentDesktopRunConfig() const
 {
     DesktopRunConfig config;
-    config.mode = DesktopRunMode::PcapAnalysis;
+    config.mode = isLive_ ? DesktopRunMode::LiveCapture : DesktopRunMode::PcapAnalysis;
     config.pcapAnalysis.pcapPath = pcapPath_.trimmed().toStdString();
+    config.liveCapture.interfaceName = interfaceName_.trimmed().toStdString();
     config.engine.captureFilter = constants::capture::DefaultPacketFilter;
     config.engine.localDatabasePath = sqlitePath_.trimmed().toStdString();
 

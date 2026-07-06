@@ -119,6 +119,14 @@ void publishAssetEvent(const asset_discovery::asset::AssetEvent& event, const st
     } catch (...) {}
 }
 
+void persistAsset(const asset_discovery::asset::Asset& asset, const std::string& sqlitePath)
+{
+    storage::SQLiteWriter writer(sqlitePath);
+    if (const auto error = writer.writeAssets({asset}); error.has_value()) {
+        throw std::runtime_error(*error);
+    }
+}
+
 } // namespace
 
 CaptureService::CaptureService(BackendConfig config)
@@ -380,6 +388,11 @@ void CaptureService::runLiveCapture()
     pipelineOptions.eventCallback = [this](const asset::AssetEvent& event) {
         publishAssetEvent(event, config_.sqlitePath, startCount_, stopCount_);
     };
+    pipelineOptions.assetCallback = [this](const asset::Asset& asset, bool isNew) {
+        if (isNew) {
+            persistAsset(asset, config_.sqlitePath);
+        }
+    };
 
     const auto liveResult = live::runLiveCapturePipeline(
         *backendResult.backend,
@@ -409,6 +422,11 @@ void CaptureService::runPcapAnalysis()
         defaultMonitorConfig(constants::capture::PcapInterfaceName),
         [this](const asset::AssetEvent& event) {
             publishAssetEvent(event, config_.sqlitePath, startCount_, stopCount_);
+        },
+        [this](const asset::Asset& asset, bool isNew) {
+            if (isNew) {
+                persistAsset(asset, config_.sqlitePath);
+            }
         });
 
     for (const auto& packet : pcapResult.packets) {
