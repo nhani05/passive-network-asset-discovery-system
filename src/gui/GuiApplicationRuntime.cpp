@@ -3,14 +3,18 @@
 #include "pnad/constants/GuiConstants.hpp"
 
 #include <QFileInfo>
+#include <QDebug>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QVariantMap>
+
+#include <exception>
 
 #include "pnad/gui/AssetModel.hpp"
 #include "pnad/gui/CaptureController.hpp"
 #include "pnad/gui/InterfaceModel.hpp"
 #include "pnad/gui/LogModel.hpp"
+#include "pnad/storage/SQLiteWriter.hpp"
 
 namespace asset_discovery::gui {
 
@@ -32,6 +36,7 @@ void GuiApplicationRuntime::initialize(QQmlApplicationEngine& engine)
 {
     registerContextProperties(engine);
     connectRefreshMechanism();
+    clearApplicationData();
     loadInitialModels();
 }
 
@@ -117,6 +122,18 @@ void GuiApplicationRuntime::registerContextProperties(QQmlApplicationEngine& eng
 void GuiApplicationRuntime::loadInitialModels()
 {
     assetModel_->reloadFromDatabase(captureController_->sqlitePath());
+}
+
+void GuiApplicationRuntime::clearApplicationData()
+{
+    try {
+        storage::SQLiteWriter writer(captureController_->sqlitePath().toStdString());
+        if (const auto error = writer.clearApplicationData(); error.has_value()) {
+            qWarning() << "Failed to clear SQLite application data:" << QString::fromStdString(*error);
+        }
+    } catch (const std::exception& error) {
+        qWarning() << "Failed to clear SQLite application data:" << error.what();
+    }
 }
 
 } // namespace asset_discovery::gui

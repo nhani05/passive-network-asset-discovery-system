@@ -326,6 +326,33 @@ std::optional<std::string> SQLiteWriter::countEvents(int& count)
     return std::nullopt;
 }
 
+std::optional<std::string> SQLiteWriter::clearApplicationData()
+{
+    std::lock_guard<std::mutex> lock(dbMutex_);
+    if (!db_) {
+        return "Database not open";
+    }
+
+    const char* sql =
+        "BEGIN TRANSACTION;"
+        "DELETE FROM assets;"
+        "DELETE FROM analysis_sessions;"
+        "DELETE FROM app_settings;"
+        "DELETE FROM sqlite_sequence WHERE name = 'analysis_sessions';"
+        "COMMIT;";
+
+    char* zErrMsg = nullptr;
+    const int rc = sqlite3_exec(db_, sql, nullptr, nullptr, &zErrMsg);
+    if (rc != SQLITE_OK) {
+        const std::string err = zErrMsg ? zErrMsg : "unknown error";
+        sqlite3_free(zErrMsg);
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        return "Failed to clear application data: " + err;
+    }
+
+    return std::nullopt;
+}
+
 std::optional<std::string> SQLiteWriter::saveSetting(const std::string& key, const std::string& value)
 {
     std::lock_guard<std::mutex> lock(dbMutex_);

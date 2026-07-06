@@ -208,6 +208,50 @@ void testAnalysisSessionPersistence()
     std::remove(dbPath.c_str());
 }
 
+void testClearApplicationData()
+{
+    std::string dbPath = "test_sqlite_clear_runtime_temp.db";
+    std::remove(dbPath.c_str());
+
+    {
+        SQLiteWriter writer(dbPath);
+
+        Asset asset;
+        asset.macAddress = "02:42:ac:11:00:06";
+        asset.ipAddresses.insert("192.168.1.60");
+        asset.firstSeen = {100, 200};
+        asset.lastSeen = {100, 200};
+        asset.sources.insert(sourceIdArp);
+        expect(!writer.writeAssets({asset}).has_value(), "writeAssets before clear should succeed");
+        expect(!writer.saveSetting("sqlitePath", dbPath).has_value(), "saveSetting before clear should succeed");
+
+        AnalysisSessionRecord session;
+        session.mode = "PCAP Analysis";
+        session.source = "samples/arp.pcap";
+        expect(!writer.createAnalysisSession(session).has_value(), "createAnalysisSession before clear should succeed");
+
+        expect(!writer.clearApplicationData().has_value(), "clearApplicationData should succeed");
+
+        int assetCount = -1;
+        expect(!writer.countAssets(assetCount).has_value(), "countAssets after clear should succeed");
+        expect(assetCount == 0, "clearApplicationData should remove assets");
+
+        std::string setting;
+        expect(writer.getSetting("sqlitePath", setting).has_value(), "clearApplicationData should remove settings");
+    }
+
+    sqlite3* db = nullptr;
+    expect(sqlite3_open(dbPath.c_str(), &db) == SQLITE_OK, "Should open cleared database");
+    sqlite3_stmt* stmt = nullptr;
+    expect(sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM analysis_sessions;", -1, &stmt, nullptr) == SQLITE_OK, "Prepare session count after clear");
+    expect(sqlite3_step(stmt) == SQLITE_ROW, "Step session count after clear");
+    expect(sqlite3_column_int(stmt, 0) == 0, "clearApplicationData should remove analysis sessions");
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    std::remove(dbPath.c_str());
+}
+
 void testSQLiteWriterUnwritablePath()
 {
     std::string unwritablePath = "/nonexistent_folder_abc_123/pnad.db";
@@ -229,6 +273,7 @@ int main()
     testSQLiteWriterWriteAndRead();
     testSQLiteWriterMigrationsAndSettings();
     testAnalysisSessionPersistence();
+    testClearApplicationData();
     testSQLiteWriterUnwritablePath();
 
     if (failures > 0) {
