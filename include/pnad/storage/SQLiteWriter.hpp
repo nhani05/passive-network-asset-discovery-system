@@ -37,6 +37,7 @@ public:
 
     // Asset storage helper
     std::optional<std::string> writeAssets(const std::vector<asset::Asset>& assets);
+    std::optional<std::string> clearApplicationData();
 
     // Settings storage helpers
     std::optional<std::string> saveSetting(const std::string& key, const std::string& value);

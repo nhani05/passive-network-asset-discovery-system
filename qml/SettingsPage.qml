@@ -58,6 +58,30 @@ Item {
                         elide: Text.ElideRight
                     }
                 }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: "Email alerts"; color: window.colorTextMuted; Layout.preferredWidth: 110 }
+                    Text {
+                        text: captureController.emailAlertsEnabled ? "Configured in .env" : "Disabled in .env"
+                        color: captureController.emailAlertsEnabled ? window.colorAccent : window.colorTextMuted
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    enabled: captureController.emailAlertsEnabled
+                    Text { text: "Recipients"; color: window.colorTextMuted; Layout.preferredWidth: 110 }
+                    TextField {
+                        text: captureController.emailRecipients
+                        placeholderText: "admin@example.com, noc@example.com"
+                        color: window.colorTextMain
+                        Layout.fillWidth: true
+                        onEditingFinished: captureController.emailRecipients = text
+                    }
+                }
             }
         }
 

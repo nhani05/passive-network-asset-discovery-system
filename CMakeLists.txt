@@ -235,12 +235,14 @@ add_executable(asset-discovery-gui
     src/gui/AssetModel.cpp
     src/gui/InterfaceModel.cpp
     src/gui/LogModel.cpp
+    src/gui/EmailAlertNotifier.cpp
     src/gui/DesktopRunConfig.cpp
     src/gui/CaptureController.cpp
     src/gui/GuiApplicationRuntime.cpp
     include/pnad/gui/AssetModel.hpp
     include/pnad/gui/InterfaceModel.hpp
     include/pnad/gui/LogModel.hpp
+    include/pnad/gui/EmailAlertNotifier.hpp
     include/pnad/gui/DesktopRunConfig.hpp
     include/pnad/gui/CaptureController.hpp
     include/pnad/gui/GuiApplicationRuntime.hpp

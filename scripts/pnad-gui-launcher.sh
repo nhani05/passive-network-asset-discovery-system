@@ -12,6 +12,17 @@ if [ ! -f "${BIN_PATH}" ]; then
     exit 1
 fi
 
+ENV_PATH="${DIR}/.env"
+if [ ! -f "${ENV_PATH}" ]; then
+    ENV_PATH="${DIR}/../.env"
+fi
+if [ -f "${ENV_PATH}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "${ENV_PATH}"
+    set +a
+fi
+
 # Detect display server
 if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
     echo "Warning: No graphical display server detected. Running in offscreen mode."

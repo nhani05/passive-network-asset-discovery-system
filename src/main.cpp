@@ -281,17 +281,20 @@ int main(int argc, char* argv[])
                       << " is not available in this build; packet capture will work after libpcap is installed.\n";
         }
 
+        std::unique_ptr<asset_discovery::storage::SQLiteWriter> databaseWriter;
+        if (appConfig.database.sqlitePath.has_value()) {
+            databaseWriter = std::make_unique<asset_discovery::storage::SQLiteWriter>(
+                *appConfig.database.sqlitePath);
+            if (const auto error = databaseWriter->clearApplicationData(); error.has_value()) {
+                throw asset_discovery::DatabaseError(*error);
+            }
+        }
+
         const auto pcapResult = backend.readPcapFile(
             *appConfig.capture.pcapPath,
             appConfig.capture.packetFilter);
         if (pcapResult.error.has_value()) {
             throw asset_discovery::PcapError(*pcapResult.error);
-        }
-
-        std::unique_ptr<asset_discovery::storage::SQLiteWriter> databaseWriter;
-        if (appConfig.database.sqlitePath.has_value()) {
-            databaseWriter = std::make_unique<asset_discovery::storage::SQLiteWriter>(
-                *appConfig.database.sqlitePath);
         }
 
         const auto assets = processOfflinePackets(

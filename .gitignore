@@ -50,3 +50,6 @@ venv/
 *.tmp
 *.temp
 ~$*
+
+pnad.db 
+*.db
