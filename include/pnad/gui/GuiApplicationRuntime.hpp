@@ -34,6 +34,7 @@ private:
     void connectRefreshMechanism();
     void registerContextProperties(QQmlApplicationEngine& engine);
     void loadInitialModels();
+    void clearApplicationData();
 
     std::unique_ptr<CaptureController> captureController_;
     std::unique_ptr<AssetModel> assetModel_;

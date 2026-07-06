@@ -25,6 +25,7 @@
 #include <QDateTime>
 #include <QVariantMap>
 #include <algorithm>
+#include <cstdlib>
 #include <chrono>
 #include <memory>
 #include <set>
@@ -107,6 +108,81 @@ bool isAppDataSqlitePath(const QString& path)
     return QFileInfo(path).absoluteFilePath() == QFileInfo(appDataSqlitePath()).absoluteFilePath();
 }
 
+QString trimWhitespace(QString value)
+{
+    return value.trimmed();
+}
+
+QString unquoteDotEnvValue(QString value)
+{
+    value = value.trimmed();
+    if (value.size() >= 2) {
+        const auto first = value.front();
+        const auto last = value.back();
+        if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+            return value.mid(1, value.size() - 2);
+        }
+    }
+    return value;
+}
+
+void setEnvIfUnset(const QString& key, const QString& value)
+{
+    const QByteArray keyBytes = key.toLocal8Bit();
+    if (qEnvironmentVariableIsSet(keyBytes.constData())) {
+        return;
+    }
+    qputenv(keyBytes.constData(), value.toLocal8Bit());
+}
+
+void loadGuiDotEnvFile()
+{
+    QFile file(QString::fromLatin1(constants::config::DotEnvPath));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+
+    QTextStream input(&file);
+    while (!input.atEnd()) {
+        QString line = trimWhitespace(input.readLine());
+        if (line.isEmpty() || line.startsWith('#')) {
+            continue;
+        }
+        if (line.startsWith("export ")) {
+            line = trimWhitespace(line.mid(7));
+        }
+        const int separator = line.indexOf('=');
+        if (separator <= 0) {
+            continue;
+        }
+        const QString key = trimWhitespace(line.left(separator));
+        const QString value = unquoteDotEnvValue(line.mid(separator + 1));
+        setEnvIfUnset(key, value);
+    }
+}
+
+QString envValue(const char* key, const QString& fallback = {})
+{
+    const QByteArray value = qgetenv(key);
+    return value.isEmpty() ? fallback : QString::fromLocal8Bit(value);
+}
+
+bool envBool(const char* key, bool fallback = false)
+{
+    const QString value = envValue(key).trimmed().toLower();
+    if (value.isEmpty()) {
+        return fallback;
+    }
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+int envInt(const char* key, int fallback)
+{
+    bool ok = false;
+    const int value = envValue(key).toInt(&ok);
+    return ok ? value : fallback;
+}
+
 QStringList toStringList(const std::set<std::string>& values)
 {
     QStringList list;
@@ -138,6 +214,7 @@ QVariantMap assetToDto(const asset::Asset& asset)
 CaptureController::CaptureController(QObject* parent)
     : QObject(parent)
 {
+    loadGuiDotEnvFile();
     loadDefaults();
     loadSettingsFromDb();
 }
@@ -188,6 +265,14 @@ void CaptureController::loadDefaults()
     validationError_ = "";
     recentFailureSummary_ = "";
     runtimeLogPath_ = QString::fromLatin1(constants::backend::DefaultRuntimeLogPath);
+    emailAlertsEnabled_ = envBool("PNAD_EMAIL_ALERTS_ENABLED", false);
+    emailSmtpHost_ = envValue("PNAD_EMAIL_SMTP_HOST");
+    emailSmtpPort_ = envInt("PNAD_EMAIL_SMTP_PORT", 587);
+    emailTlsMode_ = envValue("PNAD_EMAIL_TLS_MODE", "starttls");
+    emailUsername_ = envValue("PNAD_EMAIL_USERNAME");
+    emailPasswordEnvVar_ = envValue("PNAD_EMAIL_PASSWORD_ENV", "PNAD_SMTP_PASSWORD");
+    emailSenderAddress_ = envValue("PNAD_EMAIL_FROM");
+    emailRecipients_ = envValue("PNAD_EMAIL_RECIPIENTS");
 
     emit interfaceNameChanged();
     emit pcapPathChanged();
@@ -203,6 +288,14 @@ void CaptureController::loadDefaults()
     emit validationErrorChanged();
     emit recentFailureSummaryChanged();
     emit runtimeLogPathChanged();
+    emit emailAlertsEnabledChanged();
+    emit emailSmtpHostChanged();
+    emit emailSmtpPortChanged();
+    emit emailTlsModeChanged();
+    emit emailUsernameChanged();
+    emit emailPasswordEnvVarChanged();
+    emit emailSenderAddressChanged();
+    emit emailRecipientsChanged();
 }
 
 void CaptureController::startCapture()
@@ -297,6 +390,23 @@ void CaptureController::runCaptureWorker()
             throw std::runtime_error(*configResult.error);
         }
         const auto appConfig = configResult.config;
+        const auto createEmailNotifier = [this]() {
+            auto notifier = std::shared_ptr<EmailAlertNotifier>{};
+            const auto emailSettings = currentEmailAlertSettings();
+            if (!emailSettings.enabled) {
+                return notifier;
+            }
+            notifier = std::make_shared<EmailAlertNotifier>(emailSettings);
+            notifier->setFailureCallback([this](const QString& message) {
+                emit eventLogMessage(
+                    QDateTime::currentDateTimeUtc().toString(Qt::ISODate),
+                    "warning",
+                    "email.alert",
+                    message);
+            });
+            notifier->resetSession();
+            return notifier;
+        };
 
         if (isLive_) {
             auto backendResult = capture::createCaptureBackend(appConfig.capture.backend);
@@ -322,12 +432,16 @@ void CaptureController::runCaptureWorker()
             monitorConfig.interfaceName = appConfig.capture.interfaceName.value_or("");
 
             livePipelineOptions.monitorConfig = std::move(monitorConfig);
-            livePipelineOptions.eventCallback = [this](const asset::AssetEvent& event) {
+            auto emailNotifier = createEmailNotifier();
+            livePipelineOptions.eventCallback = [this, emailNotifier](const asset::AssetEvent& event) {
                 emit eventLogMessage(
                     QString::fromStdString(asset::formatEventTimestamp(event.timestamp)),
                     QString::fromStdString(asset::assetEventSeverityName(event.severity)),
                     QString::fromStdString(asset::assetEventTypeName(event.type)),
                     QString::fromStdString(event.message));
+                if (emailNotifier) {
+                    emailNotifier->handleAssetEvent(event);
+                }
             };
             auto lastAssetUiEmit = std::chrono::steady_clock::time_point{};
             const auto liveSqlitePath = *appConfig.database.sqlitePath;
@@ -367,9 +481,10 @@ void CaptureController::runCaptureWorker()
             sessionOptions.pipelineOptions.coreParsersOnly = true;
             sessionOptions.pipelineOptions.parserWorkerCount = 1;
             sessionOptions.monitorConfig.interfaceName = constants::capture::PcapInterfaceName;
+            auto emailNotifier = createEmailNotifier();
 
             core::CoreSession session({
-                [this](const core::SessionEvent& event) {
+                [this, emailNotifier](const core::SessionEvent& event) {
                     if (event.type != core::SessionEventType::AssetCreated) {
                         return;
                     }
@@ -378,6 +493,9 @@ void CaptureController::runCaptureWorker()
                         QString::fromStdString(core::sessionEventSeverityName(event.severity)),
                         QString::fromStdString(core::sessionEventTypeName(event.type)),
                         QString::fromStdString(event.message));
+                    if (emailNotifier && event.assetEvent.has_value()) {
+                        emailNotifier->handleAssetEvent(*event.assetEvent);
+                    }
                 },
                 [this](const asset::Asset& asset) {
                     emit assetDiscovered(assetToDto(asset), true);
@@ -481,6 +599,7 @@ void CaptureController::saveSettingsToDb()
     settings.setValue("outputFormat", outputFormat_);
     settings.setValue("isLive", isLive_);
     settings.setValue("sqlitePath", sqlitePath_);
+    settings.setValue("emailRecipients", emailRecipients_);
     settings.sync();
 
     try {
@@ -495,6 +614,7 @@ void CaptureController::saveSettingsToDb()
         writer.saveSetting("captureBackend", captureBackend_.toStdString());
         writer.saveSetting("outputFormat", outputFormat_.toStdString());
         writer.saveSetting("isLive", isLive_ ? "true" : "false");
+        writer.saveSetting("emailRecipients", emailRecipients_.toStdString());
     }
     catch (const std::exception& e) {
         qWarning() << "Failed to save settings to DB:" << e.what();
@@ -535,6 +655,9 @@ void CaptureController::loadSettingsFromDb()
     if (settings.contains("isLive")) {
         setIsLive(settings.value("isLive").toBool());
     }
+    if (settings.contains("emailRecipients")) {
+        setEmailRecipients(settings.value("emailRecipients").toString());
+    }
 
     try {
         // If directory doesn't exist, we skip loading (uncreated db)
@@ -569,6 +692,9 @@ void CaptureController::loadSettingsFromDb()
         if (!writer.getSetting("isLive", val).has_value()) {
             setIsLive(val == "true");
         }
+        if (!writer.getSetting("emailRecipients", val).has_value()) {
+            setEmailRecipients(QString::fromStdString(val));
+        }
     }
     catch (const std::exception& e) {
         qWarning() << "Failed to load settings from DB:" << e.what();
@@ -583,6 +709,9 @@ bool CaptureController::validateSettings()
     const auto result = buildCurrentConfig();
     if (result.error.has_value()) {
         setValidationError(QString::fromStdString(*result.error));
+        return false;
+    }
+    if (!validateEmailAlerts()) {
         return false;
     }
     setValidationError("");
@@ -605,6 +734,9 @@ bool CaptureController::validatePreferences()
     const auto result = buildDesktopAppConfig(config, runtimeEnvironment, {});
     if (result.error.has_value()) {
         setValidationError(QString::fromStdString(*result.error));
+        return false;
+    }
+    if (!validateEmailAlerts()) {
         return false;
     }
 
@@ -696,6 +828,31 @@ DesktopRunConfig CaptureController::currentDesktopRunConfig() const
 
     config.exportPreferences.format = outputFormat_.trimmed().toStdString();
     return config;
+}
+
+EmailAlertSettings CaptureController::currentEmailAlertSettings() const
+{
+    EmailAlertSettings settings;
+    settings.enabled = emailAlertsEnabled_;
+    settings.smtpHost = emailSmtpHost_.trimmed();
+    settings.smtpPort = emailSmtpPort_;
+    settings.tlsMode = parseEmailTlsMode(emailTlsMode_);
+    settings.username = emailUsername_.trimmed();
+    settings.passwordEnvVar = emailPasswordEnvVar_.trimmed();
+    settings.passwordValue = envValue("PNAD_EMAIL_PASSWORD").trimmed();
+    settings.senderAddress = emailSenderAddress_.trimmed();
+    settings.recipients = splitEmailRecipients(emailRecipients_);
+    return settings;
+}
+
+bool CaptureController::validateEmailAlerts()
+{
+    const auto error = EmailAlertNotifier::validateSettings(currentEmailAlertSettings());
+    if (error.has_value()) {
+        setValidationError(*error);
+        return false;
+    }
+    return true;
 }
 
 bool CaptureController::validateStoragePath()

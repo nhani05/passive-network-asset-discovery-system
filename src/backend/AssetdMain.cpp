@@ -5,6 +5,7 @@
 #include "pnad/backend/HttpServer.hpp"
 #include "pnad/backend/QueryServices.hpp"
 #include "pnad/backend/RestApi.hpp"
+#include "pnad/storage/SQLiteWriter.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -347,6 +348,17 @@ int main(int argc, char** argv)
     }
 
     const auto& config = parsed.config;
+    try {
+        asset_discovery::storage::SQLiteWriter database(config.sqlitePath);
+        if (const auto error = database.clearApplicationData(); error.has_value()) {
+            std::cerr << "assetd: " << *error << '\n';
+            return 4;
+        }
+    } catch (const std::exception& error) {
+        std::cerr << "assetd: failed to initialize database: " << error.what() << '\n';
+        return 4;
+    }
+
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "assetd backend service started.");
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "status: healthy");
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "listen: " + config.listenAddress + ":" + std::to_string(config.port));
