@@ -1,5 +1,6 @@
 #include "pnad/packet/PacketParserFacade.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -11,6 +12,7 @@ using asset_discovery::parser::parseEthernetObservations;
 using asset_discovery::parser::ObservationEventType;
 using asset_discovery::parser::sourceIdArp;
 using asset_discovery::parser::sourceIdDhcp;
+using asset_discovery::parser::sourceIdSsdp;
 
 int failures = 0;
 
@@ -57,6 +59,14 @@ std::vector<std::uint8_t> dhcpPayload()
     bytes.push_back(11);
     const std::string hostname = "laptop-user";
     bytes.insert(bytes.end(), hostname.begin(), hostname.end());
+    const std::string vendorClass = "MSFT 5.0";
+    bytes.push_back(60);
+    bytes.push_back(static_cast<std::uint8_t>(vendorClass.size()));
+    bytes.insert(bytes.end(), vendorClass.begin(), vendorClass.end());
+    const std::vector<std::uint8_t> parameterRequestList = {1, 3, 6, 15, 31, 33, 43, 44, 46, 47, 119, 121, 249, 252};
+    bytes.push_back(55);
+    bytes.push_back(static_cast<std::uint8_t>(parameterRequestList.size()));
+    bytes.insert(bytes.end(), parameterRequestList.begin(), parameterRequestList.end());
     bytes.push_back(50);
     bytes.push_back(4);
     bytes.push_back(192);
@@ -64,6 +74,35 @@ std::vector<std::uint8_t> dhcpPayload()
     bytes.push_back(1);
     bytes.push_back(20);
     bytes.push_back(255);
+    return bytes;
+}
+
+std::vector<std::uint8_t> ipv4UdpFrame(
+    std::uint16_t sourcePort,
+    std::uint16_t destinationPort,
+    const std::vector<std::uint8_t>& payload)
+{
+    const std::uint16_t udpLength = static_cast<std::uint16_t>(8 + payload.size());
+    const std::uint16_t ipLength = static_cast<std::uint16_t>(20 + udpLength);
+
+    std::vector<std::uint8_t> bytes = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0x00, 0x1a, 0x11, 0x22, 0x33, 0x44,
+        0x08, 0x00,
+        0x45, 0x00,
+    };
+    append16(bytes, ipLength);
+    append16(bytes, 0);
+    append16(bytes, 0);
+    bytes.push_back(64);
+    bytes.push_back(17);
+    append16(bytes, 0);
+    bytes.insert(bytes.end(), {192, 168, 1, 80, 239, 255, 255, 250});
+    append16(bytes, sourcePort);
+    append16(bytes, destinationPort);
+    append16(bytes, udpLength);
+    append16(bytes, 0);
+    bytes.insert(bytes.end(), payload.begin(), payload.end());
     return bytes;
 }
 
@@ -116,17 +155,48 @@ std::vector<std::uint8_t> arpEthernetFrame()
 void parsesDhcpObservation()
 {
     const auto observations = parseEthernetObservations(dhcpEthernetFrame(), {100, 200});
-    expect(observations.size() == 1, "DHCP frame should create one observation");
-    if (observations.empty()) {
+    const auto found = std::find_if(observations.begin(), observations.end(), [](const auto& observation) {
+        return observation.sourceId == sourceIdDhcp;
+    });
+    expect(found != observations.end(), "DHCP frame should create a DHCP observation");
+    if (found == observations.end()) {
         return;
     }
-    expect(observations.front().sourceId == sourceIdDhcp, "source should be DHCP");
-    expect(observations.front().macAddress == "02:42:ac:11:00:03", "client MAC should be parsed");
-    expect(observations.front().ipAddress == "192.168.1.20", "requested IP should be parsed");
-    expect(observations.front().hostname == "laptop-user", "hostname option should be parsed");
-    expect(observations.front().eventType == ObservationEventType::Update, "DHCP event should be an update");
-    expect(observations.front().confidence == 1.0F, "DHCP confidence should preserve existing behavior");
-    expect(observations.front().metadata.count("dhcp.option.hostname") == 1, "DHCP metadata should include hostname option");
+    const auto& observation = *found;
+    expect(observation.macAddress == "02:42:ac:11:00:03", "client MAC should be parsed");
+    expect(observation.ipAddress == "192.168.1.20", "requested IP should be parsed");
+    expect(observation.hostname == "laptop-user", "hostname option should be parsed");
+    expect(observation.displayName == "laptop-user", "hostname option should contribute display name");
+    expect(observation.osHint == "windows", "DHCP option 55/60 should contribute OS hint");
+    expect(observation.eventType == ObservationEventType::Update, "DHCP event should be an update");
+    expect(observation.confidence == 1.0F, "DHCP confidence should preserve existing behavior");
+    expect(observation.metadata.count("dhcp.option.hostname") == 1, "DHCP metadata should include hostname option");
+}
+
+void parsesSsdpSummary()
+{
+    const std::string payload =
+        "NOTIFY * HTTP/1.1\r\n"
+        "HOST: 239.255.255.250:1900\r\n"
+        "NT: urn:schemas-upnp-org:device:MediaRenderer:1\r\n"
+        "SERVER: Linux/5.10 UPnP/1.0 DemoTV/1.0\r\n"
+        "USN: uuid:demo::urn:schemas-upnp-org:device:MediaRenderer:1\r\n"
+        "MANUFACTURER: Samsung\r\n"
+        "MODELNAME: Smart TV\r\n"
+        "\r\n";
+    const auto observations = parseEthernetObservations(
+        ipv4UdpFrame(1900, 1900, {payload.begin(), payload.end()}), {102, 0});
+    const auto found = std::find_if(observations.begin(), observations.end(), [](const auto& observation) {
+        return observation.sourceId == sourceIdSsdp;
+    });
+    expect(found != observations.end(), "SSDP packet should create SSDP observation");
+    if (found == observations.end()) {
+        return;
+    }
+    expect(found->vendor == "Samsung", "SSDP manufacturer should contribute vendor");
+    expect(found->deviceType == "media-renderer", "SSDP NT should classify media renderer");
+    expect(found->modelHint == "Smart TV", "SSDP model name should contribute model hint");
+    expect(found->osHint == "linux", "SSDP server should contribute OS hint");
 }
 
 void parsesArpMetadata()
@@ -163,6 +233,7 @@ void skipsTruncatedIpv4()
 int main()
 {
     parsesDhcpObservation();
+    parsesSsdpSummary();
     parsesArpMetadata();
     skipsTruncatedIpv4();
 

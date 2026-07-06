@@ -1,12 +1,12 @@
 # Passive Network Asset Discovery System
 
-PNAD là ứng dụng phát hiện tài sản mạng thụ động, tập trung vào luồng cốt lõi của đề tài: bắt và phân tích lưu lượng ARP/DHCP, phát hiện thiết bị trong mạng, hiển thị thông tin IP/MAC/hostname/thời điểm xuất hiện/protocol, xuất dữ liệu CSV/JSON và chạy demo PCAP bằng Docker.
+PNAD là ứng dụng phát hiện tài sản mạng thụ động, tập trung vào luồng cốt lõi của đề tài: bắt và phân tích lưu lượng ARP/DHCP/SSDP/mDNS, phát hiện thiết bị trong mạng, hiển thị IP/MAC/hostname/vendor/OS/type/model/thời điểm xuất hiện/protocol, xuất dữ liệu CSV/JSON và chạy demo PCAP bằng Docker.
 
 ## Tính Năng Chính
 
 - **PCAP offline**: chọn file `.pcap`/`.pcapng` và phân tích lại lưu lượng đã ghi mà không cần quyền live capture.
-- **Phạm vi giao thức tập trung**: workflow chính sử dụng bộ lọc `arp or (udp and (port 67 or port 68))` để tập trung vào ARP và DHCP.
-- **Phát hiện tài sản mạng**: nhận diện thiết bị theo MAC, IP, hostname, thời điểm thấy lần đầu, thời điểm thấy lần cuối và protocol phát hiện.
+- **Phạm vi giao thức tập trung**: workflow chính sử dụng bộ lọc `arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353` để tập trung vào ARP, DHCP, SSDP và mDNS.
+- **Phát hiện tài sản mạng**: nhận diện thiết bị theo MAC, IP, hostname, display name, vendor, OS hint, device type, model hint, thời điểm thấy lần đầu, thời điểm thấy lần cuối và protocol phát hiện.
 - **Bảng tài sản và chi tiết tài sản**: hiển thị danh sách thiết bị đã phát hiện và thông tin chi tiết của thiết bị được chọn.
 - **Log tài sản mới**: ghi nhận khi phát hiện một asset mới trong quá trình phân tích/capture.
 - **Xuất dữ liệu**: xuất inventory hiện tại ra CSV hoặc JSON để phục vụ báo cáo và kiểm chứng.
@@ -16,7 +16,7 @@ PNAD là ứng dụng phát hiện tài sản mạng thụ động, tập trung 
 ## Luồng Sử Dụng Chính
 
 - **PCAP mode**: chọn file `.pcap`/`.pcapng` để phân tích offline.
-- **Asset inventory**: xem IP, MAC, hostname, first seen, last seen và protocol của tài sản đã phát hiện.
+- **Asset inventory**: xem IP, MAC, hostname, display name, vendor, OS hint, device type, model hint, first seen, last seen và protocol của tài sản đã phát hiện.
 - **Export**: lưu kết quả hiện tại dưới dạng CSV hoặc JSON.
 - **Demo Docker**: chạy demo PCAP mẫu để kiểm chứng nhanh luồng phát hiện tài sản.
 

@@ -29,11 +29,8 @@ quá trình gom nhóm asset chính xác hơn:
   `laptop-user`.
 - MAC `02:42:ac:11:00:04` xuất hiện từ DHCP với hostname `camera-01`.
 
-Tạo lại fixture bằng lệnh:
-
-```bash
-python3 samples/GenerateMultiAssetPcap.py samples/multi-asset.pcap
-```
+Fixture này được commit sẵn trong `samples/`. Không commit lại file PCAP lớn
+được generate thủ công.
 
 Chạy thử:
 

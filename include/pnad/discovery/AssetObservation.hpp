@@ -23,6 +23,7 @@ enum class ObservationEventType {
 inline constexpr const char* sourceIdArp = "arp";
 inline constexpr const char* sourceIdDhcp = "dhcp";
 inline constexpr const char* sourceIdDns = "dns";
+inline constexpr const char* sourceIdIp = "ip";
 inline constexpr const char* sourceIdLlmnr = "llmnr";
 inline constexpr const char* sourceIdMdns = "mdns";
 inline constexpr const char* sourceIdNetbios = "netbios";
@@ -62,6 +63,11 @@ struct AssetObservation {
     std::string macAddress;
     std::optional<std::string> ipAddress;
     std::optional<std::string> hostname;
+    std::optional<std::string> displayName;
+    std::optional<std::string> vendor;
+    std::optional<std::string> osHint;
+    std::optional<std::string> deviceType;
+    std::optional<std::string> modelHint;
     std::string sourceId = sourceIdArp;
     ObservationEventType eventType = ObservationEventType::Seen;
     float confidence = 1.0F;

@@ -24,6 +24,7 @@ struct Options {
     std::optional<std::string> packetFilter;
     std::optional<std::string> sqlitePath;
     OutputFormat outputFormat = OutputFormat::Json;
+    bool broadIpv4Enrichment = false;
     bool outputFormatProvided = false;
     bool helpRequested = false;
     bool versionRequested = false;

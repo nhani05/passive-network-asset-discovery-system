@@ -51,7 +51,7 @@ docker run --rm \
   -e SQLITE_DATABASE_PATH=/data/pnad.db \
   passive-asset-discovery:latest \
   --pcap /samples/multi-asset.pcap \
-  --filter "arp or udp port 67 or udp port 68" \
+  --filter "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353" \
   --output table
 ```
 
@@ -64,7 +64,7 @@ docker run --rm \
   -e SQLITE_DATABASE_PATH=/data/pnad.db \
   passive-asset-discovery:latest \
   --pcap /samples/multi-asset.pcap \
-  --filter "arp or udp port 67 or udp port 68" \
+  --filter "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353" \
   --output json
 ```
 

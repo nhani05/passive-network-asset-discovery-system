@@ -83,7 +83,7 @@ Tài liệu này tổng hợp các lỗi phổ biến thường gặp trong quá
 ### 4.1. Không phát hiện được thiết bị nào khi đọc PCAP
 * **Triệu chứng:** Summary in ra màn hình thông báo: `No assets discovered`.
 * **Giải pháp khắc phục:**
-  * Kiểm tra file PCAP có chứa ARP hoặc DHCP không.
+  * Kiểm tra file PCAP có chứa ARP, DHCP, SSDP hoặc mDNS không.
   * Thử bỏ cờ lọc `--filter` tạm thời để kiểm tra dữ liệu trong file.
 
 ### 4.2. PCAP lớn làm xử lý chậm
@@ -91,3 +91,4 @@ Tài liệu này tổng hợp các lỗi phổ biến thường gặp trong quá
 * **Giải pháp khắc phục:**
   * Chạy binary được build ở chế độ tối ưu **Release** (xem Phần 2).
   * Giảm độ rộng filter hoặc chia nhỏ PCAP để khoanh vùng bottleneck.
+  * Chỉ bật `--broad-ipv4-enrichment` khi cần TTL OS hint; mode này bắt nhiều IPv4 traffic hơn filter mặc định.

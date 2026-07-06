@@ -54,7 +54,8 @@ asset-discovery --pcap <file> [--filter <bpf>] [--sqlite <file>] [--output table
 | Tham số | Ý nghĩa | Mặc định |
 | :--- | :--- | :--- |
 | `--pcap <file>` | File PCAP/PCAPNG cần phân tích | Bắt buộc |
-| `--filter <bpf>` | Bộ lọc BPF | `arp or udp port 67 or udp port 68` |
+| `--filter <bpf>` | Bộ lọc BPF | `arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353` |
+| `--broad-ipv4-enrichment` | Dùng filter rộng hơn để lấy thêm TTL OS hint khi không truyền `--filter` | Tắt |
 | `--sqlite <file>` | SQLite database path | `SQLITE_DATABASE_PATH` |
 | `--output <format>` | `table`, `json`, hoặc `csv` | `json` |
 | `--version` | Hiển thị version binary | |

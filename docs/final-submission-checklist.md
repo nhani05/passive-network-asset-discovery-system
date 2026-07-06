@@ -33,7 +33,7 @@ ctest --test-dir build --output-on-failure
 ```sh
 ./build/asset-discovery --pcap samples/multi-asset.pcap \
   --sqlite pnad.db \
-  --filter "arp or udp port 67 or udp port 68" \
+  --filter "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353" \
   --output json
 ```
 

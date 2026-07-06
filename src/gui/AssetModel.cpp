@@ -48,6 +48,11 @@ AssetItem assetItemFromDto(const QVariantMap& dto)
     item.macAddress = dto.value("macAddress").toString();
     item.ipAddresses = variantStringList(dto.value("ipAddresses"));
     item.hostname = dto.value("hostname").toString();
+    item.displayName = dto.value("displayName").toString();
+    item.vendor = dto.value("vendor").toString();
+    item.osHint = dto.value("osHint", dto.value("os")).toString();
+    item.deviceType = dto.value("deviceType").toString();
+    item.modelHint = dto.value("modelHint").toString();
 
     item.firstSeen = formatRelativeTime(dto.value("firstSeen").toString());
     item.lastSeen = formatRelativeTime(dto.value("lastSeen").toString());
@@ -72,6 +77,11 @@ QVariantMap assetToMap(const AssetItem& asset)
     map.insert("macAddress", asset.macAddress);
     map.insert("ipAddresses", asset.ipAddresses);
     map.insert("hostname", asset.hostname.isEmpty() ? "-" : asset.hostname);
+    map.insert("displayName", asset.displayName.isEmpty() ? "-" : asset.displayName);
+    map.insert("vendor", asset.vendor.isEmpty() ? "-" : asset.vendor);
+    map.insert("osHint", asset.osHint.isEmpty() ? "-" : asset.osHint);
+    map.insert("deviceType", asset.deviceType.isEmpty() ? "-" : asset.deviceType);
+    map.insert("modelHint", asset.modelHint.isEmpty() ? "-" : asset.modelHint);
     map.insert("firstSeen", asset.firstSeen);
     map.insert("lastSeen", asset.lastSeen);
     map.insert("discoverySources", asset.discoverySources);
@@ -90,6 +100,11 @@ QJsonObject assetToJson(const AssetItem& asset)
     object.insert("mac", asset.macAddress);
     object.insert("ip", asset.ipAddresses.join(", "));
     object.insert("hostname", asset.hostname);
+    object.insert("display_name", asset.displayName);
+    object.insert("vendor", asset.vendor);
+    object.insert("os_hint", asset.osHint);
+    object.insert("device_type", asset.deviceType);
+    object.insert("model_hint", asset.modelHint);
     object.insert("first_seen", asset.firstSeen);
     object.insert("last_seen", asset.lastSeen);
     object.insert("protocols", QJsonArray::fromStringList(asset.discoverySources));
@@ -125,6 +140,16 @@ QVariant AssetModel::data(const QModelIndex& index, int role) const
         return asset.ipAddresses;
     case HostnameRole:
         return asset.hostname.isEmpty() ? "-" : asset.hostname;
+    case DisplayNameRole:
+        return asset.displayName.isEmpty() ? "-" : asset.displayName;
+    case VendorRole:
+        return asset.vendor.isEmpty() ? "-" : asset.vendor;
+    case OsHintRole:
+        return asset.osHint.isEmpty() ? "-" : asset.osHint;
+    case DeviceTypeRole:
+        return asset.deviceType.isEmpty() ? "-" : asset.deviceType;
+    case ModelHintRole:
+        return asset.modelHint.isEmpty() ? "-" : asset.modelHint;
     case FirstSeenRole:
         return asset.firstSeen;
     case LastSeenRole:
@@ -142,6 +167,11 @@ QHash<int, QByteArray> AssetModel::roleNames() const
     roles[MacRole] = "macAddress";
     roles[IpsRole] = "ipAddresses";
     roles[HostnameRole] = "hostname";
+    roles[DisplayNameRole] = "displayName";
+    roles[VendorRole] = "vendor";
+    roles[OsHintRole] = "osHint";
+    roles[DeviceTypeRole] = "deviceType";
+    roles[ModelHintRole] = "modelHint";
     roles[FirstSeenRole] = "firstSeen";
     roles[LastSeenRole] = "lastSeen";
     roles[SourcesRole] = "discoverySources";
@@ -157,8 +187,8 @@ void AssetModel::reloadFromDatabase(const QString& dbPath)
         return;
     }
 
-    const char* sql = "SELECT mac_address, ip_addresses, hostname, first_seen, last_seen, "
-                      "discovery_sources FROM assets ORDER BY mac_address;";
+    const char* sql = "SELECT mac_address, ip_addresses, hostname, display_name, vendor, os_hint, device_type, "
+                      "model_hint, first_seen, last_seen, discovery_sources FROM assets ORDER BY mac_address;";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         qWarning() << "Failed to prepare select query for AssetModel:" << sqlite3_errmsg(db);
@@ -174,12 +204,22 @@ void AssetModel::reloadFromDatabase(const QString& dbPath)
 
         const char* hostname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         item.hostname = hostname ? QString::fromUtf8(hostname) : "";
+        const char* displayName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        item.displayName = displayName ? QString::fromUtf8(displayName) : "";
+        const char* vendor = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        item.vendor = vendor ? QString::fromUtf8(vendor) : "";
+        const char* osHint = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        item.osHint = osHint ? QString::fromUtf8(osHint) : "";
+        const char* deviceType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        item.deviceType = deviceType ? QString::fromUtf8(deviceType) : "";
+        const char* modelHint = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        item.modelHint = modelHint ? QString::fromUtf8(modelHint) : "";
 
-        const QString firstSeenRaw = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
-        const QString lastSeenRaw = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)));
+        const QString firstSeenRaw = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)));
+        const QString lastSeenRaw = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
         item.firstSeen = formatRelativeTime(firstSeenRaw);
         item.lastSeen = formatRelativeTime(lastSeenRaw);
-        item.discoverySources = parseJsonStringArray(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
+        item.discoverySources = parseJsonStringArray(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10)));
 
         newAssets.push_back(item);
     }
@@ -254,11 +294,16 @@ bool AssetModel::exportToFile(const QString& path, const QString& format) const
 
     QTextStream stream(&file);
     if (normalized == QString::fromLatin1(constants::cli::OutputCsv)) {
-        stream << "ip,mac,hostname,first_seen,last_seen,protocols\n";
+        stream << "ip,mac,hostname,display_name,vendor,os_hint,device_type,model_hint,first_seen,last_seen,protocols\n";
         for (const auto& asset : assets_) {
             stream << csvCell(asset.ipAddresses.join("; ")) << ","
                    << csvCell(asset.macAddress) << ","
                    << csvCell(asset.hostname) << ","
+                   << csvCell(asset.displayName) << ","
+                   << csvCell(asset.vendor) << ","
+                   << csvCell(asset.osHint) << ","
+                   << csvCell(asset.deviceType) << ","
+                   << csvCell(asset.modelHint) << ","
                    << csvCell(asset.firstSeen) << ","
                    << csvCell(asset.lastSeen) << ","
                    << csvCell(asset.discoverySources.join("; ")) << "\n";
@@ -268,7 +313,9 @@ bool AssetModel::exportToFile(const QString& path, const QString& format) const
 
     for (const auto& asset : assets_) {
         stream << asset.macAddress << " | " << asset.ipAddresses.join(", ")
-               << " | " << asset.hostname << " | " << asset.discoverySources.join(", ") << "\n";
+               << " | " << asset.displayName << " | " << asset.vendor << " | "
+               << asset.osHint << " | " << asset.deviceType << " | "
+               << asset.modelHint << " | " << asset.discoverySources.join(", ") << "\n";
     }
     return true;
 }

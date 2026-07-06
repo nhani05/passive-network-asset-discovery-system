@@ -1,5 +1,7 @@
 #include "pnad/packet/DhcpPlugin.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <optional>
 #include <set>
@@ -93,6 +95,44 @@ std::string joinOptions(const std::set<int>& options)
     return output.str();
 }
 
+std::optional<std::string> osHintFromParameterRequestList(const std::string& options)
+{
+    if (options.find("1,3,6,15,31,33,43,44,46,47,119,121,249,252") != std::string::npos) {
+        return "windows";
+    }
+    if (options.find("1,121,33,3,6,15,26,28,51,58,59,119") != std::string::npos) {
+        return "linux";
+    }
+    if (options.find("1,3,6,15,119,252") != std::string::npos) {
+        return "macos";
+    }
+    if (options.find("1,3,6,15,26,28,51,58,59") != std::string::npos) {
+        return "android";
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> osHintFromVendorClass(const std::string& value)
+{
+    auto lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    if (lower.find("msft") != std::string::npos || lower.find("microsoft") != std::string::npos) {
+        return "windows";
+    }
+    if (lower.find("android") != std::string::npos) {
+        return "android";
+    }
+    if (lower.find("apple") != std::string::npos || lower.find("darwin") != std::string::npos) {
+        return "macos/ios";
+    }
+    if (lower.find("udhcp") != std::string::npos || lower.find("busybox") != std::string::npos) {
+        return "embedded-linux";
+    }
+    return std::nullopt;
+}
+
 std::string messageTypeName(std::uint8_t messageType)
 {
     switch (messageType) {
@@ -169,6 +209,7 @@ std::optional<AssetObservation> parseDhcpPayload(
         if (option == 12) {
             observation.hostname = std::string(payload.begin() + static_cast<std::ptrdiff_t>(offset),
                 payload.begin() + static_cast<std::ptrdiff_t>(offset + length));
+            observation.displayName = observation.hostname;
             addObservedMetadata(observation, "dhcp.option.hostname", *observation.hostname);
         } else if (option == 50 && length == 4 && !observation.ipAddress.has_value()) {
             const auto requestedIp = formatIpv4Address(payload, offset);
@@ -188,14 +229,22 @@ std::optional<AssetObservation> parseDhcpPayload(
         } else if (option == 59 && length == 4) {
             addObservedMetadata(observation, "dhcp.rebinding_time_seconds", std::to_string(readBigEndianUInt32(payload, offset)));
         } else if (option == 60) {
-            addObservedMetadata(observation,
-                "dhcp.vendor_class_identifier",
-                std::string(payload.begin() + static_cast<std::ptrdiff_t>(offset),
-                    payload.begin() + static_cast<std::ptrdiff_t>(offset + length)));
+            const std::string vendorClass(payload.begin() + static_cast<std::ptrdiff_t>(offset),
+                payload.begin() + static_cast<std::ptrdiff_t>(offset + length));
+            addObservedMetadata(observation, "dhcp.vendor_class_identifier", vendorClass);
+            const auto osHint = osHintFromVendorClass(vendorClass);
+            if (osHint.has_value()) {
+                observation.osHint = *osHint;
+            }
         } else if (option == 61) {
             addObservedMetadata(observation, "dhcp.client_identifier", formatHexBytes(payload, offset, length));
         } else if (option == 55) {
-            addObservedMetadata(observation, "dhcp.parameter_request_list", formatDecimalList(payload, offset, length));
+            const auto fingerprint = formatDecimalList(payload, offset, length);
+            addObservedMetadata(observation, "dhcp.parameter_request_list", fingerprint);
+            const auto osHint = osHintFromParameterRequestList(fingerprint);
+            if (osHint.has_value() && !observation.osHint.has_value()) {
+                observation.osHint = *osHint;
+            }
         }
         offset += length;
     }

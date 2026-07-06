@@ -97,7 +97,9 @@ Item {
                             spacing: 8
                             Text { text: ipAddresses && ipAddresses.length > 0 ? ipAddresses.join(", ") : "-"; color: window.colorTextMain; Layout.preferredWidth: 150; elide: Text.ElideRight }
                             Text { text: macAddress; color: window.colorTextMain; font.family: "monospace"; Layout.preferredWidth: 155; elide: Text.ElideRight }
-                            Text { text: hostname; color: window.colorTextMain; Layout.preferredWidth: 130; elide: Text.ElideRight }
+                            Text { text: displayName && displayName !== "-" ? displayName : hostname; color: window.colorTextMain; Layout.preferredWidth: 130; elide: Text.ElideRight }
+                            Text { text: vendor; color: window.colorTextMain; Layout.preferredWidth: 110; elide: Text.ElideRight }
+                            Text { text: deviceType; color: window.colorTextMain; Layout.preferredWidth: 90; elide: Text.ElideRight }
                             Text { text: shell.formatTimestamp(firstSeen); color: window.colorTextMuted; Layout.preferredWidth: 150; elide: Text.ElideRight }
                             Text { text: shell.formatTimestamp(lastSeen); color: window.colorTextMuted; Layout.preferredWidth: 150; elide: Text.ElideRight }
                             Text { text: discoverySources && discoverySources.length > 0 ? discoverySources.join(", ") : "-"; color: window.colorAccent; Layout.fillWidth: true; elide: Text.ElideRight }
@@ -132,6 +134,11 @@ Item {
                         { label: "IP", value: shell.primaryIp(shell.selectedAsset) },
                         { label: "MAC", value: shell.selectedAsset.macAddress || "-" },
                         { label: "Hostname", value: shell.selectedAsset.hostname || "-" },
+                        { label: "Display Name", value: shell.selectedAsset.displayName || "-" },
+                        { label: "Vendor", value: shell.selectedAsset.vendor || "-" },
+                        { label: "OS", value: shell.selectedAsset.osHint || "-" },
+                        { label: "Device Type", value: shell.selectedAsset.deviceType || "-" },
+                        { label: "Model", value: shell.selectedAsset.modelHint || "-" },
                         { label: "First Seen", value: shell.formatTimestamp(shell.selectedAsset.firstSeen) },
                         { label: "Last Seen", value: shell.formatTimestamp(shell.selectedAsset.lastSeen) },
                         { label: "Protocols", value: shell.protocols(shell.selectedAsset) }

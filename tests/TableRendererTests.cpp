@@ -30,6 +30,11 @@ Asset makeAsset()
     Asset asset;
     asset.macAddress = "02:42:ac:11:00:02";
     asset.ipAddresses.insert("192.168.1.10");
+    asset.displayName = "Nam Laptop";
+    asset.vendor = "Apple";
+    asset.osHint = "macos";
+    asset.deviceType = "computer";
+    asset.modelHint = "MacBook";
     asset.firstSeen = {1699606784, 0};
     asset.lastSeen = {1699606790, 10};
     asset.sources.insert(sourceIdArp);
@@ -46,8 +51,11 @@ void rendersSingleAsset()
     expect(contains(output, "First Seen"), "table should contain first seen header");
     expect(contains(output, "Last Seen"), "table should contain last seen header");
     expect(contains(output, "Sources"), "table should contain sources header");
+    expect(contains(output, "Vendor"), "table should contain vendor header");
     expect(contains(output, "02:42:ac:11:00:02"), "table should contain asset MAC");
     expect(contains(output, "192.168.1.10"), "table should contain asset IP");
+    expect(contains(output, "Nam Laptop"), "table should contain display name");
+    expect(contains(output, "Apple"), "table should contain vendor");
     expect(contains(output, "1699606784.0"), "table should contain first seen timestamp");
     expect(contains(output, "1699606790.10"), "table should contain last seen timestamp");
     expect(contains(output, "arp"), "table should contain ARP source");

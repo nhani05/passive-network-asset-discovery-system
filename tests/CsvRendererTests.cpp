@@ -32,6 +32,11 @@ Asset makeAsset()
     asset.macAddress = "02:42:ac:11:00:02";
     asset.ipAddresses.insert("192.168.1.10");
     asset.hostname = "laptop-user";
+    asset.displayName = "Nam Laptop";
+    asset.vendor = "Apple";
+    asset.osHint = "macos";
+    asset.deviceType = "computer";
+    asset.modelHint = "MacBook";
     asset.firstSeen = {1699606784, 0};
     asset.lastSeen = {1699606790, 10};
     asset.sources.insert(sourceIdArp);
@@ -43,9 +48,9 @@ Asset makeAsset()
 void rendersHeaderAndAsset()
 {
     const auto output = renderAssetCsv({makeAsset()});
-    expect(contains(output, "mac_address,ip_addresses,hostname,first_seen,last_seen,discovery_sources\n"),
+    expect(contains(output, "mac_address,ip_addresses,hostname,display_name,vendor,os_hint,device_type,model_hint,first_seen,last_seen,discovery_sources\n"),
         "CSV should include deterministic header");
-    expect(contains(output, "02:42:ac:11:00:02,192.168.1.10,laptop-user,1699606784.0,1699606790.10,arp;dhcp;dns"),
+    expect(contains(output, "02:42:ac:11:00:02,192.168.1.10,laptop-user,Nam Laptop,Apple,macos,computer,MacBook,1699606784.0,1699606790.10,arp;dhcp;dns"),
         "CSV should include asset fields");
 }
 

@@ -1,6 +1,7 @@
 #include "pnad/discovery/AssetObservation.hpp"
 #include "pnad/packet/PacketParserFacade.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -11,6 +12,7 @@ namespace {
 using asset_discovery::parser::ObservationEventType;
 using asset_discovery::parser::parseEthernetObservations;
 using asset_discovery::parser::sourceIdDns;
+using asset_discovery::parser::sourceIdMdns;
 
 int failures = 0;
 
@@ -41,6 +43,43 @@ std::vector<std::uint8_t> dnsQueryPayload()
         0x00, 0x01,
         0x00, 0x01,
     };
+}
+
+void appendDnsName(std::vector<std::uint8_t>& bytes, const std::vector<std::string>& labels)
+{
+    for (const auto& label : labels) {
+        bytes.push_back(static_cast<std::uint8_t>(label.size()));
+        bytes.insert(bytes.end(), label.begin(), label.end());
+    }
+    bytes.push_back(0);
+}
+
+std::vector<std::uint8_t> mdnsResponsePayload()
+{
+    std::vector<std::uint8_t> bytes = {
+        0x00, 0x00, 0x84, 0x00,
+        0x00, 0x00, 0x00, 0x02,
+        0x00, 0x00, 0x00, 0x00,
+    };
+
+    appendDnsName(bytes, {"_airplay", "_tcp", "local"});
+    append16(bytes, 12);
+    append16(bytes, 1);
+    bytes.insert(bytes.end(), {0, 0, 0, 120});
+    std::vector<std::uint8_t> ptrRdata;
+    appendDnsName(ptrRdata, {"Nam-iPhone", "_airplay", "_tcp", "local"});
+    append16(bytes, static_cast<std::uint16_t>(ptrRdata.size()));
+    bytes.insert(bytes.end(), ptrRdata.begin(), ptrRdata.end());
+
+    appendDnsName(bytes, {"Nam-iPhone", "_airplay", "_tcp", "local"});
+    append16(bytes, 16);
+    append16(bytes, 1);
+    bytes.insert(bytes.end(), {0, 0, 0, 120});
+    const std::string txt = "model=iPhone";
+    append16(bytes, static_cast<std::uint16_t>(txt.size() + 1));
+    bytes.push_back(static_cast<std::uint8_t>(txt.size()));
+    bytes.insert(bytes.end(), txt.begin(), txt.end());
+    return bytes;
 }
 
 std::vector<std::uint8_t> ipv4UdpFrame(
@@ -76,12 +115,15 @@ void parsesValidDnsEndpoint()
 {
     const auto observations = parseEthernetObservations(ipv4UdpFrame(5353, 53, dnsQueryPayload()), {100, 200});
 
-    expect(observations.size() == 1, "valid DNS packet should create one endpoint observation");
-    if (observations.empty()) {
+    const auto found = std::find_if(observations.begin(), observations.end(), [](const auto& observation) {
+        return observation.sourceId == sourceIdDns;
+    });
+    expect(found != observations.end(), "valid DNS packet should create one DNS endpoint observation");
+    if (found == observations.end()) {
         return;
     }
 
-    const auto& observation = observations.front();
+    const auto& observation = *found;
     expect(observation.macAddress == "02:42:ac:11:00:05", "DNS observation should use Ethernet source MAC");
     expect(observation.ipAddress == "192.168.1.50", "DNS observation should use IPv4 source address");
     expect(observation.sourceId == sourceIdDns, "DNS observation should preserve dns source id");
@@ -100,7 +142,9 @@ void skipsTruncatedDnsPayload()
     const std::vector<std::uint8_t> truncated(11, 0x00);
     const auto observations = parseEthernetObservations(ipv4UdpFrame(5353, 53, truncated), {});
 
-    expect(observations.empty(), "truncated DNS header should be skipped");
+    expect(std::none_of(observations.begin(), observations.end(), [](const auto& observation) {
+        return observation.sourceId == sourceIdDns;
+    }), "truncated DNS header should skip DNS observation");
 }
 
 void skipsNonDnsUdpPacket()
@@ -108,7 +152,24 @@ void skipsNonDnsUdpPacket()
     const std::vector<std::uint8_t> payload(12, 0x00);
     const auto observations = parseEthernetObservations(ipv4UdpFrame(123, 124, payload), {});
 
-    expect(observations.empty(), "non-DNS UDP packet should be skipped");
+    expect(std::none_of(observations.begin(), observations.end(), [](const auto& observation) {
+        return observation.sourceId == sourceIdDns;
+    }), "non-DNS UDP packet should skip DNS observation");
+}
+
+void parsesMdnsSummary()
+{
+    const auto observations = parseEthernetObservations(ipv4UdpFrame(5353, 5353, mdnsResponsePayload()), {101, 0});
+    const auto found = std::find_if(observations.begin(), observations.end(), [](const auto& observation) {
+        return observation.sourceId == sourceIdMdns;
+    });
+    expect(found != observations.end(), "mDNS response should create mDNS observation");
+    if (found == observations.end()) {
+        return;
+    }
+    expect(found->displayName == "Nam-iPhone", "mDNS PTR instance should contribute display name");
+    expect(found->deviceType == "apple-media", "mDNS service should classify device");
+    expect(found->modelHint == "iPhone", "mDNS TXT model should contribute model hint");
 }
 
 void skipsMalformedFrame()
@@ -125,6 +186,7 @@ int main()
     parsesValidDnsEndpoint();
     skipsTruncatedDnsPayload();
     skipsNonDnsUdpPacket();
+    parsesMdnsSummary();
     skipsMalformedFrame();
 
     if (failures > 0) {

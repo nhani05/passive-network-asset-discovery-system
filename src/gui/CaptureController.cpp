@@ -198,13 +198,14 @@ QVariantMap assetToDto(const asset::Asset& asset)
     dto.insert("macAddress", QString::fromStdString(asset.macAddress));
     dto.insert("ipAddresses", toStringList(asset.ipAddresses));
     dto.insert("hostname", asset.hostname.has_value() ? QString::fromStdString(*asset.hostname) : QString());
+    dto.insert("displayName", asset.displayName.has_value() ? QString::fromStdString(*asset.displayName) : QString());
+    dto.insert("vendor", asset.vendor.has_value() ? QString::fromStdString(*asset.vendor) : QString());
+    dto.insert("osHint", asset.osHint.has_value() ? QString::fromStdString(*asset.osHint) : QString());
+    dto.insert("deviceType", asset.deviceType.has_value() ? QString::fromStdString(*asset.deviceType) : QString());
+    dto.insert("modelHint", asset.modelHint.has_value() ? QString::fromStdString(*asset.modelHint) : QString());
     dto.insert("firstSeen", QString::fromStdString(asset::formatTimestamp(asset.firstSeen)));
     dto.insert("lastSeen", QString::fromStdString(asset::formatTimestamp(asset.lastSeen)));
     dto.insert("discoverySources", toStringList(asset.sources));
-    dto.insert("vendor", "Unknown");
-    dto.insert("deviceType", "Unknown");
-    dto.insert("os", "Unknown");
-    dto.insert("rawObservedMetadata", QString::fromStdString(mapToJson(asset.metadata)));
     dto.insert("risk", "Normal");
     return dto;
 }

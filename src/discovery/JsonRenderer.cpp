@@ -92,72 +92,29 @@ void appendSourceArray(std::ostringstream& output, const std::set<std::string>& 
     output << "]";
 }
 
-void appendMetadataRecords(
-    std::ostringstream& output,
-    const std::map<std::string, parser::MetadataRecord>& records)
-{
-    output << "{";
-    bool first = true;
-    for (const auto& item : records) {
-        const auto& record = item.second;
-        if (!first) {
-            output << ", ";
-        }
-        output << "\"" << escapeJsonString(item.first) << "\": {";
-        output << "\"key\": \"" << escapeJsonString(record.key) << "\", ";
-        output << "\"values\": ";
-        appendStringArray(output, record.values);
-        output << ", \"source\": \"" << escapeJsonString(record.source) << "\", ";
-        output << "\"confidence_category\": \"" << escapeJsonString(record.confidenceCategory) << "\", ";
-        output << "\"first_seen\": \"" << escapeJsonString(asset::formatTimestamp(record.firstSeen)) << "\", ";
-        output << "\"last_seen\": \"" << escapeJsonString(asset::formatTimestamp(record.lastSeen)) << "\"";
-        output << "}";
-        first = false;
-    }
-    output << "}";
-}
-
-void appendDerivedHints(std::ostringstream& output, const std::vector<parser::DerivedHint>& hints)
-{
-    output << "[";
-    bool first = true;
-    for (const auto& hint : hints) {
-        if (!first) {
-            output << ", ";
-        }
-        output << "{";
-        output << "\"category\": \"" << escapeJsonString(hint.category) << "\", ";
-        output << "\"value\": \"" << escapeJsonString(hint.value) << "\", ";
-        output << "\"confidence\": \"" << escapeJsonString(hint.confidence) << "\", ";
-        output << "\"reason\": \"" << escapeJsonString(hint.reason) << "\", ";
-        output << "\"evidence_keys\": ";
-        appendStringVector(output, hint.evidenceKeys);
-        output << "}";
-        first = false;
-    }
-    output << "]";
-}
-
 } // namespace
 
 std::string renderObservedMetadataJson(const parser::StructuredMetadata& metadata)
 {
     std::ostringstream output;
-    appendMetadataRecords(output, metadata.observed);
+    (void)metadata;
+    output << "{}";
     return output.str();
 }
 
 std::string renderReferenceMetadataJson(const parser::StructuredMetadata& metadata)
 {
     std::ostringstream output;
-    appendMetadataRecords(output, metadata.reference);
+    (void)metadata;
+    output << "{}";
     return output.str();
 }
 
 std::string renderDerivedHintsJson(const parser::StructuredMetadata& metadata)
 {
     std::ostringstream output;
-    appendDerivedHints(output, metadata.derivedHints);
+    (void)metadata;
+    output << "[]";
     return output.str();
 }
 
@@ -179,19 +136,15 @@ std::string renderAssetJson(const std::vector<asset::Asset>& assets)
         if (asset.hostname.has_value()) {
             output << "    \"hostname\": \"" << escapeJsonString(*asset.hostname) << "\",\n";
         }
+        output << "    \"display_name\": \"" << escapeJsonString(asset.displayName.value_or("")) << "\",\n";
+        output << "    \"vendor\": \"" << escapeJsonString(asset.vendor.value_or("")) << "\",\n";
+        output << "    \"os_hint\": \"" << escapeJsonString(asset.osHint.value_or("")) << "\",\n";
+        output << "    \"device_type\": \"" << escapeJsonString(asset.deviceType.value_or("")) << "\",\n";
+        output << "    \"model_hint\": \"" << escapeJsonString(asset.modelHint.value_or("")) << "\",\n";
         output << "    \"first_seen\": \"" << escapeJsonString(asset::formatTimestamp(asset.firstSeen)) << "\",\n";
         output << "    \"last_seen\": \"" << escapeJsonString(asset::formatTimestamp(asset.lastSeen)) << "\",\n";
         output << "    \"discovery_sources\": ";
         appendSourceArray(output, asset.sources);
-        output << ",\n";
-        output << "    \"observed_metadata\": ";
-        appendMetadataRecords(output, asset.structuredMetadata.observed);
-        output << ",\n";
-        output << "    \"reference_metadata\": ";
-        appendMetadataRecords(output, asset.structuredMetadata.reference);
-        output << ",\n";
-        output << "    \"derived_hints\": ";
-        appendDerivedHints(output, asset.structuredMetadata.derivedHints);
         output << "\n";
         output << "  }";
         if (index + 1 < assets.size()) {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -73,25 +74,127 @@ std::optional<std::string> macOui(const std::string& macAddress)
     return parts[0] + ":" + parts[1] + ":" + parts[2];
 }
 
-std::optional<std::string> embeddedOuiRegistrant(const std::string& oui)
+struct OuiRegistrant {
+    const char* oui;
+    const char* registrant;
+};
+
+constexpr OuiRegistrant curatedOuiRegistry[] = {
+    {"00:03:93", "Apple"},
+    {"00:05:02", "Apple"},
+    {"00:0a:27", "Apple"},
+    {"00:0a:95", "Apple"},
+    {"00:14:51", "Apple"},
+    {"00:16:cb", "Apple"},
+    {"00:17:f2", "Apple"},
+    {"00:19:e3", "Apple"},
+    {"00:1b:63", "Apple"},
+    {"00:1e:52", "Apple"},
+    {"00:1f:5b", "Apple"},
+    {"00:21:e9", "Apple"},
+    {"00:23:12", "Apple"},
+    {"00:23:32", "Apple"},
+    {"00:25:00", "Apple"},
+    {"00:26:08", "Apple"},
+    {"04:0c:ce", "Apple"},
+    {"3c:15:c2", "Apple"},
+    {"40:98:ad", "Apple"},
+    {"70:cd:60", "Apple"},
+    {"a4:5e:60", "Apple"},
+    {"f0:18:98", "Apple"},
+    {"00:1a:11", "Google"},
+    {"3c:5a:b4", "Google"},
+    {"54:60:09", "Google"},
+    {"64:16:66", "Google"},
+    {"f4:f5:d8", "Google"},
+    {"00:50:f2", "Microsoft"},
+    {"28:18:78", "Microsoft"},
+    {"7c:1e:52", "Microsoft"},
+    {"d8:bb:2c", "Microsoft"},
+    {"00:15:99", "Samsung"},
+    {"00:16:6b", "Samsung"},
+    {"00:17:c9", "Samsung"},
+    {"00:1d:25", "Samsung"},
+    {"00:23:39", "Samsung"},
+    {"00:26:37", "Samsung"},
+    {"08:08:c2", "Samsung"},
+    {"5c:f6:dc", "Samsung"},
+    {"a0:21:b7", "Samsung"},
+    {"cc:07:e4", "Samsung"},
+    {"00:12:17", "Cisco"},
+    {"00:14:a9", "Cisco"},
+    {"00:1b:54", "Cisco"},
+    {"00:1e:13", "Cisco"},
+    {"00:21:55", "Cisco"},
+    {"00:23:04", "Cisco"},
+    {"00:24:14", "Cisco"},
+    {"00:40:96", "Cisco"},
+    {"00:50:56", "VMware"},
+    {"00:05:69", "VMware"},
+    {"00:0c:29", "VMware"},
+    {"08:00:27", "Oracle VirtualBox"},
+    {"52:54:00", "QEMU"},
+    {"b8:27:eb", "Raspberry Pi Foundation"},
+    {"dc:a6:32", "Raspberry Pi Trading"},
+    {"e4:5f:01", "Raspberry Pi Trading"},
+    {"24:0a:c4", "Espressif"},
+    {"30:ae:a4", "Espressif"},
+    {"7c:df:a1", "Espressif"},
+    {"a4:cf:12", "Espressif"},
+    {"00:1d:0f", "TP-Link"},
+    {"14:cc:20", "TP-Link"},
+    {"50:c7:bf", "TP-Link"},
+    {"64:66:b3", "TP-Link"},
+    {"98:da:c4", "TP-Link"},
+    {"b0:be:76", "TP-Link"},
+    {"d8:0d:17", "TP-Link"},
+    {"00:15:6d", "Ubiquiti"},
+    {"04:18:d6", "Ubiquiti"},
+    {"24:a4:3c", "Ubiquiti"},
+    {"44:d9:e7", "Ubiquiti"},
+    {"68:d7:9a", "Ubiquiti"},
+    {"78:8a:20", "Ubiquiti"},
+    {"00:0c:42", "MikroTik"},
+    {"18:fd:74", "MikroTik"},
+    {"4c:5e:0c", "MikroTik"},
+    {"64:d1:54", "MikroTik"},
+    {"00:1e:58", "D-Link"},
+    {"00:22:b0", "D-Link"},
+    {"1c:7e:e5", "D-Link"},
+    {"28:10:7b", "D-Link"},
+    {"00:13:10", "Cisco Linksys"},
+    {"00:18:39", "Cisco Linksys"},
+    {"00:25:9c", "Cisco Linksys"},
+    {"10:bf:48", "ASUSTek"},
+    {"2c:4d:54", "ASUSTek"},
+    {"38:2c:4a", "ASUSTek"},
+    {"00:1f:c6", "ASUSTek"},
+    {"00:1b:21", "Intel"},
+    {"00:1c:c0", "Intel"},
+    {"00:21:6a", "Intel"},
+    {"3c:a9:f4", "Intel"},
+    {"f4:06:69", "Intel"},
+    {"00:14:22", "Dell"},
+    {"00:1c:23", "Dell"},
+    {"18:03:73", "Dell"},
+    {"b8:ca:3a", "Dell"},
+    {"00:1f:29", "Hewlett Packard"},
+    {"2c:27:d7", "Hewlett Packard"},
+    {"3c:d9:2b", "Hewlett Packard"},
+    {"70:10:6f", "Hewlett Packard"},
+    {"00:59:07", "Lenovo"},
+    {"20:47:47", "Lenovo"},
+    {"54:ee:75", "Lenovo"},
+    {"a4:db:30", "Lenovo"}
+};
+
+std::optional<std::string> curatedOuiRegistrant(const std::string& oui)
 {
-    if (oui == "00:1a:11") {
-        return "Google";
-    }
-    if (oui == "00:1b:63") {
-        return "Apple";
-    }
-    if (oui == "00:50:56") {
-        return "VMware";
-    }
-    if (oui == "08:00:27") {
-        return "Oracle VirtualBox";
-    }
-    if (oui == "b8:27:eb") {
-        return "Raspberry Pi Foundation";
-    }
-    if (oui == "dc:a6:32") {
-        return "Raspberry Pi Trading";
+    const auto match = std::find_if(std::begin(curatedOuiRegistry), std::end(curatedOuiRegistry), [&oui](const auto& item) {
+        return oui == item.oui;
+    });
+    if (match != std::end(curatedOuiRegistry)) {
+        return match->registrant;
     }
     return std::nullopt;
 }
@@ -148,18 +251,56 @@ void addMacReferenceMetadata(Asset& asset)
     }
     parser::addReferenceMetadata(asset.structuredMetadata, "mac.oui", *oui, source, asset.firstSeen);
 
-    const auto registrant = embeddedOuiRegistrant(*oui);
+    const auto registrant = curatedOuiRegistrant(*oui);
     if (registrant.has_value()) {
+        if (!asset.vendor.has_value()) {
+            asset.vendor = *registrant;
+        }
         parser::addReferenceMetadata(asset.structuredMetadata,
             "mac.oui.registrant",
             *registrant,
-            "embedded-minimal-oui",
+            "curated-oui",
             asset.firstSeen);
         parser::addReferenceMetadata(asset.structuredMetadata,
             "mac.oui.registry_version",
-            "embedded-minimal-oui-v1",
-            "embedded-minimal-oui",
+            "curated-oui-v1",
+            "curated-oui",
             asset.firstSeen);
+    }
+}
+
+bool hasValue(const std::optional<std::string>& value)
+{
+    return value.has_value() && !value->empty();
+}
+
+void applySummaryCandidates(Asset& asset, const parser::AssetObservation& observation)
+{
+    if (hasValue(observation.displayName)) {
+        if (observation.sourceId == parser::sourceIdMdns || !hasValue(asset.displayName)
+            || (observation.sourceId == parser::sourceIdDhcp && asset.displayName == asset.hostname)) {
+            asset.displayName = *observation.displayName;
+        }
+    }
+    if (hasValue(observation.vendor)) {
+        asset.vendor = *observation.vendor;
+    }
+    if (hasValue(observation.deviceType)) {
+        if (observation.sourceId == parser::sourceIdMdns || !hasValue(asset.deviceType)) {
+            asset.deviceType = *observation.deviceType;
+        }
+    }
+    if (hasValue(observation.modelHint)) {
+        if (observation.sourceId == parser::sourceIdMdns || !hasValue(asset.modelHint)) {
+            asset.modelHint = *observation.modelHint;
+        }
+    }
+    if (hasValue(observation.osHint)) {
+        if (observation.sourceId == parser::sourceIdDhcp || !hasValue(asset.osHint)
+            || (observation.sourceId == parser::sourceIdSsdp
+                && (asset.osHint == "linux/unix" || asset.osHint == "network-device"))) {
+            asset.osHint = *observation.osHint;
+        }
     }
 }
 
@@ -250,7 +391,11 @@ void AssetStore::applyObservation(const parser::AssetObservation& observation)
         }
         if (observation.hostname.has_value() && !observation.hostname->empty()) {
             asset.hostname = *observation.hostname;
+            if (!hasValue(asset.displayName)) {
+                asset.displayName = *observation.hostname;
+            }
         }
+        applySummaryCandidates(asset, observation);
         if (!observation.sourceId.empty()) {
             asset.sources.insert(observation.sourceId);
         }
@@ -273,7 +418,11 @@ void AssetStore::applyObservation(const parser::AssetObservation& observation)
     }
     if (observation.hostname.has_value() && !observation.hostname->empty()) {
         asset.hostname = *observation.hostname;
+        if (!hasValue(asset.displayName)) {
+            asset.displayName = *observation.hostname;
+        }
     }
+    applySummaryCandidates(asset, observation);
     if (!observation.sourceId.empty()) {
         asset.sources.insert(observation.sourceId);
     }

@@ -59,11 +59,17 @@ std::string escapeCsvField(const std::string& value)
 std::string renderAssetCsv(const std::vector<asset::Asset>& assets)
 {
     std::ostringstream output;
-    output << "mac_address,ip_addresses,hostname,first_seen,last_seen,discovery_sources\n";
+    output << "mac_address,ip_addresses,hostname,display_name,vendor,os_hint,device_type,model_hint,"
+           << "first_seen,last_seen,discovery_sources\n";
     for (const auto& asset : assets) {
         output << escapeCsvField(asset.macAddress) << ","
                << escapeCsvField(joinStrings(asset.ipAddresses)) << ","
                << escapeCsvField(asset.hostname.value_or("")) << ","
+               << escapeCsvField(asset.displayName.value_or("")) << ","
+               << escapeCsvField(asset.vendor.value_or("")) << ","
+               << escapeCsvField(asset.osHint.value_or("")) << ","
+               << escapeCsvField(asset.deviceType.value_or("")) << ","
+               << escapeCsvField(asset.modelHint.value_or("")) << ","
                << escapeCsvField(asset::formatTimestamp(asset.firstSeen)) << ","
                << escapeCsvField(asset::formatTimestamp(asset.lastSeen)) << ","
                << escapeCsvField(joinSources(asset.sources)) << "\n";

@@ -9,6 +9,11 @@ Tài liệu này định nghĩa các field asset dùng chung cho output table, J
 | `mac_address` | Địa chỉ MAC đã chuẩn hóa chữ thường, dùng làm khóa chính của asset. |
 | `ip_addresses` | Tập địa chỉ IPv4 đã quan sát được cho asset, theo thứ tự ổn định. |
 | `hostname` | Hostname tùy chọn, hiện được lấy từ DHCP option 12 khi có. |
+| `display_name` | Tên hiển thị tốt nhất, ưu tiên mDNS instance/local name rồi DHCP hostname. |
+| `vendor` | Vendor/manufacturer summary từ protocol explicit hoặc OUI curated registry. |
+| `os_hint` | Dự đoán OS/platform từ DHCP option 55/60, SSDP server hoặc TTL fallback. |
+| `device_type` | Loại thiết bị suy ra từ mDNS service, SSDP type hoặc DHCP/vendor heuristic. |
+| `model_hint` | Model/dòng thiết bị từ mDNS TXT hoặc SSDP header nếu có. |
 | `first_seen` | Timestamp packet sớm nhất đã quan sát cho asset, định dạng `seconds.microseconds`. |
 | `last_seen` | Timestamp packet mới nhất đã quan sát cho asset, định dạng `seconds.microseconds`. |
 | `discovery_sources` | Tập source protocol ổn định dạng lowercase text, ví dụ `arp`, `dhcp`, và `dns`. |
@@ -20,6 +25,7 @@ Tài liệu này định nghĩa các field asset dùng chung cho output table, J
 - Observation cũ hơn đến không theo thứ tự có thể cập nhật `first_seen`.
 - Địa chỉ IP mới được thêm vào `ip_addresses`.
 - Hostname DHCP không rỗng cập nhật `hostname`.
+- Summary field được gộp theo precedence ổn định: mDNS > DHCP/SSDP > OUI/TTL fallback tùy field.
 - Source protocol được tích lũy trong `discovery_sources` mà không cần enum core cho từng protocol mới.
 
 ## JSON
@@ -32,6 +38,11 @@ Output JSON là một mảng object asset:
     "mac_address": "02:42:ac:11:00:03",
     "ip_addresses": ["192.168.1.20"],
     "hostname": "laptop-user",
+    "display_name": "laptop-user",
+    "vendor": "",
+    "os_hint": "windows",
+    "device_type": "",
+    "model_hint": "",
     "first_seen": "1699606800.0",
     "last_seen": "1699606800.0",
     "discovery_sources": ["dhcp"]
@@ -46,7 +57,7 @@ Output JSON là một mảng object asset:
 Output CSV luôn có header sau:
 
 ```csv
-mac_address,ip_addresses,hostname,first_seen,last_seen,discovery_sources
+mac_address,ip_addresses,hostname,display_name,vendor,os_hint,device_type,model_hint,first_seen,last_seen,discovery_sources
 ```
 
 Field có nhiều giá trị dùng `;` bên trong field CSV. Escape CSV dùng quy tắc quote chuẩn cho dấu phẩy, dấu quote, và ký tự xuống dòng.
@@ -60,14 +71,16 @@ CREATE TABLE IF NOT EXISTS assets (
     mac_address TEXT PRIMARY KEY,
     ip_addresses TEXT NOT NULL DEFAULT '[]',
     hostname TEXT,
+    display_name TEXT,
+    vendor TEXT,
+    os_hint TEXT,
+    device_type TEXT,
+    model_hint TEXT,
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL,
     discovery_sources TEXT NOT NULL DEFAULT '[]',
-    observed_metadata TEXT NOT NULL DEFAULT '{}',
-    reference_metadata TEXT NOT NULL DEFAULT '{}',
-    derived_hints TEXT NOT NULL DEFAULT '[]',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-Các field dạng tập hợp được lưu dưới dạng JSON text ổn định. CLI ghi SQLite qua `--sqlite <file>` hoặc `SQLITE_DATABASE_PATH`. Database không lưu event log và migration sẽ drop bảng `asset_events` nếu database cũ còn tồn tại.
+Các field dạng tập hợp được lưu dưới dạng JSON text ổn định. CLI ghi SQLite qua `--sqlite <file>` hoặc `SQLITE_DATABASE_PATH`. Database không lưu event log và không lưu các cột evidence metadata chi tiết như `observed_metadata`, `reference_metadata`, hoặc `derived_hints`.

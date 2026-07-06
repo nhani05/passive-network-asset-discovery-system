@@ -127,6 +127,11 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
+        if (arg == constants::cli::BroadIpv4EnrichmentOption) {
+            options.broadIpv4Enrichment = true;
+            continue;
+        }
+
         if (arg == constants::cli::SqliteOption) {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--sqlite requires a database file path"};
@@ -173,6 +178,7 @@ std::string usageText(const std::string& executableName)
            << "  --pcap <file>              Read packets from a PCAP file.\n"
            << "  --filter <bpf>             Filter packets with a BPF expression, for example: "
            << constants::capture::DefaultPacketFilter << ".\n"
+           << "  --broad-ipv4-enrichment    Use a broader passive IPv4 filter for TTL OS hints unless --filter is set.\n"
            << "  --sqlite <file>            Save assets in a local SQLite database file.\n"
            << "  --output table|json|csv    Output format. Defaults to json.\n"
            << "  --version                  Show version information.\n"

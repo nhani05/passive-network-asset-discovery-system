@@ -22,6 +22,25 @@ void expect(bool condition, const std::string& message)
     }
 }
 
+bool tableHasColumn(sqlite3* db, const std::string& table, const std::string& column)
+{
+    sqlite3_stmt* stmt = nullptr;
+    const std::string sql = "PRAGMA table_info(" + table + ");";
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        if (name != nullptr && column == name) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
 void testSQLiteWriterWriteAndRead()
 {
     std::string dbPath = "test_sqlite_writer_temp.db";
@@ -45,15 +64,25 @@ void testSQLiteWriterWriteAndRead()
             if (name == "asset_events") hasAssetEvents = true;
         }
         sqlite3_finalize(stmt);
-        sqlite3_close(db);
 
         expect(hasAssets, "Database should have assets table");
         expect(!hasAssetEvents, "Database should not have asset_events table");
+        expect(tableHasColumn(db, "assets", "display_name"), "assets table should include display_name");
+        expect(tableHasColumn(db, "assets", "vendor"), "assets table should include vendor");
+        expect(!tableHasColumn(db, "assets", "observed_metadata"), "assets table should not include observed_metadata");
+        expect(!tableHasColumn(db, "assets", "reference_metadata"), "assets table should not include reference_metadata");
+        expect(!tableHasColumn(db, "assets", "derived_hints"), "assets table should not include derived_hints");
+        sqlite3_close(db);
 
         // Write an asset
         Asset asset;
         asset.macAddress = "02:42:ac:11:00:05";
         asset.ipAddresses.insert("192.168.1.50");
+        asset.displayName = "Demo Device";
+        asset.vendor = "Demo Vendor";
+        asset.osHint = "linux";
+        asset.deviceType = "computer";
+        asset.modelHint = "Demo Model";
         asset.firstSeen = {100, 200};
         asset.lastSeen = {100, 200};
         asset.sources.insert(sourceIdArp);
@@ -65,13 +94,23 @@ void testSQLiteWriterWriteAndRead()
         expect(sqlite3_open(dbPath.c_str(), &db) == SQLITE_OK, "Should re-open database");
 
         // Verify assets serialization
-        expect(sqlite3_prepare_v2(db, "SELECT ip_addresses, discovery_sources FROM assets WHERE mac_address='02:42:ac:11:00:05';", -1, &stmt, nullptr) == SQLITE_OK, "Should select asset");
+        expect(sqlite3_prepare_v2(db, "SELECT ip_addresses, display_name, vendor, os_hint, device_type, model_hint, discovery_sources FROM assets WHERE mac_address='02:42:ac:11:00:05';", -1, &stmt, nullptr) == SQLITE_OK, "Should select asset");
         expect(sqlite3_step(stmt) == SQLITE_ROW, "Asset should be inserted");
         std::string ipAddrs = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        std::string sources = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        std::string displayName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        std::string vendor = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        std::string osHint = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        std::string deviceType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        std::string modelHint = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        std::string sources = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
         sqlite3_finalize(stmt);
 
         expect(ipAddrs == "[\"192.168.1.50\"]", "IP addresses should be serialized JSON array");
+        expect(displayName == "Demo Device", "display name should be stored");
+        expect(vendor == "Demo Vendor", "vendor should be stored");
+        expect(osHint == "linux", "OS hint should be stored");
+        expect(deviceType == "computer", "device type should be stored");
+        expect(modelHint == "Demo Model", "model hint should be stored");
         expect(sources == "[\"arp\"]", "Sources should be serialized JSON array");
 
         expect(sqlite3_prepare_v2(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='asset_events';", -1, &stmt, nullptr) == SQLITE_OK, "Should query asset_events table absence");
@@ -90,19 +129,19 @@ void testSQLiteWriterMigrationsAndSettings()
     std::remove(dbPath.c_str());
 
     {
-        // 1. First open: should initialize database and migrate to version 4
+        // 1. First open: should initialize database and migrate to version 5
         SQLiteWriter writer(dbPath);
 
         sqlite3* db = nullptr;
         expect(sqlite3_open(dbPath.c_str(), &db) == SQLITE_OK, "Should open migrations db");
 
-        // Verify user_version is 4
+        // Verify user_version is 5
         sqlite3_stmt* stmt = nullptr;
         expect(sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nullptr) == SQLITE_OK, "Prepare version pragma");
         expect(sqlite3_step(stmt) == SQLITE_ROW, "Step version pragma");
         int version = sqlite3_column_int(stmt, 0);
         sqlite3_finalize(stmt);
-        expect(version == 4, "Database version should be migrated to 4");
+        expect(version == 5, "Database version should be migrated to 5");
 
         // Verify table exists
         expect(sqlite3_prepare_v2(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings';", -1, &stmt, nullptr) == SQLITE_OK, "Query app_settings table");

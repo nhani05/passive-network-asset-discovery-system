@@ -90,7 +90,7 @@ void testCoreGuiModelsAndController()
     QSettings("PNAD", "PNAD Desktop").clear();
     asset_discovery::gui::CaptureController controller;
     expect(!controller.isLive(), "Default mode should be PCAP analysis");
-    expect(controller.packetFilter().toStdString() == "arp or udp port 67 or udp port 68", "Default core BPF filter");
+    expect(controller.packetFilter().toStdString() == "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353", "Default core BPF filter");
     expect(!controller.sqlitePath().isEmpty(), "Default database path should be resolved");
     expect(!controller.emailAlertsEnabled(), "Email alerts should be disabled by default");
 
@@ -156,7 +156,7 @@ void testCoreGuiModelsAndController()
     expect(assetModel.data(idx, asset_discovery::gui::AssetModel::IpsRole).toStringList().contains("10.0.0.1"), "Asset IP list should contain 10.0.0.1");
     expect(assetModel.get(0).value("macAddress").toString() == "00:11:22:33:44:55", "Asset get should expose current row");
     expect(assetModel.exportToFile("test_assets_export.csv", "csv"), "Asset export should write CSV");
-    expect(fileContains("test_assets_export.csv", "ip,mac,hostname,first_seen,last_seen,protocols"), "Asset CSV export should include core asset fields");
+    expect(fileContains("test_assets_export.csv", "ip,mac,hostname,display_name,vendor,os_hint,device_type,model_hint,first_seen,last_seen,protocols"), "Asset CSV export should include core asset fields");
     expect(!assetModel.exportToFile("/proc/test_assets_export.csv", "csv"), "Asset export should report write failures");
 
     std::remove("test_assets_export.csv");
@@ -257,7 +257,7 @@ void testPreferenceValidationAndRestore()
     asset_discovery::gui::CaptureController restored;
     restored.setSqlitePath(QString::fromStdString(testDb));
     restored.loadSettingsFromDb();
-    expect(restored.packetFilter().toStdString() == "arp or udp port 67 or udp port 68", "Preferences should keep fixed core ARP/DHCP filter");
+    expect(restored.packetFilter().toStdString() == "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353", "Preferences should keep fixed core ARP/DHCP/SSDP/mDNS filter");
     expect(restored.outputFormat().toStdString() == "csv", "Preferences should restore export format");
     expect(restored.emailAlertsEnabled(), "Email enablement should come from environment");
     expect(restored.emailSmtpHost().toStdString() == "smtp.example.com", "SMTP host should come from environment");
@@ -345,7 +345,7 @@ void testPcapAnalysisPersistsAssets()
     asset_discovery::gui::CaptureController controller;
     controller.setSqlitePath(QString::fromStdString(testDb));
     controller.setPcapPath(QString(PNAD_SOURCE_DIR) + "/samples/multi-asset.pcap");
-    controller.setPacketFilter("arp or (udp and (port 67 or port 68))");
+    controller.setPacketFilter("arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353");
 
     controller.startPcapAnalysis();
     for (int i = 0; i < 300; ++i) {

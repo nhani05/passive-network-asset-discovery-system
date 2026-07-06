@@ -45,6 +45,7 @@ std::optional<Ipv4Packet> decodeIpv4Packet(ByteView bytes)
     Ipv4Packet packet;
     packet.sourceIp = formatIpv4Address(bytes, 12);
     packet.destinationIp = formatIpv4Address(bytes, 16);
+    packet.ttl = bytes[8];
     packet.protocol = bytes[9];
     packet.headerLength = headerLength;
     packet.totalLength = totalLength;

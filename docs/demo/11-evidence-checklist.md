@@ -11,7 +11,7 @@ Tài liệu này tổng hợp các lệnh/log cần chuẩn bị làm bằng ch�
 | **5** | PCAP ARP dạng CSV | `./build/asset-discovery --pcap samples/arp.pcap --sqlite pnad.db --output csv` |
 | **6** | PCAP đa asset dạng table | `./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --output table` |
 | **7** | PCAP đa asset dạng JSON | `./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --output json` |
-| **8** | PCAP đa asset với BPF filter | `./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --filter "arp or udp port 67 or udp port 68" --output table` |
+| **8** | PCAP đa asset với BPF filter | `./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --filter "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353" --output table` |
 | **9** | BPF sai cú pháp được báo lỗi | `./build/asset-discovery --pcap samples/arp.pcap --sqlite pnad.db --filter "invalid" --output table` |
 | **10** | Output format không hỗ trợ được báo lỗi | `./build/asset-discovery --pcap samples/arp.pcap --sqlite pnad.db --output xml` |
 | **11** | SQLite có bảng `assets`, không có `asset_events` | `sqlite3 pnad.db ".tables"` |

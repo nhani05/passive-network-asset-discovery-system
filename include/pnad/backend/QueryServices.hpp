@@ -15,10 +15,14 @@ struct BackendAssetRecord {
     std::string macAddress;
     std::string ipAddressesJson;
     std::string hostname;
+    std::string displayName;
+    std::string vendor;
+    std::string osHint;
+    std::string deviceType;
+    std::string modelHint;
     std::string firstSeen;
     std::string lastSeen;
     std::string discoverySourcesJson;
-    std::string observedMetadataJson;
 };
 
 struct BackendEventRecord {

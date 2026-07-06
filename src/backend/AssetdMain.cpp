@@ -42,20 +42,28 @@ std::string domainEventJson(const asset_discovery::backend::DomainEvent& event)
                    << "\"macAddress\":" << asset_discovery::backend::jsonString(val.asset.macAddress) << ','
                    << "\"ipAddresses\":" << (val.asset.ipAddressesJson.empty() ? "[]" : val.asset.ipAddressesJson) << ','
                    << "\"hostname\":" << asset_discovery::backend::jsonString(val.asset.hostname) << ','
+                   << "\"displayName\":" << asset_discovery::backend::jsonString(val.asset.displayName) << ','
+                   << "\"vendor\":" << asset_discovery::backend::jsonString(val.asset.vendor) << ','
+                   << "\"osHint\":" << asset_discovery::backend::jsonString(val.asset.osHint) << ','
+                   << "\"deviceType\":" << asset_discovery::backend::jsonString(val.asset.deviceType) << ','
+                   << "\"modelHint\":" << asset_discovery::backend::jsonString(val.asset.modelHint) << ','
                    << "\"firstSeen\":" << asset_discovery::backend::jsonString(val.asset.firstSeen) << ','
                    << "\"lastSeen\":" << asset_discovery::backend::jsonString(val.asset.lastSeen) << ','
-                   << "\"discoverySources\":" << (val.asset.discoverySourcesJson.empty() ? "[]" : val.asset.discoverySourcesJson) << ','
-                   << "\"observedMetadata\":" << (val.asset.observedMetadataJson.empty() ? "{}" : val.asset.observedMetadataJson)
+                   << "\"discoverySources\":" << (val.asset.discoverySourcesJson.empty() ? "[]" : val.asset.discoverySourcesJson)
                    << "}";
         } else if constexpr (std::is_same_v<T, asset_discovery::backend::AssetUpdatedEvent>) {
             output << "{"
                    << "\"macAddress\":" << asset_discovery::backend::jsonString(val.asset.macAddress) << ','
                    << "\"ipAddresses\":" << (val.asset.ipAddressesJson.empty() ? "[]" : val.asset.ipAddressesJson) << ','
                    << "\"hostname\":" << asset_discovery::backend::jsonString(val.asset.hostname) << ','
+                   << "\"displayName\":" << asset_discovery::backend::jsonString(val.asset.displayName) << ','
+                   << "\"vendor\":" << asset_discovery::backend::jsonString(val.asset.vendor) << ','
+                   << "\"osHint\":" << asset_discovery::backend::jsonString(val.asset.osHint) << ','
+                   << "\"deviceType\":" << asset_discovery::backend::jsonString(val.asset.deviceType) << ','
+                   << "\"modelHint\":" << asset_discovery::backend::jsonString(val.asset.modelHint) << ','
                    << "\"firstSeen\":" << asset_discovery::backend::jsonString(val.asset.firstSeen) << ','
                    << "\"lastSeen\":" << asset_discovery::backend::jsonString(val.asset.lastSeen) << ','
-                   << "\"discoverySources\":" << (val.asset.discoverySourcesJson.empty() ? "[]" : val.asset.discoverySourcesJson) << ','
-                   << "\"observedMetadata\":" << (val.asset.observedMetadataJson.empty() ? "{}" : val.asset.observedMetadataJson)
+                   << "\"discoverySources\":" << (val.asset.discoverySourcesJson.empty() ? "[]" : val.asset.discoverySourcesJson)
                    << "}";
         } else if constexpr (std::is_same_v<T, asset_discovery::backend::EventDetectedEvent>) {
             output << "{"
@@ -217,10 +225,14 @@ std::string assetsJson(const std::vector<asset_discovery::backend::BackendAssetR
             << "\"macAddress\":" << asset_discovery::backend::jsonString(asset.macAddress) << ','
             << "\"ipAddresses\":" << (asset.ipAddressesJson.empty() ? "[]" : asset.ipAddressesJson) << ','
             << "\"hostname\":" << asset_discovery::backend::jsonString(asset.hostname) << ','
+            << "\"displayName\":" << asset_discovery::backend::jsonString(asset.displayName) << ','
+            << "\"vendor\":" << asset_discovery::backend::jsonString(asset.vendor) << ','
+            << "\"osHint\":" << asset_discovery::backend::jsonString(asset.osHint) << ','
+            << "\"deviceType\":" << asset_discovery::backend::jsonString(asset.deviceType) << ','
+            << "\"modelHint\":" << asset_discovery::backend::jsonString(asset.modelHint) << ','
             << "\"firstSeen\":" << asset_discovery::backend::jsonString(asset.firstSeen) << ','
             << "\"lastSeen\":" << asset_discovery::backend::jsonString(asset.lastSeen) << ','
-            << "\"discoverySources\":" << (asset.discoverySourcesJson.empty() ? "[]" : asset.discoverySourcesJson) << ','
-            << "\"observedMetadata\":" << (asset.observedMetadataJson.empty() ? "{}" : asset.observedMetadataJson)
+            << "\"discoverySources\":" << (asset.discoverySourcesJson.empty() ? "[]" : asset.discoverySourcesJson)
             << "}";
         first = false;
     }

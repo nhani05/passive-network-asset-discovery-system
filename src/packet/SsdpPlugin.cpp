@@ -52,7 +52,53 @@ std::string ssdpMetadataKey(const std::string& header)
     if (header == "location") {
         return "ssdp.location";
     }
+    if (header == "manufacturer") {
+        return "ssdp.manufacturer";
+    }
+    if (header == "modelname" || header == "model-name") {
+        return "ssdp.model_name";
+    }
+    if (header == "friendlyname" || header == "friendly-name") {
+        return "ssdp.friendly_name";
+    }
     return {};
+}
+
+void applySsdpSummary(AssetObservation& observation, const std::string& header, const std::string& value)
+{
+    const auto lowerValue = lower(value);
+    if (header == "manufacturer" && !value.empty()) {
+        observation.vendor = value;
+    } else if ((header == "modelname" || header == "model-name") && !value.empty()) {
+        observation.modelHint = value;
+    } else if ((header == "friendlyname" || header == "friendly-name") && !value.empty()) {
+        observation.displayName = value;
+    } else if ((header == "server" || header == "usn") && !value.empty() && !observation.modelHint.has_value()) {
+        observation.modelHint = value;
+    }
+
+    if (lowerValue.find("windows") != std::string::npos || lowerValue.find("microsoft") != std::string::npos) {
+        observation.osHint = "windows";
+    } else if (lowerValue.find("linux") != std::string::npos || lowerValue.find("unix") != std::string::npos) {
+        observation.osHint = "linux";
+    } else if (lowerValue.find("android") != std::string::npos) {
+        observation.osHint = "android";
+    }
+
+    if (lowerValue.find("mediarenderer") != std::string::npos
+        || lowerValue.find("media renderer") != std::string::npos) {
+        observation.deviceType = "media-renderer";
+    } else if (lowerValue.find("printer") != std::string::npos) {
+        observation.deviceType = "printer";
+    } else if (lowerValue.find("internetgatewaydevice") != std::string::npos
+        || lowerValue.find("router") != std::string::npos) {
+        observation.deviceType = "router";
+    } else if (lowerValue.find("dial") != std::string::npos || lowerValue.find("roku") != std::string::npos
+        || lowerValue.find("chromecast") != std::string::npos) {
+        observation.deviceType = "tv";
+    } else if (lowerValue.find("camera") != std::string::npos) {
+        observation.deviceType = "camera";
+    }
 }
 
 } // namespace
@@ -110,6 +156,7 @@ std::vector<AssetObservation> SsdpPlugin::parse(const PacketContext& context) co
         if (!key.empty()) {
             addObservedMetadata(observation, key, value);
         }
+        applySsdpSummary(observation, header, value);
     }
 
     return {std::move(observation)};

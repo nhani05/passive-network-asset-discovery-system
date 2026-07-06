@@ -4,7 +4,8 @@
 
 namespace asset_discovery::constants::capture {
 
-inline constexpr const char* DefaultPacketFilter = "arp or udp port 67 or udp port 68";
+inline constexpr const char* DefaultPacketFilter = "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353";
+inline constexpr const char* BroadIpv4EnrichmentPacketFilter = "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353 or ip";
 inline constexpr const char* PcapInterfaceName = "pcap";
 inline constexpr const char* BackendAutoName = "auto";
 inline constexpr const char* BackendPcapName = "pcap";

@@ -10,7 +10,7 @@ Item {
     property var selectedAsset: ({})
     property string searchQuery: ""
     property string exportFormat: "json"
-    readonly property string fixedFilter: "arp or (udp and (port 67 or port 68))"
+    readonly property string fixedFilter: "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353"
     readonly property string supportedProtocols: "ARP, DHCP, DNS, mDNS, LLMNR, NetBIOS, SSDP, TCP"
 
     function primaryIp(asset) {
@@ -42,7 +42,15 @@ Item {
         var ip = primaryIp(asset).toLowerCase();
         var mac = (asset.macAddress || "").toLowerCase();
         var hostname = (asset.hostname || "").toLowerCase();
-        return ip.indexOf(query) !== -1 || mac.indexOf(query) !== -1 || hostname.indexOf(query) !== -1;
+        var displayName = (asset.displayName || "").toLowerCase();
+        var vendor = (asset.vendor || "").toLowerCase();
+        var osHint = (asset.osHint || "").toLowerCase();
+        var deviceType = (asset.deviceType || "").toLowerCase();
+        var modelHint = (asset.modelHint || "").toLowerCase();
+        return ip.indexOf(query) !== -1 || mac.indexOf(query) !== -1 || hostname.indexOf(query) !== -1
+                || displayName.indexOf(query) !== -1 || vendor.indexOf(query) !== -1
+                || osHint.indexOf(query) !== -1 || deviceType.indexOf(query) !== -1
+                || modelHint.indexOf(query) !== -1;
     }
 
     function choosePcap() {
@@ -320,7 +328,9 @@ Item {
                                 spacing: 8
                                 Text { text: ipAddresses && ipAddresses.length > 0 ? ipAddresses.join(", ") : "-"; color: window.colorTextMain; Layout.preferredWidth: 150; elide: Text.ElideRight }
                                 Text { text: macAddress; color: window.colorTextMain; font.family: "monospace"; Layout.preferredWidth: 155; elide: Text.ElideRight }
-                                Text { text: hostname; color: window.colorTextMain; Layout.preferredWidth: 130; elide: Text.ElideRight }
+                                Text { text: displayName && displayName !== "-" ? displayName : hostname; color: window.colorTextMain; Layout.preferredWidth: 130; elide: Text.ElideRight }
+                                Text { text: vendor; color: window.colorTextMain; Layout.preferredWidth: 105; elide: Text.ElideRight }
+                                Text { text: deviceType; color: window.colorTextMain; Layout.preferredWidth: 90; elide: Text.ElideRight }
                                 Text { text: firstSeen; color: window.colorTextMuted; Layout.preferredWidth: 135; elide: Text.ElideRight }
                                 Text { text: lastSeen; color: window.colorTextMuted; Layout.preferredWidth: 135; elide: Text.ElideRight }
                                 Text { text: discoverySources && discoverySources.length > 0 ? discoverySources.join(", ") : "-"; color: window.colorAccent; Layout.fillWidth: true; elide: Text.ElideRight }
@@ -355,6 +365,11 @@ Item {
                             { label: "IP", value: coreView.primaryIp(coreView.selectedAsset) },
                             { label: "MAC", value: coreView.selectedAsset.macAddress || "-" },
                             { label: "Hostname", value: coreView.selectedAsset.hostname || "-" },
+                            { label: "Display Name", value: coreView.selectedAsset.displayName || "-" },
+                            { label: "Vendor", value: coreView.selectedAsset.vendor || "-" },
+                            { label: "OS", value: coreView.selectedAsset.osHint || "-" },
+                            { label: "Device Type", value: coreView.selectedAsset.deviceType || "-" },
+                            { label: "Model", value: coreView.selectedAsset.modelHint || "-" },
                             { label: "First Seen", value: coreView.selectedAsset.firstSeen || "-" },
                             { label: "Last Seen", value: coreView.selectedAsset.lastSeen || "-" },
                             { label: "Protocols", value: coreView.protocols(coreView.selectedAsset) }

@@ -13,6 +13,11 @@ struct AssetItem {
     QString macAddress;
     QStringList ipAddresses;
     QString hostname;
+    QString displayName;
+    QString vendor;
+    QString osHint;
+    QString deviceType;
+    QString modelHint;
     QString firstSeen;
     QString lastSeen;
     QStringList discoverySources;
@@ -25,6 +30,11 @@ public:
         MacRole = Qt::UserRole + 1,
         IpsRole,
         HostnameRole,
+        DisplayNameRole,
+        VendorRole,
+        OsHintRole,
+        DeviceTypeRole,
+        ModelHintRole,
         FirstSeenRole,
         LastSeenRole,
         SourcesRole

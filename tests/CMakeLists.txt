@@ -190,6 +190,7 @@ if(PCAP_FOUND)
     if(Python3_FOUND)
         set(DHCP_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/dhcp.pcap")
         set(MAC_CHANGE_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/mac-change.pcap")
+        set(ENRICHMENT_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/enrichment.pcap")
         add_custom_command(
             OUTPUT "${DHCP_PCAP_PATH}"
             COMMAND "${Python3_EXECUTABLE}"
@@ -211,6 +212,17 @@ if(PCAP_FOUND)
         )
         add_custom_target(mac-change-pcap-fixture DEPENDS "${MAC_CHANGE_PCAP_PATH}")
         add_dependencies(asset-discovery mac-change-pcap-fixture)
+
+        add_custom_command(
+            OUTPUT "${ENRICHMENT_PCAP_PATH}"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEnrichmentPcap.py"
+                "${ENRICHMENT_PCAP_PATH}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEnrichmentPcap.py"
+            VERBATIM
+        )
+        add_custom_target(enrichment-pcap-fixture DEPENDS "${ENRICHMENT_PCAP_PATH}")
+        add_dependencies(asset-discovery enrichment-pcap-fixture)
     endif()
 
     add_test(
@@ -305,6 +317,14 @@ if(PCAP_FOUND)
                 "${CMAKE_CURRENT_SOURCE_DIR}/ValidateMultiAssetJsonOutput.py"
                 "$<TARGET_FILE:asset-discovery>"
                 "${PROJECT_SOURCE_DIR}/samples/multi-asset.pcap"
+        )
+
+        add_test(
+            NAME asset-discovery-pcap-enrichment-json
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateEnrichmentJsonOutput.py"
+                "$<TARGET_FILE:asset-discovery>"
+                "${ENRICHMENT_PCAP_PATH}"
         )
 
     endif()

@@ -41,11 +41,16 @@ def main() -> int:
         "mac_address": "02:42:ac:11:00:03",
         "ip_addresses": ["192.168.1.20"],
         "hostname": "laptop-user",
+        "display_name": "laptop-user",
         "discovery_sources": ["dhcp"],
     }
     for key, value in expected.items():
         if asset.get(key) != value:
             print(f"expected {key}={value!r}, got {asset.get(key)!r}", file=sys.stderr)
+            return 1
+    for key in ("vendor", "os_hint", "device_type", "model_hint"):
+        if key not in asset:
+            print(f"expected summary field {key} to be present", file=sys.stderr)
             return 1
     return 0
 

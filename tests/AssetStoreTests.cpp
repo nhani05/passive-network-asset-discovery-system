@@ -14,6 +14,10 @@ using asset_discovery::parser::ObservationTimestamp;
 using asset_discovery::parser::observationEventTypeName;
 using asset_discovery::parser::sourceIdArp;
 using asset_discovery::parser::sourceIdDns;
+using asset_discovery::parser::sourceIdDhcp;
+using asset_discovery::parser::sourceIdIp;
+using asset_discovery::parser::sourceIdMdns;
+using asset_discovery::parser::sourceIdSsdp;
 
 int failures = 0;
 
@@ -175,6 +179,82 @@ void observationDefaultsAreStable()
     expect(observation.metadata.empty(), "default metadata should be empty");
 }
 
+void enrichesVendorFromCuratedOui()
+{
+    AssetStore store;
+    store.applyObservation(arpObservation("b8:27:eb:11:22:33", "192.168.1.10", {10, 0}));
+    store.applyObservation(arpObservation("02:42:ac:11:00:02", "192.168.1.11", {10, 1}));
+    const auto pi = store.findByMacAddress("b8:27:eb:11:22:33");
+    const auto unknown = store.findByMacAddress("02:42:ac:11:00:02");
+    expect(pi.has_value() && pi->vendor == "Raspberry Pi Foundation", "known curated OUI should set vendor");
+    expect(unknown.has_value() && !unknown->vendor.has_value(), "unknown OUI should leave vendor empty");
+}
+
+void explicitVendorOverridesOui()
+{
+    AssetStore store;
+    store.applyObservation(arpObservation("b8:27:eb:11:22:33", "192.168.1.10", {10, 0}));
+    AssetObservation mdns;
+    mdns.macAddress = "b8:27:eb:11:22:33";
+    mdns.vendor = "Acme Device";
+    mdns.sourceId = sourceIdMdns;
+    mdns.timestamp = {11, 0};
+    store.applyObservation(mdns);
+    const auto asset = store.findByMacAddress("b8:27:eb:11:22:33");
+    expect(asset.has_value() && asset->vendor == "Acme Device", "explicit protocol vendor should override OUI vendor");
+}
+
+void appliesSummaryPrecedence()
+{
+    AssetStore store;
+    AssetObservation ttl;
+    ttl.macAddress = "00:1a:11:22:33:44";
+    ttl.osHint = "linux/unix";
+    ttl.sourceId = sourceIdIp;
+    ttl.timestamp = {10, 0};
+    store.applyObservation(ttl);
+
+    AssetObservation dhcp;
+    dhcp.macAddress = "00:1a:11:22:33:44";
+    dhcp.hostname = "dhcp-host";
+    dhcp.displayName = "dhcp-host";
+    dhcp.osHint = "windows";
+    dhcp.deviceType = "computer";
+    dhcp.sourceId = sourceIdDhcp;
+    dhcp.timestamp = {11, 0};
+    store.applyObservation(dhcp);
+
+    AssetObservation ssdp;
+    ssdp.macAddress = "00:1a:11:22:33:44";
+    ssdp.displayName = "SSDP TV";
+    ssdp.deviceType = "tv";
+    ssdp.modelHint = "Living Room TV";
+    ssdp.osHint = "linux";
+    ssdp.sourceId = sourceIdSsdp;
+    ssdp.timestamp = {12, 0};
+    store.applyObservation(ssdp);
+
+    AssetObservation mdns;
+    mdns.macAddress = "00:1a:11:22:33:44";
+    mdns.displayName = "Nam-iPhone";
+    mdns.deviceType = "apple-media";
+    mdns.modelHint = "iPhone";
+    mdns.sourceId = sourceIdMdns;
+    mdns.timestamp = {13, 0};
+    store.applyObservation(mdns);
+
+    const auto asset = store.findByMacAddress("00:1a:11:22:33:44");
+    expect(asset.has_value(), "summary precedence test should have asset");
+    if (!asset.has_value()) {
+        return;
+    }
+    expect(asset->displayName == "Nam-iPhone", "mDNS display name should outrank DHCP and SSDP");
+    expect(asset->vendor == "Google", "OUI should fill vendor when no explicit vendor exists");
+    expect(asset->osHint == "windows", "DHCP OS hint should outrank TTL and SSDP");
+    expect(asset->deviceType == "apple-media", "mDNS device type should outrank SSDP and DHCP");
+    expect(asset->modelHint == "iPhone", "mDNS model should outrank SSDP model");
+}
+
 } // namespace
 
 int main()
@@ -187,6 +267,9 @@ int main()
     comparesTimestampsBySecondsThenMicroseconds();
     preservesArbitrarySourcesAndMetadata();
     observationDefaultsAreStable();
+    enrichesVendorFromCuratedOui();
+    explicitVendorOverridesOui();
+    appliesSummaryPrecedence();
 
     if (failures > 0) {
         std::cerr << failures << " asset store test expectation(s) failed\n";

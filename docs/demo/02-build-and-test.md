@@ -59,5 +59,5 @@ ctest --test-dir build --output-on-failure 2>&1 | tail -5
 
 ```bash
 ./build/asset-discovery --pcap path/to/user-traffic.pcap \
-  --filter "arp or udp port 67 or udp port 68"
+  --filter "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353"
 ```

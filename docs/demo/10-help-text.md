@@ -24,7 +24,8 @@ Usage:
 
 Common options:
   --pcap <file>              Read packets from a PCAP file.
-  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.
+  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353.
+  --broad-ipv4-enrichment    Use a broader passive IPv4 filter for TTL OS hints unless --filter is set.
   --sqlite <file>            Save assets in a local SQLite database file.
   --output table|json|csv    Output format. Defaults to json.
   --version                  Show version information.

@@ -10,6 +10,7 @@ inline constexpr const char* ShortHelpOption = "-h";
 inline constexpr const char* VersionOption = "--version";
 inline constexpr const char* PcapOption = "--pcap";
 inline constexpr const char* FilterOption = "--filter";
+inline constexpr const char* BroadIpv4EnrichmentOption = "--broad-ipv4-enrichment";
 inline constexpr const char* SqliteOption = "--sqlite";
 inline constexpr const char* OutputOption = "--output";
 

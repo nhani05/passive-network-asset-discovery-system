@@ -1,6 +1,7 @@
 #include "pnad/packet/DnsPlugin.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <optional>
 #include <sstream>
@@ -169,6 +170,83 @@ bool containsServiceName(const std::string& value)
         || value.find("._udp.local") != std::string::npos;
 }
 
+std::string lower(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
+std::optional<std::string> mdnsInstanceName(const std::string& name)
+{
+    const auto marker = name.find("._");
+    if (marker == std::string::npos || marker == 0) {
+        return std::nullopt;
+    }
+    return name.substr(0, marker);
+}
+
+std::optional<std::string> mdnsDeviceType(const std::string& name)
+{
+    const auto value = lower(name);
+    if (value.find("_ipp._tcp.local") != std::string::npos
+        || value.find("_printer._tcp.local") != std::string::npos
+        || value.find("_pdl-datastream._tcp.local") != std::string::npos) {
+        return "printer";
+    }
+    if (value.find("_airplay._tcp.local") != std::string::npos
+        || value.find("_raop._tcp.local") != std::string::npos) {
+        return "apple-media";
+    }
+    if (value.find("_googlecast._tcp.local") != std::string::npos) {
+        return "cast-device";
+    }
+    if (value.find("_hap._tcp.local") != std::string::npos) {
+        return "smart-home";
+    }
+    if (value.find("_ssh._tcp.local") != std::string::npos
+        || value.find("_smb._tcp.local") != std::string::npos) {
+        return "computer";
+    }
+    return std::nullopt;
+}
+
+void applyMdnsNameSummary(AssetObservation& observation, const std::string& name)
+{
+    if (observation.sourceId != sourceIdMdns) {
+        return;
+    }
+    const auto instance = mdnsInstanceName(name);
+    if (instance.has_value()) {
+        observation.displayName = *instance;
+    } else if (name.size() > 6 && lower(name).rfind(".local") == name.size() - 6 && !containsServiceName(name)) {
+        observation.displayName = name.substr(0, name.size() - 6);
+    }
+    const auto deviceType = mdnsDeviceType(name);
+    if (deviceType.has_value()) {
+        observation.deviceType = *deviceType;
+    }
+}
+
+void applyMdnsTxtSummary(AssetObservation& observation, const std::string& text)
+{
+    if (observation.sourceId != sourceIdMdns) {
+        return;
+    }
+    const auto separator = text.find('=');
+    if (separator == std::string::npos || separator == 0 || separator + 1 >= text.size()) {
+        return;
+    }
+    const auto key = lower(text.substr(0, separator));
+    const auto value = text.substr(separator + 1);
+    if (key == "model" || key == "md" || key == "ty" || key == "product" || key == "rp") {
+        observation.modelHint = value;
+    } else if (key == "manufacturer" || key == "mfg") {
+        observation.vendor = value;
+    }
+}
+
 std::string sourceIdForPort(const UdpDatagram& udp)
 {
     if (udp.sourcePort == dnsPort || udp.destinationPort == dnsPort) {
@@ -187,8 +265,28 @@ void addProtocolSpecificName(AssetObservation& observation, const std::string& n
 {
     if (observation.sourceId == sourceIdMdns && containsServiceName(name)) {
         addObservedMetadata(observation, "mdns.services", name);
+        applyMdnsNameSummary(observation, name);
     } else if (observation.sourceId == sourceIdLlmnr && name != ".") {
         addObservedMetadata(observation, "llmnr.names", name);
+    } else if (observation.sourceId == sourceIdMdns && name != ".") {
+        applyMdnsNameSummary(observation, name);
+    }
+}
+
+void addTxtRecordMetadata(AssetObservation& observation, ByteView payload, const ResourceRecord& record)
+{
+    std::size_t cursor = record.rdataOffset;
+    const auto end = record.rdataOffset + record.rdataLength;
+    while (cursor < end) {
+        const auto length = payload[cursor++];
+        if (cursor + length > end) {
+            return;
+        }
+        const std::string text(payload.begin() + static_cast<std::ptrdiff_t>(cursor),
+            payload.begin() + static_cast<std::ptrdiff_t>(cursor + length));
+        addObservedMetadata(observation, "dns.txt", text);
+        applyMdnsTxtSummary(observation, text);
+        cursor += length;
     }
 }
 
@@ -207,6 +305,15 @@ void addResourceRecordMetadata(AssetObservation& observation, ByteView payload, 
         if (ptrName.has_value()) {
             addObservedMetadata(observation, "dns.ptr_names", *ptrName);
             addProtocolSpecificName(observation, *ptrName);
+        }
+    } else if (record.type == 16) {
+        addTxtRecordMetadata(observation, payload, record);
+    } else if (record.type == 33 && record.rdataLength >= 7) {
+        auto targetOffset = record.rdataOffset + 6;
+        const auto targetName = readDnsName(payload, targetOffset);
+        if (targetName.has_value()) {
+            addObservedMetadata(observation, "dns.srv_targets", *targetName);
+            addProtocolSpecificName(observation, *targetName);
         }
     }
 }

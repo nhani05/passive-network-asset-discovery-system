@@ -112,7 +112,7 @@ Bộ lọc BPF cho phép lọc trực tiếp các gói tin ở tầng thấp tr�
 ```bash
 ./build/asset-discovery --pcap samples/multi-asset.pcap \
   --sqlite pnad.db \
-  --filter "arp or udp port 67 or udp port 68" \
+  --filter "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353" \
   --output table
 ```
 

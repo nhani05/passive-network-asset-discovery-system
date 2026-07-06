@@ -3,7 +3,7 @@ set -eu
 
 image_name="${IMAGE_NAME:-passive-asset-discovery}"
 export IMAGE_NAME="${image_name}"
-filter_expression="${CAPTURE_FILTER:-arp or udp port 67 or udp port 68}"
+filter_expression="${CAPTURE_FILTER:-arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353}"
 tmp_dir="$(mktemp -d)"
 
 cleanup() {

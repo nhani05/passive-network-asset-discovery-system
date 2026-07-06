@@ -15,7 +15,8 @@
 | Tham số | Ý nghĩa | Mặc định |
 | :--- | :--- | :--- |
 | `--pcap <file>` | File PCAP/PCAPNG cần phân tích | Bắt buộc |
-| `--filter <bpf>` | Ghi đè nhanh BPF filter | `arp or udp port 67 or udp port 68` |
+| `--filter <bpf>` | Ghi đè nhanh BPF filter | `arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353` |
+| `--broad-ipv4-enrichment` | Dùng filter rộng hơn để lấy TTL OS hint từ IPv4 traffic khi không truyền `--filter` | Tắt |
 | `--sqlite <file>` | Đường dẫn SQLite local | `SQLITE_DATABASE_PATH` |
 | `--output <format>` | `table`, `json`, hoặc `csv` | `json` |
 | `--version` | In version binary | |
