@@ -315,11 +315,13 @@ add_executable(gui-model-tests
     ../src/gui/AssetModel.cpp
     ../src/gui/InterfaceModel.cpp
     ../src/gui/LogModel.cpp
+    ../src/gui/EmailAlertNotifier.cpp
     ../src/gui/DesktopRunConfig.cpp
     ../src/gui/CaptureController.cpp
     ../include/pnad/gui/AssetModel.hpp
     ../include/pnad/gui/InterfaceModel.hpp
     ../include/pnad/gui/LogModel.hpp
+    ../include/pnad/gui/EmailAlertNotifier.hpp
     ../include/pnad/gui/DesktopRunConfig.hpp
     ../include/pnad/gui/CaptureController.hpp
 )

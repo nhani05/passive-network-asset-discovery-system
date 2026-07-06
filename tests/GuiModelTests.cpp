@@ -1,6 +1,7 @@
 #include "pnad/gui/AssetModel.hpp"
 #include "pnad/gui/InterfaceModel.hpp"
 #include "pnad/gui/LogModel.hpp"
+#include "pnad/gui/EmailAlertNotifier.hpp"
 #include "pnad/gui/CaptureController.hpp"
 #include "pnad/storage/SQLiteWriter.hpp"
 
@@ -12,6 +13,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -40,6 +42,49 @@ bool fileContains(const std::string& path, const std::string& needle)
     return contents.find(needle) != std::string::npos;
 }
 
+class FakeMailSender final : public asset_discovery::gui::MailSender {
+public:
+    std::optional<QString> send(
+        const asset_discovery::gui::MailMessage& message,
+        const asset_discovery::gui::EmailAlertSettings&) override
+    {
+        messages.push_back(message);
+        return failure;
+    }
+
+    std::vector<asset_discovery::gui::MailMessage> messages;
+    std::optional<QString> failure;
+};
+
+asset_discovery::asset::AssetEvent sampleNewAssetEvent()
+{
+    asset_discovery::asset::AssetEvent event;
+    event.timestamp = {1700000000, 123456};
+    event.type = asset_discovery::asset::AssetEventType::NewAsset;
+    event.severity = asset_discovery::asset::AssetEventSeverity::Info;
+    event.macAddress = "aa:bb:cc:dd:ee:ff";
+    event.ipAddress = "192.168.1.23";
+    event.hostname = "laptop-user";
+    event.protocol = "dhcp";
+    event.interfaceName = "eth0";
+    event.message = "New asset discovered";
+    return event;
+}
+
+asset_discovery::gui::EmailAlertSettings validEmailSettings()
+{
+    asset_discovery::gui::EmailAlertSettings settings;
+    settings.enabled = true;
+    settings.smtpHost = "smtp.example.com";
+    settings.smtpPort = 587;
+    settings.tlsMode = asset_discovery::gui::EmailTlsMode::StartTls;
+    settings.username = "pnad";
+    settings.passwordEnvVar = "PNAD_SMTP_PASSWORD";
+    settings.senderAddress = "pnad@example.com";
+    settings.recipients = QStringList({"admin@example.com"});
+    return settings;
+}
+
 void testCoreGuiModelsAndController()
 {
     QSettings("PNAD", "PNAD Desktop").clear();
@@ -47,6 +92,7 @@ void testCoreGuiModelsAndController()
     expect(!controller.isLive(), "Default mode should be PCAP analysis");
     expect(controller.packetFilter().toStdString() == "arp or udp port 67 or udp port 68", "Default core BPF filter");
     expect(!controller.sqlitePath().isEmpty(), "Default database path should be resolved");
+    expect(!controller.emailAlertsEnabled(), "Email alerts should be disabled by default");
 
     asset_discovery::gui::AssetModel assetModel;
     expect(assetModel.rowCount() == 0, "AssetModel should be initially empty");
@@ -191,11 +237,20 @@ void testPreferenceValidationAndRestore()
     const std::string testDb = "test_gui_preferences.db";
     std::remove(testDb.c_str());
 
+    qputenv("PNAD_EMAIL_ALERTS_ENABLED", "true");
+    qputenv("PNAD_EMAIL_SMTP_HOST", "smtp.example.com");
+    qputenv("PNAD_EMAIL_SMTP_PORT", "587");
+    qputenv("PNAD_EMAIL_TLS_MODE", "starttls");
+    qputenv("PNAD_EMAIL_USERNAME", "pnad");
+    qputenv("PNAD_EMAIL_PASSWORD_ENV", "PNAD_SMTP_PASSWORD");
+    qputenv("PNAD_EMAIL_FROM", "pnad@example.com");
+
     asset_discovery::gui::CaptureController controller;
     controller.setSqlitePath(QString::fromStdString(testDb));
     controller.setPacketFilter("arp");
     controller.setCaptureBackend("auto");
     controller.setOutputFormat("csv");
+    controller.setEmailRecipients("admin@example.com");
     expectDebug(controller.validatePreferences(), "Valid Preferences should pass validation", controller.validationError().toStdString());
     controller.saveSettingsToDb();
 
@@ -204,6 +259,9 @@ void testPreferenceValidationAndRestore()
     restored.loadSettingsFromDb();
     expect(restored.packetFilter().toStdString() == "arp or udp port 67 or udp port 68", "Preferences should keep fixed core ARP/DHCP filter");
     expect(restored.outputFormat().toStdString() == "csv", "Preferences should restore export format");
+    expect(restored.emailAlertsEnabled(), "Email enablement should come from environment");
+    expect(restored.emailSmtpHost().toStdString() == "smtp.example.com", "SMTP host should come from environment");
+    expect(restored.emailRecipients().toStdString() == "admin@example.com", "Preferences should restore email recipients");
 
     controller.setCaptureBackend("af-packet");
     expect(controller.captureBackend().toStdString() == "auto", "Removed backend preferences should fall back to auto");
@@ -215,7 +273,67 @@ void testPreferenceValidationAndRestore()
     expect(controller.validationError().toStdString().find("writable local database") != std::string::npos,
         "Invalid database validation should explain writable storage");
 
+    qunsetenv("PNAD_EMAIL_ALERTS_ENABLED");
+    qunsetenv("PNAD_EMAIL_SMTP_HOST");
+    qunsetenv("PNAD_EMAIL_SMTP_PORT");
+    qunsetenv("PNAD_EMAIL_TLS_MODE");
+    qunsetenv("PNAD_EMAIL_USERNAME");
+    qunsetenv("PNAD_EMAIL_PASSWORD_ENV");
+    qunsetenv("PNAD_EMAIL_FROM");
+
     std::remove(testDb.c_str());
+}
+
+void testEmailAlertNotifier()
+{
+    using asset_discovery::gui::EmailAlertNotifier;
+    using asset_discovery::gui::EmailAlertSettings;
+
+    EmailAlertSettings disabled;
+    expect(!EmailAlertNotifier::validateSettings(disabled).has_value(), "Disabled email alerts should not require SMTP settings");
+
+    EmailAlertSettings invalid;
+    invalid.enabled = true;
+    expect(EmailAlertNotifier::validateSettings(invalid).has_value(), "Enabled email alerts should require delivery settings");
+
+    const auto event = sampleNewAssetEvent();
+    auto settings = validEmailSettings();
+    const auto message = EmailAlertNotifier::formatNewAssetMessage(event, settings);
+    expect(message.subject.toStdString().find("aa:bb:cc:dd:ee:ff") != std::string::npos,
+        "Email subject should include MAC address");
+    expect(message.body.toStdString().find("192.168.1.23") != std::string::npos,
+        "Email body should include IP address");
+    expect(message.body.toStdString().find("laptop-user") != std::string::npos,
+        "Email body should include hostname");
+    expect(message.body.toStdString().find("dhcp") != std::string::npos,
+        "Email body should include protocol");
+    expect(message.body.toStdString().find("eth0") != std::string::npos,
+        "Email body should include interface");
+
+    auto fakeSender = std::make_unique<FakeMailSender>();
+    auto* fakeSenderPtr = fakeSender.get();
+    EmailAlertNotifier notifier(settings, std::move(fakeSender));
+    expect(notifier.handleAssetEvent(event), "Notifier should enqueue first new asset event");
+    expect(!notifier.handleAssetEvent(event), "Notifier should suppress duplicate asset event in a session");
+    for (int i = 0; i < 100 && fakeSenderPtr->messages.empty(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    notifier.stop();
+    expect(fakeSenderPtr->messages.size() == 1, "Notifier should send one email after duplicate suppression");
+
+    auto failingSender = std::make_unique<FakeMailSender>();
+    failingSender->failure = "SMTP failed";
+    EmailAlertNotifier failingNotifier(settings, std::move(failingSender));
+    bool failureReported = false;
+    failingNotifier.setFailureCallback([&](const QString& message) {
+        failureReported = message.contains("SMTP failed");
+    });
+    failingNotifier.handleAssetEvent(event);
+    for (int i = 0; i < 100 && !failureReported; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    failingNotifier.stop();
+    expect(failureReported, "Notifier should report delivery failures");
 }
 
 void testPcapAnalysisPersistsAssets()
@@ -284,6 +402,7 @@ int main()
     testUiNativeRunValidation();
     testSharedConfigValidation();
     testPreferenceValidationAndRestore();
+    testEmailAlertNotifier();
     testPcapAnalysisPersistsAssets();
     testInterfaceModel();
 

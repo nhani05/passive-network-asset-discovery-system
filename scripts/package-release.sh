@@ -26,6 +26,11 @@ cp build/asset-discovery-gui "${RELEASE_DIR}/bin/"
 cp scripts/pnad-gui-launcher.sh "${RELEASE_DIR}/pnad-gui.sh"
 chmod +x "${RELEASE_DIR}/pnad-gui.sh"
 
+# Copy default runtime environment configuration for desktop email alerts.
+if [ -f ".env.example" ]; then
+    cp .env.example "${RELEASE_DIR}/.env"
+fi
+
 # Copy app icon if available, otherwise write a note
 if [ -f "qml/pnad.png" ]; then
     cp qml/pnad.png "${RELEASE_DIR}/pnad.png"
