@@ -11,6 +11,7 @@ Item {
     property string searchQuery: ""
     property string exportFormat: "json"
     readonly property string fixedFilter: "arp or (udp and (port 67 or port 68))"
+    readonly property string supportedProtocols: "ARP, DHCP, DNS, mDNS, LLMNR, NetBIOS, SSDP, TCP"
 
     function primaryIp(asset) {
         if (!asset || !asset.ipAddresses || asset.ipAddresses.length === 0) {
@@ -430,7 +431,7 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                     Text {
-                        text: "Filter: " + coreView.fixedFilter
+                        text: "Protocols: " + coreView.supportedProtocols
                         color: window.colorTextMuted
                         font.pixelSize: 11
                         elide: Text.ElideRight

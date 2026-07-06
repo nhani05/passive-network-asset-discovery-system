@@ -57,8 +57,8 @@ ApplicationWindow {
 
     Component.onCompleted: {
         reloadDataModels();
-        if (hasArgument("--smoke-first-run") && mainLoader.source.toString().indexOf("CoreDiscoveryView.qml") === -1) {
-            console.error("FirstRunAssertionFailed: expected CoreDiscoveryView, got " + mainLoader.source);
+        if (hasArgument("--smoke-first-run") && mainLoader.source.toString().indexOf("AppShell.qml") === -1) {
+            console.error("FirstRunAssertionFailed: expected AppShell, got " + mainLoader.source);
             Qt.quit();
             return;
         }
@@ -70,6 +70,6 @@ ApplicationWindow {
     Loader {
         id: mainLoader
         anchors.fill: parent
-        source: "CoreDiscoveryView.qml"
+        source: "AppShell.qml"
     }
 }
