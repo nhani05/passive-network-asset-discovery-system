@@ -1,5 +1,7 @@
 #include "pnad/gui/DesktopRunConfig.hpp"
 
+#include "pnad/constants/CliConstants.hpp"
+
 #include <filesystem>
 
 namespace asset_discovery::gui {
@@ -7,13 +9,13 @@ namespace {
 
 std::optional<cli::OutputFormat> parseExportFormat(const std::string& value)
 {
-    if (value == "table") {
+    if (value == constants::cli::OutputTable) {
         return cli::OutputFormat::Table;
     }
-    if (value == "json") {
+    if (value == constants::cli::OutputJson) {
         return cli::OutputFormat::Json;
     }
-    if (value == "csv") {
+    if (value == constants::cli::OutputCsv) {
         return cli::OutputFormat::Csv;
     }
     return std::nullopt;
@@ -32,20 +34,14 @@ std::string productError(const std::string& error)
     if (error == "provide exactly one input source: --pcap <file> or --interface <name>") {
         return "Choose either Live Capture with a network interface or PCAP Analysis with a PCAP file.";
     }
-    if (error == "--capture-backend is only valid with --interface capture") {
-        return "Backend policy only applies to Live Capture.";
+    if (error == "provide input source: --pcap <file>") {
+        return "Choose a PCAP file before starting analysis.";
     }
     if (error == "--filter must not be empty") {
         return "Capture filter must not be empty.";
     }
-    if (error == "PostgreSQL or SQLite configuration is required; set DATABASE_URL or SQLITE_DATABASE_PATH/--sqlite") {
+    if (error == "SQLite configuration is required; set SQLITE_DATABASE_PATH or --sqlite") {
         return "Choose a writable local database for desktop storage.";
-    }
-    if (error == "--config and --profile cannot be combined") {
-        return "Use either a preferences file or a preset, not both.";
-    }
-    if (error == "--profile must contain only letters, digits, underscores, or hyphens") {
-        return "Preset name can contain only letters, digits, underscores, or hyphens.";
     }
     return error;
 }
@@ -54,28 +50,13 @@ config::PatchResult desktopPatch(const DesktopRunConfig& desktopConfig)
 {
     config::PatchResult result;
 
-    if (desktopConfig.mode == DesktopRunMode::LiveCapture) {
-        result.patch.interfaceName = desktopConfig.liveCapture.interfaceName;
-        result.patch.backend = capture::CaptureBackendSelection::Auto;
-    } else {
-        result.patch.pcapPath = desktopConfig.pcapAnalysis.pcapPath;
-        result.patch.backend = capture::CaptureBackendSelection::Auto;
-    }
+    result.patch.pcapPath = desktopConfig.pcapAnalysis.pcapPath;
 
     if (!desktopConfig.engine.captureFilter.empty()) {
         result.patch.packetFilter = desktopConfig.engine.captureFilter;
     } else {
         result.error = "Capture filter must not be empty.";
         return result;
-    }
-
-    if (desktopConfig.mode == DesktopRunMode::LiveCapture) {
-        const auto backend = capture::parseCaptureBackendSelection(desktopConfig.engine.backendPolicy);
-        if (!backend.has_value()) {
-            result.error = "Backend policy must be Automatic, pcap, or af-packet.";
-            return result;
-        }
-        result.patch.backend = *backend;
     }
 
     const auto outputFormat = parseExportFormat(desktopConfig.exportPreferences.format);
@@ -90,40 +71,6 @@ config::PatchResult desktopPatch(const DesktopRunConfig& desktopConfig)
         result.error = "Choose a writable local database for desktop storage.";
         return result;
     }
-
-    result.patch.eventRateLimitSeconds = desktopConfig.engine.duplicateEventSuppressionSeconds;
-    result.patch.eventQueueCapacity = desktopConfig.engine.eventBufferCapacity;
-    result.patch.flipFlopWindowSeconds = desktopConfig.engine.ipChangeDetectionWindowSeconds;
-    result.patch.reappearanceThresholdSeconds =
-        desktopConfig.engine.reappearanceDetectionThresholdSeconds;
-
-    std::vector<asset::Ipv4Network> localNetworks;
-    for (const auto& cidr : desktopConfig.engine.localNetworkCidrs) {
-        if (cidr.empty()) {
-            continue;
-        }
-        const auto parsed = asset::parseIpv4Network(cidr);
-        if (!parsed.has_value()) {
-            result.error = "Local networks require valid IPv4 CIDR values.";
-            return result;
-        }
-        localNetworks.push_back(*parsed);
-    }
-    result.patch.localNetworks = std::move(localNetworks);
-
-    std::vector<asset::Ipv4Network> ignoredNetworks;
-    for (const auto& cidr : desktopConfig.engine.ignoredNetworkCidrs) {
-        if (cidr.empty()) {
-            continue;
-        }
-        const auto parsed = asset::parseIpv4Network(cidr);
-        if (!parsed.has_value()) {
-            result.error = "Ignored networks require valid IPv4 CIDR values.";
-            return result;
-        }
-        ignoredNetworks.push_back(*parsed);
-    }
-    result.patch.ignoredNetworks = std::move(ignoredNetworks);
 
     return result;
 }
@@ -147,19 +94,8 @@ config::ConfigResult buildDesktopAppConfig(
     config::ConfigResult result;
     result.config = config::builtInDefaults();
 
-    if (desktopConfig.mode == DesktopRunMode::LiveCapture
-        && desktopConfig.liveCapture.interfaceName.empty()) {
-        result.error = "Choose a network interface before starting Live Capture.";
-        return result;
-    }
-    if (desktopConfig.mode == DesktopRunMode::PcapAnalysis
-        && desktopConfig.pcapAnalysis.pcapPath.empty()) {
+    if (desktopConfig.pcapAnalysis.pcapPath.empty()) {
         result.error = "Choose a PCAP file before starting analysis.";
-        return result;
-    }
-    if (desktopConfig.engine.preferencesFile.has_value()
-        && desktopConfig.engine.presetName.has_value()) {
-        result.error = "Use either a preferences file or a preset, not both.";
         return result;
     }
 
@@ -171,29 +107,6 @@ config::ConfigResult buildDesktopAppConfig(
             return result;
         }
         config::applyPatch(result.config, defaultPatch.patch);
-    }
-
-    if (desktopConfig.engine.preferencesFile.has_value()) {
-        const auto explicitPatch = config::loadConfigFile(*desktopConfig.engine.preferencesFile);
-        if (explicitPatch.error.has_value()) {
-            result.error = productError(*explicitPatch.error);
-            return result;
-        }
-        config::applyPatch(result.config, explicitPatch.patch);
-    } else if (desktopConfig.engine.presetName.has_value()) {
-        const auto profilePath = config::resolveProfilePath(
-            *desktopConfig.engine.presetName,
-            buildOptions.profileDirectory);
-        if (!profilePath.has_value()) {
-            result.error = "Preset name can contain only letters, digits, underscores, or hyphens.";
-            return result;
-        }
-        const auto profilePatch = config::loadConfigFile(*profilePath);
-        if (profilePatch.error.has_value()) {
-            result.error = productError(*profilePatch.error);
-            return result;
-        }
-        config::applyPatch(result.config, profilePatch.patch);
     }
 
     config::applyPatch(result.config, config::patchFromEnvironment(runtimeEnvironment));

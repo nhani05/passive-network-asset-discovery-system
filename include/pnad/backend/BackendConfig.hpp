@@ -1,5 +1,9 @@
 #pragma once
 
+#include "pnad/constants/BackendConstants.hpp"
+#include "pnad/constants/CaptureConstants.hpp"
+#include "pnad/constants/ConfigConstants.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -13,15 +17,14 @@ enum class BackendCaptureMode {
 };
 
 struct BackendConfig {
-    std::string listenAddress = "127.0.0.1";
-    std::uint16_t port = 8080;
-    std::string sqlitePath = "pnad.db";
-    std::optional<std::string> databaseUrl;
+    std::string listenAddress = constants::backend::DefaultListenAddress;
+    std::uint16_t port = constants::backend::DefaultPort;
+    std::string sqlitePath = constants::config::DefaultSqlitePath;
     BackendCaptureMode captureMode = BackendCaptureMode::Live;
     std::optional<std::string> interfaceName;
     std::optional<std::string> pcapPath;
-    std::string packetFilter = "arp or udp port 67 or udp port 68";
-    std::string runtimeLogPath = "logs/pnad-runtime.log";
+    std::string packetFilter = constants::capture::DefaultPacketFilter;
+    std::string runtimeLogPath = constants::backend::DefaultRuntimeLogPath;
     bool serve = false;
 };
 

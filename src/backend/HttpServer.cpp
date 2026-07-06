@@ -1,5 +1,7 @@
 #include "pnad/backend/HttpServer.hpp"
 
+#include "pnad/constants/BackendConstants.hpp"
+
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
@@ -126,8 +128,6 @@ namespace base64 {
     }
 }
 
-constexpr int backlog = 16;
-
 std::string trimCarriageReturn(std::string value)
 {
     if (!value.empty() && value.back() == '\r') {
@@ -221,7 +221,7 @@ std::optional<std::string> HttpServer::serve(const std::string& listenAddress, s
         return message;
     }
 
-    if (::listen(serverFd_, backlog) < 0) {
+    if (::listen(serverFd_, constants::backend::SocketBacklog) < 0) {
         const std::string message = std::string("listen failed: ") + std::strerror(errno);
         stop();
         return message;
@@ -239,7 +239,7 @@ std::optional<std::string> HttpServer::serve(const std::string& listenAddress, s
             return std::string("accept failed: ") + std::strerror(errno);
         }
 
-        char buffer[8192] = {};
+        char buffer[constants::backend::HttpRequestBufferSize] = {};
         const auto readCount = ::read(client, buffer, sizeof(buffer) - 1);
         HttpResponse response;
         HttpRequest request;
@@ -261,7 +261,7 @@ std::optional<std::string> HttpServer::serve(const std::string& listenAddress, s
                     break;
                 }
             }
-            std::string accept = base64::encode(sha1::calculate(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"));
+            std::string accept = base64::encode(sha1::calculate(key + constants::backend::WebSocketGuid));
             std::ostringstream responseStream;
             responseStream << "HTTP/1.1 101 Switching Protocols\r\n"
                            << "Upgrade: websocket\r\n"

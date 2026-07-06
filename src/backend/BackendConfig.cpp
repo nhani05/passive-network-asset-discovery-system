@@ -1,5 +1,8 @@
 #include "pnad/backend/BackendConfig.hpp"
 
+#include "pnad/constants/BackendConstants.hpp"
+#include "pnad/constants/CliConstants.hpp"
+
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -43,7 +46,7 @@ BackendParseResult parseBackendArguments(const std::vector<std::string>& argumen
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         const auto& option = arguments[index];
-        if (option == "--help" || option == "-h") {
+        if (option == constants::cli::HelpOption || option == constants::cli::ShortHelpOption) {
             result.helpRequested = true;
             return result;
         }
@@ -75,20 +78,14 @@ BackendParseResult parseBackendArguments(const std::vector<std::string>& argumen
                 return result;
             }
             result.config.sqlitePath = arguments[index];
-        } else if (option == "--database-url") {
-            if (auto error = require(); error.has_value()) {
-                result.error = error;
-                return result;
-            }
-            result.config.databaseUrl = arguments[index];
         } else if (option == "--capture-mode") {
             if (auto error = require(); error.has_value()) {
                 result.error = error;
                 return result;
             }
-            if (arguments[index] == "live") {
+            if (arguments[index] == constants::backend::CaptureModeLive) {
                 result.config.captureMode = BackendCaptureMode::Live;
-            } else if (arguments[index] == "pcap") {
+            } else if (arguments[index] == constants::backend::CaptureModePcap) {
                 result.config.captureMode = BackendCaptureMode::PcapOffline;
             } else {
                 result.error = "--capture-mode must be live or pcap";
@@ -140,10 +137,12 @@ std::string backendUsage()
         << "  assetd [options]\n"
         << "\n"
         << "Options:\n"
-        << "  --listen-address <address>  Address to bind REST/WebSocket services (default: 127.0.0.1)\n"
-        << "  --port <port>               Port to bind REST/WebSocket services (default: 8080)\n"
-        << "  --sqlite <path>             SQLite database path (default: pnad.db)\n"
-        << "  --database-url <url>        PostgreSQL connection URL\n"
+        << "  --listen-address <address>  Address to bind REST/WebSocket services (default: "
+        << constants::backend::DefaultListenAddress << ")\n"
+        << "  --port <port>               Port to bind REST/WebSocket services (default: "
+        << constants::backend::DefaultPort << ")\n"
+        << "  --sqlite <path>             SQLite database path (default: "
+        << constants::config::DefaultSqlitePath << ")\n"
         << "  --capture-mode <live|pcap>  Capture mode for service requests (default: live)\n"
         << "  --interface <name>          Live capture interface\n"
         << "  --pcap <path>               PCAP file for offline analysis\n"
@@ -158,11 +157,11 @@ std::string captureModeName(BackendCaptureMode mode)
 {
     switch (mode) {
     case BackendCaptureMode::Live:
-        return "live";
+        return constants::backend::CaptureModeLive;
     case BackendCaptureMode::PcapOffline:
-        return "pcap";
+        return constants::backend::CaptureModePcap;
     }
-    return "live";
+    return constants::backend::CaptureModeLive;
 }
 
 } // namespace asset_discovery::backend

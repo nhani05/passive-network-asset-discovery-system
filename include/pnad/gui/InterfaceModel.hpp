@@ -22,8 +22,6 @@ public:
         IsVirtualRole,
         PcapAvailableRole,
         PcapDiagnosticRole,
-        AfPacketAvailableRole,
-        AfPacketDiagnosticRole,
         CaptureAllowedRole,
         PermissionDiagnosticRole,
         RefreshedAtRole,

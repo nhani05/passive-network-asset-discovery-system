@@ -62,10 +62,6 @@ QVariant InterfaceModel::data(const QModelIndex& index, int role) const
         return interfaceInfo.pcapAvailable;
     case PcapDiagnosticRole:
         return QString::fromStdString(interfaceInfo.pcapDiagnostic);
-    case AfPacketAvailableRole:
-        return interfaceInfo.afPacketAvailable;
-    case AfPacketDiagnosticRole:
-        return QString::fromStdString(interfaceInfo.afPacketDiagnostic);
     case CaptureAllowedRole:
         return interfaceInfo.captureAllowed;
     case PermissionDiagnosticRole:
@@ -90,8 +86,6 @@ QHash<int, QByteArray> InterfaceModel::roleNames() const
     roles[IsVirtualRole] = "isVirtual";
     roles[PcapAvailableRole] = "pcapAvailable";
     roles[PcapDiagnosticRole] = "pcapDiagnostic";
-    roles[AfPacketAvailableRole] = "afPacketAvailable";
-    roles[AfPacketDiagnosticRole] = "afPacketDiagnostic";
     roles[CaptureAllowedRole] = "captureAllowed";
     roles[PermissionDiagnosticRole] = "permissionDiagnostic";
     roles[RefreshedAtRole] = "refreshedAt";
@@ -144,8 +138,6 @@ QVariantMap InterfaceModel::toMap(const capture::NetworkInterfaceInfo& interface
     map.insert("isVirtual", interfaceInfo.isVirtual);
     map.insert("pcapAvailable", interfaceInfo.pcapAvailable);
     map.insert("pcapDiagnostic", QString::fromStdString(interfaceInfo.pcapDiagnostic));
-    map.insert("afPacketAvailable", interfaceInfo.afPacketAvailable);
-    map.insert("afPacketDiagnostic", QString::fromStdString(interfaceInfo.afPacketDiagnostic));
     map.insert("captureAllowed", interfaceInfo.captureAllowed);
     map.insert("permissionDiagnostic", QString::fromStdString(interfaceInfo.permissionDiagnostic));
     map.insert("refreshedAt", QString::fromStdString(interfaceInfo.refreshedAt));

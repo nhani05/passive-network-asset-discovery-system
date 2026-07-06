@@ -1,7 +1,9 @@
 #include "pnad/capture/NetworkInterface.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <iomanip>
 #include <map>
@@ -10,6 +12,7 @@
 #if defined(__linux__)
 #include <arpa/inet.h>
 #include <ifaddrs.h>
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <netpacket/packet.h>
 #include <sys/socket.h>
@@ -127,16 +130,50 @@ std::string numericAddress(const sockaddr* address)
 }
 #endif
 
+struct CapturePermissionProbe {
+    bool allowed = false;
+    std::string diagnostic;
+};
+
+CapturePermissionProbe probePacketCapturePermission()
+{
+#if defined(__linux__)
+    const int socketFd = ::socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    if (socketFd >= 0) {
+        ::close(socketFd);
+        return {true, {}};
+    }
+
+    const int error = errno;
+    if (error == EPERM || error == EACCES) {
+        return {
+            false,
+            "Live Capture requires packet capture permission before use. "
+            "Grant CAP_NET_RAW/CAP_NET_ADMIN to the PNAD application binary."
+        };
+    }
+
+    return {
+        false,
+        std::string("could not verify packet capture permission: ") + std::strerror(error)
+    };
+#else
+    return {true, {}};
+#endif
+}
+
 void applyBackendDiagnostics(NetworkInterfaceInfo& interfaceInfo)
 {
     const PcapCaptureBackend pcapBackend;
     const auto pcapAvailability = pcapBackend.availability();
+    const auto permission = probePacketCapturePermission();
     interfaceInfo.pcapAvailable = pcapAvailability.available;
     interfaceInfo.pcapDiagnostic = pcapAvailability.reason;
 
     interfaceInfo.captureAllowed = interfaceInfo.isUp
         && !interfaceInfo.isLoopback
-        && interfaceInfo.pcapAvailable;
+        && interfaceInfo.pcapAvailable
+        && permission.allowed;
 
     if (!interfaceInfo.isUp) {
         interfaceInfo.permissionDiagnostic = "interface is down";
@@ -148,6 +185,8 @@ void applyBackendDiagnostics(NetworkInterfaceInfo& interfaceInfo)
         } else {
             interfaceInfo.permissionDiagnostic = "no live capture backend is available";
         }
+    } else if (!permission.allowed) {
+        interfaceInfo.permissionDiagnostic = permission.diagnostic;
     }
 }
 

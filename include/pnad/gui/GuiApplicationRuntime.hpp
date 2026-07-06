@@ -10,12 +10,9 @@ class QQmlApplicationEngine;
 namespace asset_discovery::gui {
 
 class CaptureController;
-class CaptureServiceFacade;
 class AssetModel;
-class EventModel;
 class InterfaceModel;
-class AnalysisSessionModel;
-class HealthDiagnosticsModel;
+class LogModel;
 
 class GuiApplicationRuntime : public QObject
 {
@@ -30,10 +27,8 @@ public:
 
     CaptureController* captureController() const;
     AssetModel* assetModel() const;
-    EventModel* eventModel() const;
     InterfaceModel* interfaceModel() const;
-    AnalysisSessionModel* analysisSessionModel() const;
-    HealthDiagnosticsModel* healthDiagnosticsModel() const;
+    LogModel* logModel() const;
 
 private:
     void connectRefreshMechanism();
@@ -41,12 +36,9 @@ private:
     void loadInitialModels();
 
     std::unique_ptr<CaptureController> captureController_;
-    std::unique_ptr<CaptureServiceFacade> captureServiceFacade_;
     std::unique_ptr<AssetModel> assetModel_;
-    std::unique_ptr<EventModel> eventModel_;
     std::unique_ptr<InterfaceModel> interfaceModel_;
-    std::unique_ptr<AnalysisSessionModel> analysisSessionModel_;
-    std::unique_ptr<HealthDiagnosticsModel> healthDiagnosticsModel_;
+    std::unique_ptr<LogModel> logModel_;
 
     QTimer refreshTimer_;
     QDateTime lastDbModified_;

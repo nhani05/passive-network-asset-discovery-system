@@ -1,88 +1,48 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${PGDATABASE:-asset_discovery}
-      POSTGRES_USER: ${PGUSER:-postgres}
-      POSTGRES_PASSWORD: ${PGPASSWORD:-123456}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d asset_discovery"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    networks:
-      - default
-
   pcap-demo:
+    image: ${IMAGE_NAME:-passive-asset-discovery}
     build: .
     restart: "no"
     environment:
-      PGHOST: db
-      PGPORT: 5432
-      PGDATABASE: ${PGDATABASE:-asset_discovery}
-      PGUSER: ${PGUSER:-postgres}
-      PGPASSWORD: ${PGPASSWORD:-123456}
-      PGSSLMODE: disable
-    depends_on:
-      db:
-        condition: service_healthy
+      SQLITE_DATABASE_PATH: /work/data/pnad.db
     volumes:
       - ./samples:/samples:ro
+      - pcap-demo-data:/work/data
     entrypoint:
       - /bin/sh
       - -c
     command:
       - |
-        for attempt in $$(seq 1 30); do
-          if pg_isready -h "$${PGHOST}" -p "$${PGPORT}" -U "$${PGUSER}" -d "$${PGDATABASE}" >/dev/null 2>&1; then
-            asset-discovery --profile pcap --pcap /samples/multi-asset.pcap --output table
-            status=$$?
-            if [ "$$status" -ne 0 ]; then
-              exit "$$status"
-            fi
-            echo "pcap-demo completed; keeping the container alive for inspection."
-            tail -f /dev/null
-          fi
-          echo "waiting for PostgreSQL to become ready ($$attempt/30)..."
-          sleep 2
-        done
-        echo "error: PostgreSQL was not ready after 60 seconds" >&2
-        exit 1
+        asset-discovery --pcap /samples/multi-asset.pcap --sqlite /work/data/pnad.db --output table
 
-  live-capture:
-    profiles: ["live"]
+  assetd:
+    profiles: ["service"]
+    image: ${IMAGE_NAME:-passive-asset-discovery}
     build: .
-    user: "0:0"
-    network_mode: host
-    entrypoint:
-      - /bin/sh
-      - -c
+    restart: unless-stopped
     environment:
-      CAPTURE_INTERFACE: ${CAPTURE_INTERFACE:-eth0}
-      CAPTURE_FILTER: ${CAPTURE_FILTER:-arp or udp port 67 or udp port 68}
-      PGHOST: ${PGHOST:-localhost}
-      PGPORT: ${PGPORT:-5432}
-      PGDATABASE: ${PGDATABASE:-asset_discovery}
-      PGUSER: ${PGUSER:-postgres}
-      PGPASSWORD: ${PGPASSWORD:-123456}
-      PGSSLMODE: disable
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
+      SQLITE_DATABASE_PATH: /data/pnad.db
+    ports:
+      - "${ASSETD_HOST_PORT:-8080}:8080"
+    volumes:
+      - assetd-data:/data
+      - ./samples:/samples:ro
+    entrypoint:
+      - assetd
     command:
-      - |
-        set -eu
-        exec asset-discovery --profile live --interface "${CAPTURE_INTERFACE}" --filter "${CAPTURE_FILTER}"
+      - --listen-address
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --sqlite
+      - /data/pnad.db
+      - --pcap
+      - /samples/multi-asset.pcap
 
 networks:
   default:
     name: asset-net
 
 volumes:
-  postgres-data:
+  pcap-demo-data:
+  assetd-data:

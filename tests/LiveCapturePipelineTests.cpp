@@ -256,7 +256,7 @@ void keepsBorrowedPacketLeaseUntilWorkersFinish()
     expect(result.stats.backendSelected == "fake", "metrics should retain selected backend");
 }
 
-void dispatchesEventsThroughWriterThread()
+void dispatchesEventsThroughCallback()
 {
     const std::vector<OfflinePacket> packets = {
         arpPacket("02:42:ac:11:00:07", "192.168.1.15", 15),
@@ -269,7 +269,6 @@ void dispatchesEventsThroughWriterThread()
     options.packetBatchSize = 1;
     options.packetQueueCapacity = 4;
     options.observationQueueCapacity = 4;
-    options.eventQueueCapacity = 4;
     options.parserWorkerCount = 1;
     options.eventCallback = [&](const AssetEvent& event) {
         if (event.type == AssetEventType::NewAsset) {
@@ -282,40 +281,42 @@ void dispatchesEventsThroughWriterThread()
 
     const auto result = processPacketsConcurrently(packets, options);
 
-    expect(!result.error.has_value(), "pipeline with event writer should process without error");
-    expect(result.assets.size() == 2, "event writer should not change final asset output");
+    expect(!result.error.has_value(), "pipeline with event callback should process without error");
+    expect(result.assets.size() == 2, "event callback should not change final asset output");
     expect(newAssetEvents.load() == 2, "event callback should receive new asset events");
-    expect(flushed.load(), "event writer should flush before result is returned");
+    expect(flushed.load(), "event callback should flush before result is returned");
     expect(result.stats.eventsProduced == 2, "stats should count produced events");
-    expect(result.stats.eventsEnqueued == 2, "stats should count enqueued events");
-    expect(result.stats.eventQueueHighWatermark >= 1, "stats should record event queue high watermark");
 }
 
-void countsEventQueueDrops()
+void reportsAssetUpdatesBeforeResultReturns()
 {
     const std::vector<OfflinePacket> packets = {
-        arpPacket("02:42:ac:11:00:09", "192.168.1.17", 17),
-        arpPacket("02:42:ac:11:00:0a", "192.168.1.18", 18),
-        arpPacket("02:42:ac:11:00:0b", "192.168.1.19", 19),
-        arpPacket("02:42:ac:11:00:0c", "192.168.1.20", 20),
+        arpPacket("02:42:ac:11:00:21", "192.168.1.31", 31),
+        arpPacket("02:42:ac:11:00:21", "192.168.1.32", 32),
     };
+    std::atomic<int> assetCallbacks{0};
+    std::atomic<int> newAssetCallbacks{0};
 
     LivePipelineOptions options;
-    options.packetBatchSize = 4;
+    options.packetBatchSize = 1;
     options.packetQueueCapacity = 4;
     options.observationQueueCapacity = 4;
-    options.eventQueueCapacity = 1;
     options.parserWorkerCount = 1;
-    options.eventCallback = [](const AssetEvent&) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    options.assetCallback = [&](const asset_discovery::asset::Asset& asset, bool isNew) {
+        if (asset.macAddress == "02:42:ac:11:00:21") {
+            assetCallbacks.fetch_add(1);
+        }
+        if (isNew) {
+            newAssetCallbacks.fetch_add(1);
+        }
     };
 
     const auto result = processPacketsConcurrently(packets, options);
 
-    expect(!result.error.has_value(), "pipeline should continue when event queue drops");
-    expect(result.assets.size() == 4, "event drops should not drop asset observations");
-    expect(result.stats.eventsProduced == 4, "stats should count all produced events");
-    expect(result.stats.eventsDroppedQueueFull >= 1, "stats should count event queue drops");
+    expect(!result.error.has_value(), "pipeline with asset callback should process without error");
+    expect(result.assets.size() == 1, "pipeline should still aggregate one final asset");
+    expect(assetCallbacks.load() == 2, "asset callback should receive realtime new and update notifications");
+    expect(newAssetCallbacks.load() == 1, "asset callback should mark only the first observation as new");
 }
 
 void releasesBorrowedPacketLeaseWhenBatchDrops()
@@ -339,8 +340,8 @@ int main()
     parsesPacketsAndAggregatesAssets();
     keepsMetricsSeparateFromJsonAssets();
     keepsBorrowedPacketLeaseUntilWorkersFinish();
-    dispatchesEventsThroughWriterThread();
-    countsEventQueueDrops();
+    dispatchesEventsThroughCallback();
+    reportsAssetUpdatesBeforeResultReturns();
     releasesBorrowedPacketLeaseWhenBatchDrops();
 
     if (failures != 0) {

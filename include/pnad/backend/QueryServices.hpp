@@ -2,6 +2,7 @@
 
 #include "pnad/backend/BackendConfig.hpp"
 #include "pnad/backend/CaptureService.hpp"
+#include "pnad/constants/BackendConstants.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -52,7 +53,7 @@ struct BackendHealthStatus {
 class AssetQueryService {
 public:
     explicit AssetQueryService(std::string sqlitePath);
-    std::vector<BackendAssetRecord> listAssets(int limit = 1000) const;
+    std::vector<BackendAssetRecord> listAssets(int limit = constants::backend::DefaultAssetQueryLimit) const;
 
 private:
     std::string sqlitePath_;
@@ -61,7 +62,7 @@ private:
 class EventQueryService {
 public:
     explicit EventQueryService(std::string sqlitePath);
-    std::vector<BackendEventRecord> listEvents(int limit = 100) const;
+    std::vector<BackendEventRecord> listEvents(int limit = constants::backend::DefaultQueryLimit) const;
 
 private:
     std::string sqlitePath_;
@@ -70,7 +71,7 @@ private:
 class LogQueryService {
 public:
     explicit LogQueryService(std::string runtimeLogPath);
-    std::vector<BackendLogRecord> recentLogs(int limit = 100) const;
+    std::vector<BackendLogRecord> recentLogs(int limit = constants::backend::DefaultQueryLimit) const;
 
 private:
     std::string runtimeLogPath_;

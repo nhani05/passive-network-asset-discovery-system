@@ -1,11 +1,16 @@
 #include "pnad/gui/CaptureController.hpp"
 #include "pnad/app/LiveCapturePipeline.hpp"
+#include "pnad/capture/NetworkInterface.hpp"
+#include "pnad/core/CoreSession.hpp"
 #include "pnad/discovery/AssetMonitor.hpp"
 #include "pnad/capture/PacketCapture.hpp"
-#include "pnad/packet/PacketParserFacade.hpp"
 #include "pnad/storage/SQLiteWriter.hpp"
-#include "pnad/event/EventSink.hpp"
 #include "pnad/gui/DesktopRunConfig.hpp"
+#include "pnad/constants/BackendConstants.hpp"
+#include "pnad/constants/CaptureConstants.hpp"
+#include "pnad/constants/CliConstants.hpp"
+#include "pnad/constants/ConfigConstants.hpp"
+#include "pnad/constants/GuiConstants.hpp"
 
 #include <QDebug>
 #include <QFileDialog>
@@ -18,17 +23,18 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
+#include <QVariantMap>
+#include <algorithm>
+#include <chrono>
+#include <memory>
+#include <set>
 #include <unistd.h>
 #include <limits.h>
 
 namespace asset_discovery::gui {
 namespace {
 
-parser::ObservationTimestamp toObservationTimestamp(
-    const capture::PacketTimestamp& timestamp)
-{
-    return {timestamp.seconds, timestamp.microseconds};
-}
+constexpr std::chrono::milliseconds kCoreGuiUpdateInterval{500};
 
 std::string escapeJsonString(const std::string& value)
 {
@@ -70,7 +76,49 @@ std::string getExecutablePath()
         buf[len] = '\0';
         return std::string(buf);
     }
-    return "asset-discovery-gui";
+    return constants::gui::ApplicationName;
+}
+
+QString currentLogTimestamp()
+{
+    return QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+}
+
+QStringList toStringList(const std::set<std::string>& values)
+{
+    QStringList list;
+    for (const auto& value : values) {
+        list.append(QString::fromStdString(value));
+    }
+    return list;
+}
+
+QVariantMap assetToDto(const asset::Asset& asset)
+{
+    QVariantMap dto;
+    dto.insert("macAddress", QString::fromStdString(asset.macAddress));
+    dto.insert("ipAddresses", toStringList(asset.ipAddresses));
+    dto.insert("hostname", asset.hostname.has_value() ? QString::fromStdString(*asset.hostname) : QString());
+    dto.insert("firstSeen", QString::fromStdString(asset::formatTimestamp(asset.firstSeen)));
+    dto.insert("lastSeen", QString::fromStdString(asset::formatTimestamp(asset.lastSeen)));
+    dto.insert("discoverySources", toStringList(asset.sources));
+    dto.insert("vendor", "Unknown");
+    dto.insert("deviceType", "Unknown");
+    dto.insert("os", "Unknown");
+    dto.insert("rawObservedMetadata", QString::fromStdString(mapToJson(asset.metadata)));
+    dto.insert("risk", "Normal");
+    return dto;
+}
+
+QString assetDisplayName(const asset::Asset& asset)
+{
+    if (asset.hostname.has_value() && !asset.hostname->empty()) {
+        return QString::fromStdString(*asset.hostname);
+    }
+    if (!asset.ipAddresses.empty()) {
+        return QString::fromStdString(*asset.ipAddresses.begin());
+    }
+    return QString::fromStdString(asset.macAddress);
 }
 
 } // namespace
@@ -87,22 +135,39 @@ CaptureController::~CaptureController()
     stopCapture();
 }
 
+void CaptureController::setCaptureBackend(const QString& val)
+{
+    const QString normalized = val.trimmed();
+    const QString autoBackend = QString::fromLatin1(constants::capture::BackendAutoName);
+    const QString pcapBackend = QString::fromLatin1(constants::capture::BackendPcapName);
+    const QString backend = (normalized == autoBackend || normalized == pcapBackend)
+        ? normalized
+        : autoBackend;
+    if (captureBackend_ != backend) {
+        captureBackend_ = backend;
+        emit captureBackendChanged();
+    }
+}
+
+void CaptureController::setPacketFilter(const QString&)
+{
+    const QString fixedFilter = QString::fromLatin1(constants::capture::DefaultPacketFilter);
+    if (packetFilter_ != fixedFilter) {
+        packetFilter_ = fixedFilter;
+        emit packetFilterChanged();
+    }
+}
+
 void CaptureController::loadDefaults()
 {
     interfaceName_ = "";
     pcapPath_ = "";
     configPath_ = "";
     profileName_ = "";
-    packetFilter_ = "arp or udp port 67 or udp port 68";
-    captureBackend_ = "auto";
-    outputFormat_ = "json";
-    isLive_ = true;
-    eventRateLimitSeconds_ = 60;
-    eventQueueCapacity_ = 1024;
-    flipFlopWindowSeconds_ = 300;
-    reappearanceThresholdSeconds_ = 15552000;
-    localNetworks_.clear();
-    ignoredNetworks_ = QStringList() << "127.0.0.0/8" << "169.254.0.0/16";
+    packetFilter_ = QString::fromLatin1(constants::capture::DefaultPacketFilter);
+    captureBackend_ = QString::fromLatin1(constants::capture::BackendAutoName);
+    outputFormat_ = QString::fromLatin1(constants::cli::OutputJson);
+    isLive_ = false;
 
     QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (dataDir.isEmpty()) {
@@ -110,13 +175,13 @@ void CaptureController::loadDefaults()
     } else {
         QDir().mkpath(dataDir);
     }
-    sqlitePath_ = dataDir + "/pnad.db";
+    sqlitePath_ = dataDir + "/" + QString::fromLatin1(constants::config::DefaultSqlitePath);
 
     statusText_ = "Stopped";
     lastError_ = "";
     validationError_ = "";
     recentFailureSummary_ = "";
-    runtimeLogPath_ = "logs/pnad-runtime.log";
+    runtimeLogPath_ = QString::fromLatin1(constants::backend::DefaultRuntimeLogPath);
 
     emit interfaceNameChanged();
     emit pcapPathChanged();
@@ -126,12 +191,6 @@ void CaptureController::loadDefaults()
     emit captureBackendChanged();
     emit outputFormatChanged();
     emit isLiveChanged();
-    emit eventRateLimitSecondsChanged();
-    emit eventQueueCapacityChanged();
-    emit flipFlopWindowSecondsChanged();
-    emit reappearanceThresholdSecondsChanged();
-    emit localNetworksChanged();
-    emit ignoredNetworksChanged();
     emit sqlitePathChanged();
     emit statusTextChanged();
     emit lastErrorChanged();
@@ -149,8 +208,14 @@ void CaptureController::startCapture()
         }
     }
 
+    setPacketFilter(QString());
     if (!validateSettings() || (!isLive_ && !validatePcapSource())) {
         statusText_ = "Configuration error";
+        emit statusTextChanged();
+        return;
+    }
+    if (isLive_ && !validateLiveCapturePermission()) {
+        statusText_ = "Permission required";
         emit statusTextChanged();
         return;
     }
@@ -220,17 +285,12 @@ void CaptureController::runCaptureWorker()
     emit isRunningChanged();
     statusText_ = "Running";
     emit statusTextChanged();
-
     try {
         const auto configResult = buildCurrentConfig();
         if (configResult.error.has_value()) {
             throw std::runtime_error(*configResult.error);
         }
         const auto appConfig = configResult.config;
-
-        // Initialize SQLite Writer for background EventSink pipeline
-        auto dispatcher = std::make_unique<output::EventDispatcher>();
-        dispatcher->addSink(std::make_unique<storage::SQLiteWriter>(*appConfig.database.sqlitePath));
 
         if (isLive_) {
             auto backendResult = capture::createCaptureBackend(appConfig.capture.backend);
@@ -250,21 +310,27 @@ void CaptureController::runCaptureWorker()
             captureConfig.requestedBackend = appConfig.capture.backend;
 
             live::LivePipelineOptions livePipelineOptions;
+            livePipelineOptions.coreParsersOnly = true;
+            livePipelineOptions.parserWorkerCount = 1;
             monitor::AssetMonitorConfig monitorConfig;
-            monitorConfig.detector.interfaceName = appConfig.capture.interfaceName.value_or("");
-            monitorConfig.detector.localNetworks = appConfig.network.localNetworks;
-            monitorConfig.detector.ignoredNetworks = appConfig.network.ignoredNetworks;
-            monitorConfig.detector.flipFlopWindowSeconds = appConfig.events.flipFlopWindowSeconds;
-            monitorConfig.detector.reappearanceThresholdSeconds = appConfig.events.reappearanceThresholdSeconds;
-            monitorConfig.eventRateLimitSeconds = appConfig.events.rateLimitSeconds;
+            monitorConfig.interfaceName = appConfig.capture.interfaceName.value_or("");
 
             livePipelineOptions.monitorConfig = std::move(monitorConfig);
-            livePipelineOptions.eventQueueCapacity = appConfig.events.queueCapacity;
-            livePipelineOptions.eventCallback = [&dispatcher](const asset::AssetEvent& event) {
-                dispatcher->dispatch(event);
-            };
-            livePipelineOptions.eventFlushCallback = [&dispatcher]() {
-                dispatcher->flush();
+            auto lastAssetUiEmit = std::chrono::steady_clock::time_point{};
+            livePipelineOptions.assetCallback = [this, lastAssetUiEmit](const asset::Asset& asset, bool isNew) mutable {
+                const auto now = std::chrono::steady_clock::now();
+                if (isNew || lastAssetUiEmit.time_since_epoch().count() == 0
+                    || now - lastAssetUiEmit >= kCoreGuiUpdateInterval) {
+                    emit assetDiscovered(assetToDto(asset), isNew);
+                    lastAssetUiEmit = now;
+                }
+                if (isNew) {
+                    emit eventLogMessage(
+                        currentLogTimestamp(),
+                        "info",
+                        "asset.created",
+                        "New asset discovered: " + assetDisplayName(asset));
+                }
             };
 
             const auto liveResult = live::runLiveCapturePipeline(
@@ -283,46 +349,39 @@ void CaptureController::runCaptureWorker()
             writer.writeAssets(liveResult.assets);
 
         } else {
-            capture::PacketCaptureBackend backend;
-            const auto pcapResult = backend.readPcapFile(
+            core::CoreSessionOptions sessionOptions;
+            sessionOptions.packetFilter = appConfig.capture.packetFilter;
+            sessionOptions.pipelineOptions.coreParsersOnly = true;
+            sessionOptions.pipelineOptions.parserWorkerCount = 1;
+            sessionOptions.monitorConfig.interfaceName = constants::capture::PcapInterfaceName;
+
+            auto pcapLoggedAssets = std::make_shared<std::set<std::string>>();
+            core::CoreSession session({
+                {},
+                [this, pcapLoggedAssets](const asset::Asset& asset) {
+                    emit assetDiscovered(assetToDto(asset), true);
+                    if (pcapLoggedAssets->insert(asset.macAddress).second) {
+                        emit eventLogMessage(
+                            currentLogTimestamp(),
+                            "info",
+                            "asset.created",
+                            "New asset discovered: " + assetDisplayName(asset));
+                    }
+                },
+                {},
+                {}
+            });
+
+            const auto sessionResult = session.analyzePcapFile(
                 *appConfig.capture.pcapPath,
-                appConfig.capture.packetFilter);
-            if (pcapResult.error.has_value()) {
-                throw std::runtime_error(*pcapResult.error);
+                std::move(sessionOptions));
+            if (sessionResult.error.has_value()) {
+                throw std::runtime_error(*sessionResult.error);
             }
-
-            monitor::AssetMonitorConfig monitorConfig;
-            monitorConfig.detector.interfaceName = "pcap";
-            monitorConfig.detector.localNetworks = appConfig.network.localNetworks;
-            monitorConfig.detector.ignoredNetworks = appConfig.network.ignoredNetworks;
-            monitorConfig.detector.flipFlopWindowSeconds = appConfig.events.flipFlopWindowSeconds;
-            monitorConfig.detector.reappearanceThresholdSeconds = appConfig.events.reappearanceThresholdSeconds;
-            monitorConfig.eventRateLimitSeconds = appConfig.events.rateLimitSeconds;
-
-            monitor::AssetMonitor monitor(
-                std::move(monitorConfig),
-                [&dispatcher](const asset::AssetEvent& event) {
-                    dispatcher->dispatch(event);
-                }
-            );
-
-            for (const auto& packet : pcapResult.packets) {
-                if (packet.linkType != capture::LinkType::Ethernet) {
-                    continue;
-                }
-                const auto observations = parser::parseEthernetObservations(
-                    packet.bytes,
-                    toObservationTimestamp(packet.timestamp));
-                for (const auto& obs : observations) {
-                    monitor.applyObservation(obs);
-                }
-            }
-
-            dispatcher->flush();
 
             // Save results to SQLite
             storage::SQLiteWriter writer(*appConfig.database.sqlitePath);
-            writer.writeAssets(monitor.assets());
+            writer.writeAssets(sessionResult.assets);
         }
 
         statusText_ = "Finished successfully";
@@ -361,7 +420,8 @@ void CaptureController::runCaptureWorker()
         // Keep lastError_ and statusText_ as single-line strings so the UI
         // banner and status bar never overflow with multiline diagnostic text.
         // The full diagnostic goes into recentFailureSummary_ which is shown
-        // in a dedicated scrollable area (System Health / Capture view).
+        // in recentFailureSummary_, which the core view can surface without
+        // overflowing the status banner.
         const QString shortError = QString::fromStdString(errStr);
         statusText_ = "Capture error";
         lastError_ = shortError;
@@ -406,12 +466,6 @@ void CaptureController::saveSettingsToDb()
     settings.setValue("captureBackend", captureBackend_);
     settings.setValue("outputFormat", outputFormat_);
     settings.setValue("isLive", isLive_);
-    settings.setValue("eventRateLimitSeconds", eventRateLimitSeconds_);
-    settings.setValue("eventQueueCapacity", eventQueueCapacity_);
-    settings.setValue("flipFlopWindowSeconds", flipFlopWindowSeconds_);
-    settings.setValue("reappearanceThresholdSeconds", reappearanceThresholdSeconds_);
-    settings.setValue("localNetworks", localNetworks_);
-    settings.setValue("ignoredNetworks", ignoredNetworks_);
     settings.setValue("sqlitePath", sqlitePath_);
     settings.sync();
 
@@ -427,12 +481,6 @@ void CaptureController::saveSettingsToDb()
         writer.saveSetting("captureBackend", captureBackend_.toStdString());
         writer.saveSetting("outputFormat", outputFormat_.toStdString());
         writer.saveSetting("isLive", isLive_ ? "true" : "false");
-        writer.saveSetting("eventRateLimitSeconds", std::to_string(eventRateLimitSeconds_));
-        writer.saveSetting("eventQueueCapacity", std::to_string(eventQueueCapacity_));
-        writer.saveSetting("flipFlopWindowSeconds", std::to_string(flipFlopWindowSeconds_));
-        writer.saveSetting("reappearanceThresholdSeconds", std::to_string(reappearanceThresholdSeconds_));
-        writer.saveSetting("localNetworks", localNetworks_.join(",").toStdString());
-        writer.saveSetting("ignoredNetworks", ignoredNetworks_.join(",").toStdString());
     }
     catch (const std::exception& e) {
         qWarning() << "Failed to save settings to DB:" << e.what();
@@ -458,7 +506,7 @@ void CaptureController::loadSettingsFromDb()
         setProfileName(settings.value("profileName").toString());
     }
     if (settings.contains("packetFilter")) {
-        setPacketFilter(settings.value("packetFilter").toString());
+        setPacketFilter(QString());
     }
     if (settings.contains("captureBackend")) {
         setCaptureBackend(settings.value("captureBackend").toString());
@@ -468,24 +516,6 @@ void CaptureController::loadSettingsFromDb()
     }
     if (settings.contains("isLive")) {
         setIsLive(settings.value("isLive").toBool());
-    }
-    if (settings.contains("eventRateLimitSeconds")) {
-        setEventRateLimitSeconds(settings.value("eventRateLimitSeconds").toInt());
-    }
-    if (settings.contains("eventQueueCapacity")) {
-        setEventQueueCapacity(settings.value("eventQueueCapacity").toInt());
-    }
-    if (settings.contains("flipFlopWindowSeconds")) {
-        setFlipFlopWindowSeconds(settings.value("flipFlopWindowSeconds").toInt());
-    }
-    if (settings.contains("reappearanceThresholdSeconds")) {
-        setReappearanceThresholdSeconds(settings.value("reappearanceThresholdSeconds").toInt());
-    }
-    if (settings.contains("localNetworks")) {
-        setLocalNetworks(settings.value("localNetworks").toStringList());
-    }
-    if (settings.contains("ignoredNetworks")) {
-        setIgnoredNetworks(settings.value("ignoredNetworks").toStringList());
     }
 
     try {
@@ -521,26 +551,6 @@ void CaptureController::loadSettingsFromDb()
         if (!writer.getSetting("isLive", val).has_value()) {
             setIsLive(val == "true");
         }
-        if (!writer.getSetting("eventRateLimitSeconds", val).has_value()) {
-            setEventRateLimitSeconds(std::stoi(val));
-        }
-        if (!writer.getSetting("eventQueueCapacity", val).has_value()) {
-            setEventQueueCapacity(std::stoi(val));
-        }
-        if (!writer.getSetting("flipFlopWindowSeconds", val).has_value()) {
-            setFlipFlopWindowSeconds(std::stoi(val));
-        }
-        if (!writer.getSetting("reappearanceThresholdSeconds", val).has_value()) {
-            setReappearanceThresholdSeconds(std::stoi(val));
-        }
-        if (!writer.getSetting("localNetworks", val).has_value()) {
-            QString str = QString::fromStdString(val);
-            setLocalNetworks(str.isEmpty() ? QStringList() : str.split(","));
-        }
-        if (!writer.getSetting("ignoredNetworks", val).has_value()) {
-            QString str = QString::fromStdString(val);
-            setIgnoredNetworks(str.isEmpty() ? QStringList() : str.split(","));
-        }
     }
     catch (const std::exception& e) {
         qWarning() << "Failed to load settings from DB:" << e.what();
@@ -568,12 +578,11 @@ bool CaptureController::validatePreferences()
     }
 
     config::RuntimeEnvironment runtimeEnvironment;
-    runtimeEnvironment.databaseConfigured = false;
-    runtimeEnvironment.eventNdjsonPath = "logs/events.ndjson";
 
     DesktopRunConfig config = currentDesktopRunConfig();
-    config.mode = DesktopRunMode::LiveCapture;
-    config.liveCapture.interfaceName = "preferences-validation";
+    if (config.pcapAnalysis.pcapPath.empty()) {
+        config.pcapAnalysis.pcapPath = "preferences-validation.pcap";
+    }
 
     const auto result = buildDesktopAppConfig(config, runtimeEnvironment, {});
     if (result.error.has_value()) {
@@ -614,6 +623,33 @@ QString CaptureController::choosePcapFile()
         "PCAP Files (*.pcap *.pcapng);;All Files (*)");
 }
 
+QString CaptureController::chooseExportFile(const QString& format)
+{
+    const QString normalized = format.trimmed().toLower();
+    const bool csv = normalized == QString::fromLatin1(constants::cli::OutputCsv);
+    const QString extension = csv ? ".csv" : ".json";
+    const QString filter = csv ? "CSV Files (*.csv);;All Files (*)" : "JSON Files (*.json);;All Files (*)";
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (directory.isEmpty()) {
+        directory = QDir::homePath();
+    }
+
+    QString path = QFileDialog::getSaveFileName(
+        nullptr,
+        "Choose Export Location",
+        QDir(directory).filePath("assets" + extension),
+        filter);
+    if (path.isEmpty()) {
+        return {};
+    }
+
+    const QFileInfo info(path);
+    if (info.suffix().isEmpty()) {
+        path += extension;
+    }
+    return path;
+}
+
 QString CaptureController::chooseConfigFile()
 {
     return QFileDialog::getOpenFileName(
@@ -626,8 +662,6 @@ QString CaptureController::chooseConfigFile()
 config::ConfigResult CaptureController::buildCurrentConfig() const
 {
     config::RuntimeEnvironment runtimeEnvironment;
-    runtimeEnvironment.databaseConfigured = false;
-    runtimeEnvironment.eventNdjsonPath = "logs/events.ndjson";
 
     config::BuildConfigOptions buildOptions;
     return buildDesktopAppConfig(currentDesktopRunConfig(), runtimeEnvironment, buildOptions);
@@ -636,35 +670,10 @@ config::ConfigResult CaptureController::buildCurrentConfig() const
 DesktopRunConfig CaptureController::currentDesktopRunConfig() const
 {
     DesktopRunConfig config;
-    config.mode = isLive_ ? DesktopRunMode::LiveCapture : DesktopRunMode::PcapAnalysis;
-    config.liveCapture.interfaceName = interfaceName_.trimmed().toStdString();
+    config.mode = DesktopRunMode::PcapAnalysis;
     config.pcapAnalysis.pcapPath = pcapPath_.trimmed().toStdString();
-    if (!configPath_.trimmed().isEmpty()) {
-        config.engine.preferencesFile = configPath_.trimmed().toStdString();
-    }
-    if (!profileName_.trimmed().isEmpty()) {
-        config.engine.presetName = profileName_.trimmed().toStdString();
-    }
-    config.engine.captureFilter = packetFilter_.trimmed().toStdString();
-    config.engine.backendPolicy = captureBackend_.trimmed().toStdString();
+    config.engine.captureFilter = constants::capture::DefaultPacketFilter;
     config.engine.localDatabasePath = sqlitePath_.trimmed().toStdString();
-    config.engine.duplicateEventSuppressionSeconds = eventRateLimitSeconds_;
-    config.engine.eventBufferCapacity = eventQueueCapacity_;
-    config.engine.ipChangeDetectionWindowSeconds = flipFlopWindowSeconds_;
-    config.engine.reappearanceDetectionThresholdSeconds = reappearanceThresholdSeconds_;
-
-    for (const auto& net : localNetworks_) {
-        const auto trimmed = net.trimmed();
-        if (!trimmed.isEmpty()) {
-            config.engine.localNetworkCidrs.push_back(trimmed.toStdString());
-        }
-    }
-    for (const auto& net : ignoredNetworks_) {
-        const auto trimmed = net.trimmed();
-        if (!trimmed.isEmpty()) {
-            config.engine.ignoredNetworkCidrs.push_back(trimmed.toStdString());
-        }
-    }
 
     config.exportPreferences.format = outputFormat_.trimmed().toStdString();
     return config;
@@ -709,12 +718,45 @@ bool CaptureController::validatePcapSource()
         return false;
     }
     const QString suffix = fileInfo.suffix().toLower();
-    if (suffix != "pcap" && suffix != "pcapng") {
+    if (suffix != QString::fromLatin1(constants::capture::PcapFileExtension)
+        && suffix != QString::fromLatin1(constants::capture::PcapNgFileExtension)) {
         setValidationError("Choose a supported PCAP or PCAPNG file.");
         return false;
     }
     setValidationError("");
     return true;
+}
+
+bool CaptureController::validateLiveCapturePermission()
+{
+    const QString selectedName = interfaceName_.trimmed();
+    const auto interfaces = capture::listNetworkInterfaces();
+    const auto selected = std::find_if(
+        interfaces.begin(),
+        interfaces.end(),
+        [&](const auto& interfaceInfo) {
+            return QString::fromStdString(interfaceInfo.systemName) == selectedName;
+        });
+
+    if (selected == interfaces.end()) {
+        setValidationError("Choose an available network interface before starting Live Capture.");
+        return false;
+    }
+
+    if (selected->captureAllowed) {
+        setValidationError("");
+        return true;
+    }
+
+    const QString diagnostic = selected->permissionDiagnostic.empty()
+        ? QString("Live Capture requires packet capture permission before use.")
+        : QString::fromStdString(selected->permissionDiagnostic);
+    const QString fix = "Grant permission with:\nsudo setcap cap_net_raw,cap_net_admin=eip "
+        + QString::fromStdString(getExecutablePath());
+
+    setValidationError(diagnostic);
+    recordRuntimeFailure(diagnostic + "\n\n" + fix);
+    return false;
 }
 
 void CaptureController::recordRuntimeFailure(const QString& summary)

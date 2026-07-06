@@ -1,8 +1,5 @@
 #pragma once
 
-#include "pnad/event/AssetEventDetector.hpp"
-#include "pnad/capture/PacketCapture.hpp"
-
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,21 +20,10 @@ enum class CaptureMode {
 // CLI options after validating relationships between arguments.
 struct Options {
     std::optional<std::string> pcapPath;
-    std::optional<std::string> interfaceName;
-    std::optional<std::string> configPath;
-    std::optional<std::string> profileName;
     std::optional<CaptureMode> captureMode;
     std::optional<std::string> packetFilter;
     std::optional<std::string> sqlitePath;
-    std::optional<int> eventRateLimitSeconds;
-    std::optional<int> eventQueueCapacity;
-    std::optional<int> flipFlopWindowSeconds;
-    std::optional<int> reappearanceThresholdSeconds;
-    std::vector<asset::Ipv4Network> localNetworks;
-    std::vector<asset::Ipv4Network> ignoredNetworks;
-    capture::CaptureBackendSelection captureBackend = capture::CaptureBackendSelection::Auto;
     OutputFormat outputFormat = OutputFormat::Json;
-    bool captureBackendProvided = false;
     bool outputFormatProvided = false;
     bool helpRequested = false;
     bool versionRequested = false;

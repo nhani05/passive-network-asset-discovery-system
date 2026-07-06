@@ -1,5 +1,6 @@
 #include "pnad/backend/BackendConfig.hpp"
 #include "pnad/backend/CaptureService.hpp"
+#include "pnad/constants/BackendConstants.hpp"
 #include "pnad/backend/EventBus.hpp"
 #include "pnad/backend/HttpServer.hpp"
 #include "pnad/backend/QueryServices.hpp"
@@ -349,16 +350,14 @@ int main(int argc, char** argv)
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "assetd backend service started.");
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "status: healthy");
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "listen: " + config.listenAddress + ":" + std::to_string(config.port));
-    asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "database: " + (config.databaseUrl.has_value() ? *config.databaseUrl : config.sqlitePath));
+    asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "database: " + config.sqlitePath);
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "capture_mode: " + asset_discovery::backend::captureModeName(config.captureMode));
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "runtime_log: " + config.runtimeLogPath);
 
     std::cout << "assetd backend service started.\n";
     std::cout << "status: healthy\n";
     std::cout << "listen: " << config.listenAddress << ':' << config.port << '\n';
-    std::cout << "database: "
-              << (config.databaseUrl.has_value() ? *config.databaseUrl : config.sqlitePath)
-              << '\n';
+    std::cout << "database: " << config.sqlitePath << '\n';
     std::cout << "capture_mode: "
               << asset_discovery::backend::captureModeName(config.captureMode)
               << '\n';
@@ -372,12 +371,14 @@ int main(int argc, char** argv)
         asset_discovery::backend::LogQueryService logQueryService(config.runtimeLogPath);
         asset_discovery::backend::MetricsService metricsService(config.sqlitePath, captureService);
         asset_discovery::backend::HttpServer server([&](const asset_discovery::backend::HttpRequest& request) {
-            if (request.method == "GET" && request.path == "/api/v1/status") {
+            if (request.method == asset_discovery::constants::backend::MethodGet
+                && request.path == asset_discovery::constants::backend::StatusPath) {
                 const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::steady_clock::now() - startedAt).count();
                 return asset_discovery::backend::jsonSuccess(statusJson(healthService.status(), uptime));
             }
-            if (request.method == "GET" && request.path == "/api/v1/assets") {
+            if (request.method == asset_discovery::constants::backend::MethodGet
+                && request.path == asset_discovery::constants::backend::AssetsPath) {
                 try {
                     return asset_discovery::backend::jsonSuccess(
                         assetsJson(assetQueryService.listAssets()));
@@ -385,13 +386,14 @@ int main(int argc, char** argv)
                     return asset_discovery::backend::jsonError(500, "asset_query_failed", error.what());
                 }
             }
-            if (request.method == "GET" && request.path == "/api/v1/events") {
+            if (request.method == asset_discovery::constants::backend::MethodGet
+                && request.path == asset_discovery::constants::backend::EventsPath) {
                 std::string errorMsg;
                 const auto limitOpt = parseLimitQuery(request.query, errorMsg);
                 if (limitOpt.has_value() && *limitOpt == -1) {
                     return asset_discovery::backend::jsonError(400, "invalid_limit", errorMsg);
                 }
-                const int limit = limitOpt.value_or(100);
+                const int limit = limitOpt.value_or(asset_discovery::constants::backend::DefaultQueryLimit);
                 try {
                     return asset_discovery::backend::jsonSuccess(
                         eventsJson(eventQueryService.listEvents(limit)));
@@ -399,13 +401,14 @@ int main(int argc, char** argv)
                     return asset_discovery::backend::jsonError(500, "event_query_failed", error.what());
                 }
             }
-            if (request.method == "GET" && request.path == "/api/v1/logs") {
+            if (request.method == asset_discovery::constants::backend::MethodGet
+                && request.path == asset_discovery::constants::backend::LogsPath) {
                 std::string errorMsg;
                 const auto limitOpt = parseLimitQuery(request.query, errorMsg);
                 if (limitOpt.has_value() && *limitOpt == -1) {
                     return asset_discovery::backend::jsonError(400, "invalid_limit", errorMsg);
                 }
-                const int limit = limitOpt.value_or(100);
+                const int limit = limitOpt.value_or(asset_discovery::constants::backend::DefaultQueryLimit);
                 try {
                     return asset_discovery::backend::jsonSuccess(
                         logsJson(logQueryService.recentLogs(limit)));
@@ -413,7 +416,8 @@ int main(int argc, char** argv)
                     return asset_discovery::backend::jsonError(500, "log_query_failed", error.what());
                 }
             }
-            if (request.method == "GET" && request.path == "/api/v1/metrics") {
+            if (request.method == asset_discovery::constants::backend::MethodGet
+                && request.path == asset_discovery::constants::backend::MetricsPath) {
                 try {
                     return asset_discovery::backend::jsonSuccess(
                         metricsJson(metricsService.snapshot()));
@@ -421,7 +425,8 @@ int main(int argc, char** argv)
                     return asset_discovery::backend::jsonError(500, "metrics_query_failed", error.what());
                 }
             }
-            if (request.method == "POST" && request.path == "/api/v1/capture/start") {
+            if (request.method == asset_discovery::constants::backend::MethodPost
+                && request.path == asset_discovery::constants::backend::CaptureStartPath) {
                 const auto result = captureService.start();
                 if (result.accepted) {
                     return asset_discovery::backend::jsonSuccess(captureStatusJson(result.status));
@@ -429,7 +434,8 @@ int main(int argc, char** argv)
                     return asset_discovery::backend::jsonError(400, "capture_command_rejected", result.error.value_or("failed to start capture"));
                 }
             }
-            if (request.method == "POST" && request.path == "/api/v1/capture/stop") {
+            if (request.method == asset_discovery::constants::backend::MethodPost
+                && request.path == asset_discovery::constants::backend::CaptureStopPath) {
                 const auto result = captureService.stop();
                 if (result.accepted) {
                     return asset_discovery::backend::jsonSuccess(captureStatusJson(result.status));
@@ -437,7 +443,8 @@ int main(int argc, char** argv)
                     return asset_discovery::backend::jsonError(400, "capture_command_rejected", result.error.value_or("failed to stop capture"));
                 }
             }
-            if (request.method == "POST" && request.path == "/api/v1/capture/restart") {
+            if (request.method == asset_discovery::constants::backend::MethodPost
+                && request.path == asset_discovery::constants::backend::CaptureRestartPath) {
                 const auto result = captureService.restart();
                 if (result.accepted) {
                     return asset_discovery::backend::jsonSuccess(captureStatusJson(result.status));
@@ -445,7 +452,8 @@ int main(int argc, char** argv)
                     return asset_discovery::backend::jsonError(400, "capture_command_rejected", result.error.value_or("failed to restart capture"));
                 }
             }
-            if (request.method == "GET" && request.path == "/ws/events") {
+            if (request.method == asset_discovery::constants::backend::MethodGet
+                && request.path == asset_discovery::constants::backend::EventsWebSocketPath) {
                 asset_discovery::backend::HttpResponse response;
                 response.status = 101;
                 return response;

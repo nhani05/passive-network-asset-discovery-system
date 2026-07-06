@@ -1,5 +1,7 @@
 #include "pnad/capture/PacketCapture.hpp"
 
+#include "pnad/constants/CaptureConstants.hpp"
+
 #include <chrono>
 #include <cstring>
 #include <memory>
@@ -86,7 +88,7 @@ bool PcapCaptureBackend::pcapAvailable() const
 
 std::string PcapCaptureBackend::backendName() const
 {
-    return "pcap";
+    return constants::capture::BackendPcapName;
 }
 
 BackendAvailability PcapCaptureBackend::availability() const
@@ -94,29 +96,7 @@ BackendAvailability PcapCaptureBackend::availability() const
     if (!pcapAvailable()) {
         return {false, "libpcap backend is not available in this build"};
     }
-#if ASSET_DISCOVERY_HAS_PCAP == 1
-    // Probe for actual runtime capture permissions by asking libpcap to
-    // enumerate interfaces.  On Linux this internally opens an AF_PACKET
-    // socket and will fail with a permission error when the process lacks
-    // CAP_NET_RAW (i.e. is not root and has not been granted capabilities).
-    pcap_if_t* alldevs = nullptr;
-    char errorBuffer[PCAP_ERRBUF_SIZE] = {};
-    const int result = pcap_findalldevs(&alldevs, errorBuffer);
-    if (alldevs != nullptr) {
-        pcap_freealldevs(alldevs);
-    }
-    if (result != 0) {
-        std::string reason = "pcap requires root or CAP_NET_RAW";
-        if (std::strlen(errorBuffer) > 0) {
-            reason += ": ";
-            reason += errorBuffer;
-        }
-        return {false, reason};
-    }
     return {true, {}};
-#else
-    return {false, "libpcap backend is not available in this build"};
-#endif
 }
 
 bool PcapCaptureBackend::supportsOfflinePcap() const
@@ -218,8 +198,12 @@ std::optional<std::string> PcapCaptureBackend::captureLive(
     const auto& packetFilter = config.packetFilter;
 
     char errorBuffer[PCAP_ERRBUF_SIZE] = {};
-    // Open the interface with snaplen 65535, promiscuous mode = 1, timeout = 1000ms.
-    pcap_t* handle = pcap_open_live(interfaceName.c_str(), 65535, 1, 1000, errorBuffer);
+    pcap_t* handle = pcap_open_live(
+        interfaceName.c_str(),
+        constants::capture::LiveSnapLength,
+        constants::capture::LivePromiscuousMode,
+        constants::capture::LiveReadTimeoutMs,
+        errorBuffer);
     if (handle == nullptr) {
         std::ostringstream output;
         output << "could not open interface '" << interfaceName << "'";
@@ -243,7 +227,7 @@ std::optional<std::string> PcapCaptureBackend::captureLive(
         if (pcap_stats(pcapHandle, &pcapStats) == 0) {
             stats->available = true;
             if (stats->selectedBackend.empty()) {
-                stats->selectedBackend = "pcap";
+                stats->selectedBackend = constants::capture::BackendPcapName;
             }
             stats->packetsReceived = static_cast<std::uint64_t>(pcapStats.ps_recv);
             stats->packetsDropped = static_cast<std::uint64_t>(pcapStats.ps_drop);
@@ -317,7 +301,7 @@ std::optional<std::string> PcapCaptureBackend::captureLive(
 
         if (status == 0) {
             // Non-blocking read found no packet; avoid a hot loop while stop policy checks continue to run.
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(constants::capture::LiveIdleSleepMs));
             continue;
         }
 
@@ -367,28 +351,28 @@ std::string linkTypeName(LinkType linkType)
 {
     switch (linkType) {
     case LinkType::Ethernet:
-        return "ethernet";
+        return constants::capture::LinkTypeEthernetName;
     }
-    return "unknown";
+    return constants::capture::LinkTypeUnknownName;
 }
 
 std::string captureBackendSelectionName(CaptureBackendSelection selection)
 {
     switch (selection) {
     case CaptureBackendSelection::Auto:
-        return "auto";
+        return constants::capture::BackendAutoName;
     case CaptureBackendSelection::Pcap:
-        return "pcap";
+        return constants::capture::BackendPcapName;
     }
-    return "auto";
+    return constants::capture::BackendAutoName;
 }
 
 std::optional<CaptureBackendSelection> parseCaptureBackendSelection(const std::string& value)
 {
-    if (value == "auto") {
+    if (value == constants::capture::BackendAutoName) {
         return CaptureBackendSelection::Auto;
     }
-    if (value == "pcap") {
+    if (value == constants::capture::BackendPcapName) {
         return CaptureBackendSelection::Pcap;
     }
     return std::nullopt;

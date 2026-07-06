@@ -1,5 +1,7 @@
 #include "pnad/backend/QueryServices.hpp"
 
+#include "pnad/constants/BackendConstants.hpp"
+
 #include "pnad/storage/SQLiteWriter.hpp"
 
 #include <algorithm>
@@ -71,7 +73,7 @@ std::vector<BackendAssetRecord> AssetQueryService::listAssets(int limit) const
         throw std::runtime_error(sqlite3_errmsg(db.get()));
     }
 
-    sqlite3_bind_int(statement, 1, normalizedLimit(limit, 1000));
+    sqlite3_bind_int(statement, 1, normalizedLimit(limit, constants::backend::DefaultAssetQueryLimit));
 
     std::vector<BackendAssetRecord> records;
     while (sqlite3_step(statement) == SQLITE_ROW) {
@@ -97,32 +99,8 @@ EventQueryService::EventQueryService(std::string sqlitePath)
 std::vector<BackendEventRecord> EventQueryService::listEvents(int limit) const
 {
     storage::SQLiteWriter initializer(sqlitePath_);
-    SqliteHandle db(sqlitePath_);
-    sqlite3_stmt* statement = nullptr;
-    const char* sql =
-        "SELECT id, event_time, event_type, severity, ip_address, mac_address, message, metadata "
-        "FROM asset_events ORDER BY id DESC LIMIT ?;";
-    if (sqlite3_prepare_v2(db.get(), sql, -1, &statement, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(sqlite3_errmsg(db.get()));
-    }
-
-    sqlite3_bind_int(statement, 1, normalizedLimit(limit, 100));
-
-    std::vector<BackendEventRecord> records;
-    while (sqlite3_step(statement) == SQLITE_ROW) {
-        BackendEventRecord record;
-        record.id = sqlite3_column_int64(statement, 0);
-        record.eventTime = textColumn(statement, 1);
-        record.eventType = textColumn(statement, 2);
-        record.severity = textColumn(statement, 3);
-        record.ipAddress = textColumn(statement, 4);
-        record.macAddress = textColumn(statement, 5);
-        record.message = textColumn(statement, 6);
-        record.metadataJson = textColumn(statement, 7);
-        records.push_back(std::move(record));
-    }
-    sqlite3_finalize(statement);
-    return records;
+    (void)limit;
+    return {};
 }
 
 LogQueryService::LogQueryService(std::string runtimeLogPath)

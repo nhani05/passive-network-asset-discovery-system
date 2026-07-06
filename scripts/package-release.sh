@@ -8,14 +8,11 @@ PROJECT_ROOT="${DIR}/.."
 cd "${PROJECT_ROOT}"
 
 echo "=== 1. Building release binaries ==="
-rm -rf build-release
-cmake -S . -B build-release \
+rm -rf build
+cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Release \
-    -DASSET_DISCOVERY_REQUIRE_PCAP=OFF \
-    -DASSET_DISCOVERY_BUILD_GUI=ON \
-    -DASSET_DISCOVERY_BUILD_CLI_PRODUCT=OFF \
     -DBUILD_TESTING=OFF
-cmake --build build-release --parallel
+cmake --build build --parallel
 
 echo "=== 2. Creating release folder structure ==="
 RELEASE_DIR="${PROJECT_ROOT}/release/pnad-desktop"
@@ -23,7 +20,7 @@ rm -rf "${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}/bin"
 
 # Copy binaries
-cp build-release/asset-discovery-gui "${RELEASE_DIR}/bin/"
+cp build/asset-discovery-gui "${RELEASE_DIR}/bin/"
 
 # Copy launcher script
 cp scripts/pnad-gui-launcher.sh "${RELEASE_DIR}/pnad-gui.sh"
@@ -51,7 +48,7 @@ echo "=== 4. Creating README for runtime dependencies ==="
 cat << 'EOF' > "${RELEASE_DIR}/README.md"
 # Passive Network Asset Discovery (PNAD) Desktop
 
-Passive network monitoring, device inventory, event investigation, and reporting desktop application.
+Passive network monitoring and device inventory desktop application.
 
 ## Prerequisites / Dependencies
 
@@ -71,24 +68,23 @@ The launcher detects rendering startup issues and falls back to the Qt Quick sof
 
 ## Product Workflows
 
-- **Capture Center** starts Live Capture or PCAP Analysis.
-- **Dashboard** summarizes recent sessions, asset totals, event totals, recent events, and capture health.
-- **Assets** searches and inspects discovered devices by MAC, IP, hostname, vendor, role, and source.
-- **Events** filters network events by severity, type, MAC, IP, protocol, interface, and message.
-- **Network Map** groups discovered assets by stable network identity and opens asset details.
-- **Reports / Export** writes asset, event, and session summary exports.
-- **Preferences** stores capture defaults, local database location, detection rules, and advanced engine settings.
-- **System Health** reports capture permissions, backend availability, storage readiness, rendering status, runtime failures, and log location.
+- Select Live or PCAP mode from the first screen.
+- Discover assets from the fixed ARP/DHCP capture scope.
+- Inspect IP, MAC, hostname, first seen, last seen, and protocols.
+- Export the current asset inventory as CSV or JSON.
+- Review the in-session new-asset log.
 
 ## Troubleshooting Capture Permissions
 
-If System Health reports missing live capture permission, grant packet capture capabilities to the GUI binary:
+If live capture reports missing permission, grant packet capture capabilities to the GUI binary:
 
 ```sh
 sudo setcap cap_net_raw,cap_net_admin=eip bin/asset-discovery-gui
 ```
 EOF
-cp docs/desktop-user-guide.md "${RELEASE_DIR}/USER_GUIDE.md"
+if [ -f "docs/desktop-user-guide.md" ]; then
+    cp docs/desktop-user-guide.md "${RELEASE_DIR}/USER_GUIDE.md"
+fi
 
 echo "=== 5. Inspecting desktop package contents ==="
 if [ -e "${RELEASE_DIR}/bin/asset-discovery" ]; then

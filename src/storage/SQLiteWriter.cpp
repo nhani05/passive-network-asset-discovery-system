@@ -28,38 +28,6 @@ std::string toJsonArray(const std::set<std::string>& values)
     return out.str();
 }
 
-std::string escapeJsonString(const std::string& value)
-{
-    std::string output = "";
-    for (const char character : value) {
-        switch (character) {
-        case '\\': output += "\\\\"; break;
-        case '"':  output += "\\\""; break;
-        case '\n': output += "\\n"; break;
-        case '\r': output += "\\r"; break;
-        case '\t': output += "\\t"; break;
-        default:   output += character; break;
-        }
-    }
-    return output;
-}
-
-std::string mapToJson(const std::map<std::string, std::string>& metadata)
-{
-    std::ostringstream output;
-    output << "{";
-    bool first = true;
-    for (const auto& item : metadata) {
-        if (!first) {
-            output << ",";
-        }
-        output << "\"" << escapeJsonString(item.first) << "\":\"" << escapeJsonString(item.second) << "\"";
-        first = false;
-    }
-    output << "}";
-    return output.str();
-}
-
 std::string utcTimestamp()
 {
     const auto now = std::chrono::system_clock::now();
@@ -73,12 +41,6 @@ std::string utcTimestamp()
     std::ostringstream output;
     output << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
     return output.str();
-}
-
-std::string textColumn(sqlite3_stmt* stmt, int column)
-{
-    const auto* value = reinterpret_cast<const char*>(sqlite3_column_text(stmt, column));
-    return value ? value : "";
 }
 
 } // namespace
@@ -154,24 +116,6 @@ std::optional<std::string> SQLiteWriter::initializeDatabase()
             "    reference_metadata TEXT NOT NULL DEFAULT '{}',\n"
             "    derived_hints TEXT NOT NULL DEFAULT '[]',\n"
             "    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n"
-            ");\n"
-            "CREATE TABLE IF NOT EXISTS asset_events (\n"
-            "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
-            "    event_time TEXT NOT NULL,\n"
-            "    event_type TEXT NOT NULL,\n"
-            "    severity TEXT NOT NULL,\n"
-            "    ip_address TEXT,\n"
-            "    mac_address TEXT,\n"
-            "    old_ip TEXT,\n"
-            "    new_ip TEXT,\n"
-            "    old_mac TEXT,\n"
-            "    new_mac TEXT,\n"
-            "    hostname TEXT,\n"
-            "    protocol TEXT,\n"
-            "    interface TEXT,\n"
-            "    message TEXT,\n"
-            "    metadata TEXT NOT NULL DEFAULT '{}',\n"
-            "    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n"
             ");\n";
         rc = sqlite3_exec(db_, schemaSql, nullptr, nullptr, &zErrMsg);
         if (rc != SQLITE_OK) {
@@ -242,6 +186,24 @@ std::optional<std::string> SQLiteWriter::initializeDatabase()
             return "Failed to set schema version to 3: " + err;
         }
         version = 3;
+    }
+
+    if (version < 4) {
+        const char* dropEventLogSql = "DROP TABLE IF EXISTS asset_events;\n";
+        rc = sqlite3_exec(db_, dropEventLogSql, nullptr, nullptr, &zErrMsg);
+        if (rc != SQLITE_OK) {
+            std::string err = zErrMsg ? zErrMsg : "unknown error";
+            sqlite3_free(zErrMsg);
+            return "Failed to remove asset_events table (v4 migration): " + err;
+        }
+
+        rc = sqlite3_exec(db_, "PRAGMA user_version = 4;", nullptr, nullptr, &zErrMsg);
+        if (rc != SQLITE_OK) {
+            std::string err = zErrMsg ? zErrMsg : "unknown error";
+            sqlite3_free(zErrMsg);
+            return "Failed to set schema version to 4: " + err;
+        }
+        version = 4;
     }
 
     return std::nullopt;
@@ -337,51 +299,6 @@ std::optional<std::string> SQLiteWriter::finishAnalysisSession(
     return std::nullopt;
 }
 
-std::vector<AnalysisSessionRecord> SQLiteWriter::loadRecentAnalysisSessions(
-    int limit,
-    std::optional<std::string>& error)
-{
-    std::lock_guard<std::mutex> lock(dbMutex_);
-    std::vector<AnalysisSessionRecord> sessions;
-    error.reset();
-    if (!db_) {
-        error = "Database not open";
-        return sessions;
-    }
-
-    const char* sql =
-        "SELECT id, mode, source, start_time, end_time, status, asset_count, event_count, "
-        "error_summary, storage_context FROM analysis_sessions ORDER BY id DESC LIMIT ?;";
-    sqlite3_stmt* stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        error = std::string("Failed to prepare recent sessions query: ") + sqlite3_errmsg(db_);
-        return sessions;
-    }
-    sqlite3_bind_int(stmt, 1, limit <= 0 ? 20 : limit);
-
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        AnalysisSessionRecord session;
-        session.id = sqlite3_column_int64(stmt, 0);
-        session.mode = textColumn(stmt, 1);
-        session.source = textColumn(stmt, 2);
-        session.startTime = textColumn(stmt, 3);
-        session.endTime = textColumn(stmt, 4);
-        session.status = textColumn(stmt, 5);
-        session.assetCount = sqlite3_column_int(stmt, 6);
-        session.eventCount = sqlite3_column_int(stmt, 7);
-        session.errorSummary = textColumn(stmt, 8);
-        session.storageContext = textColumn(stmt, 9);
-        sessions.push_back(std::move(session));
-    }
-
-    if (rc != SQLITE_DONE) {
-        error = std::string("Failed to load recent sessions: ") + sqlite3_errmsg(db_);
-    }
-    sqlite3_finalize(stmt);
-    return sessions;
-}
-
 std::optional<std::string> SQLiteWriter::countAssets(int& count)
 {
     std::lock_guard<std::mutex> lock(dbMutex_);
@@ -405,23 +322,8 @@ std::optional<std::string> SQLiteWriter::countAssets(int& count)
 
 std::optional<std::string> SQLiteWriter::countEvents(int& count)
 {
-    std::lock_guard<std::mutex> lock(dbMutex_);
-    if (!db_) {
-        return "Database not open";
-    }
-    sqlite3_stmt* stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM asset_events;", -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        return std::string("Failed to prepare event count query: ") + sqlite3_errmsg(db_);
-    }
-    rc = sqlite3_step(stmt);
-    if (rc == SQLITE_ROW) {
-        count = sqlite3_column_int(stmt, 0);
-        sqlite3_finalize(stmt);
-        return std::nullopt;
-    }
-    sqlite3_finalize(stmt);
-    return std::string("Failed to count events: ") + sqlite3_errmsg(db_);
+    count = 0;
+    return std::nullopt;
 }
 
 std::optional<std::string> SQLiteWriter::saveSetting(const std::string& key, const std::string& value)
@@ -577,107 +479,6 @@ std::optional<std::string> SQLiteWriter::writeAssets(const std::vector<asset::As
     }
 
     return std::nullopt;
-}
-
-void SQLiteWriter::write(const asset::AssetEvent& event)
-{
-    std::lock_guard<std::mutex> lock(dbMutex_);
-
-    const char* sql =
-        "INSERT INTO asset_events (event_time, event_type, severity, ip_address, mac_address, "
-        "old_ip, new_ip, old_mac, new_mac, hostname, protocol, interface, message, metadata, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);";
-
-    sqlite3_stmt* stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        throw DatabaseError("Failed to prepare insert event statement: " + std::string(sqlite3_errmsg(db_)));
-    }
-
-    std::string timeStr = asset::formatEventTimestamp(event.timestamp);
-    sqlite3_bind_text(stmt, 1, timeStr.c_str(), -1, SQLITE_TRANSIENT);
-
-    std::string typeStr = asset::assetEventTypeName(event.type);
-    sqlite3_bind_text(stmt, 2, typeStr.c_str(), -1, SQLITE_TRANSIENT);
-
-    std::string severityStr = asset::assetEventSeverityName(event.severity);
-    sqlite3_bind_text(stmt, 3, severityStr.c_str(), -1, SQLITE_TRANSIENT);
-
-    if (event.ipAddress.has_value()) {
-        sqlite3_bind_text(stmt, 4, event.ipAddress->c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 4);
-    }
-
-    if (event.macAddress.has_value()) {
-        sqlite3_bind_text(stmt, 5, event.macAddress->c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 5);
-    }
-
-    if (event.oldIpAddress.has_value()) {
-        sqlite3_bind_text(stmt, 6, event.oldIpAddress->c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 6);
-    }
-
-    if (event.newIpAddress.has_value()) {
-        sqlite3_bind_text(stmt, 7, event.newIpAddress->c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 7);
-    }
-
-    if (event.oldMacAddress.has_value()) {
-        sqlite3_bind_text(stmt, 8, event.oldMacAddress->c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 8);
-    }
-
-    if (event.newMacAddress.has_value()) {
-        sqlite3_bind_text(stmt, 9, event.newMacAddress->c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 9);
-    }
-
-    if (event.hostname.has_value()) {
-        sqlite3_bind_text(stmt, 10, event.hostname->c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 10);
-    }
-
-    if (!event.protocol.empty()) {
-        sqlite3_bind_text(stmt, 11, event.protocol.c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 11);
-    }
-
-    if (!event.interfaceName.empty()) {
-        sqlite3_bind_text(stmt, 12, event.interfaceName.c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 12);
-    }
-
-    if (!event.message.empty()) {
-        sqlite3_bind_text(stmt, 13, event.message.c_str(), -1, SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 13);
-    }
-
-    std::string metadataJson = mapToJson(event.metadata);
-    sqlite3_bind_text(stmt, 14, metadataJson.c_str(), -1, SQLITE_TRANSIENT);
-
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE) {
-        std::string errStr = sqlite3_errmsg(db_);
-        sqlite3_finalize(stmt);
-        throw DatabaseError("Failed to insert event to SQLite: " + errStr);
-    }
-
-    sqlite3_finalize(stmt);
-}
-
-void SQLiteWriter::flush()
-{
 }
 
 } // namespace asset_discovery::storage

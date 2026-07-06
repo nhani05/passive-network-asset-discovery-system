@@ -4,8 +4,8 @@
 #include "pnad/backend/EventBus.hpp"
 #include "pnad/backend/RestApi.hpp"
 #include "pnad/capture/PacketCapture.hpp"
+#include "pnad/constants/CaptureConstants.hpp"
 #include "pnad/discovery/AssetMonitor.hpp"
-#include "pnad/event/EventSink.hpp"
 #include "pnad/packet/PacketParserFacade.hpp"
 #include "pnad/storage/SQLiteWriter.hpp"
 
@@ -28,15 +28,7 @@ asset_discovery::monitor::AssetMonitorConfig defaultMonitorConfig(
     const std::string& interfaceName)
 {
     asset_discovery::monitor::AssetMonitorConfig config;
-    config.detector.interfaceName = interfaceName;
-    for (const auto* cidr : {"127.0.0.0/8", "169.254.0.0/16"}) {
-        if (auto network = asset_discovery::asset::parseIpv4Network(cidr); network.has_value()) {
-            config.detector.ignoredNetworks.push_back(*network);
-        }
-    }
-    config.detector.flipFlopWindowSeconds = 300;
-    config.detector.reappearanceThresholdSeconds = 15552000;
-    config.eventRateLimitSeconds = 60;
+    config.interfaceName = interfaceName;
     return config;
 }
 
@@ -97,7 +89,7 @@ void publishAssetEvent(const asset_discovery::asset::AssetEvent& event, const st
     EventBus::rx().publish({
         "event.detected",
         currentIso8601Timestamp(),
-        event.severity == asset_discovery::asset::AssetEventSeverity::High ? "warning" : "info",
+        "info",
         EventDetectedEvent{record}
     });
 
@@ -108,18 +100,6 @@ void publishAssetEvent(const asset_discovery::asset::AssetEvent& event, const st
             currentIso8601Timestamp(),
             "info",
             AssetCreatedEvent{assetRec}
-        });
-    } else if (event.type == asset_discovery::asset::AssetEventType::HostnameChanged ||
-               event.type == asset_discovery::asset::AssetEventType::HostnameLearned ||
-               event.type == asset_discovery::asset::AssetEventType::IpChangedForMac ||
-               event.type == asset_discovery::asset::AssetEventType::MacChangedForIp ||
-               event.type == asset_discovery::asset::AssetEventType::IpMacFlipFlop) {
-        auto assetRec = assetRecordFromEvent(event);
-        EventBus::rx().publish({
-            "asset.updated",
-            currentIso8601Timestamp(),
-            "info",
-            AssetUpdatedEvent{assetRec}
         });
     }
 
@@ -384,9 +364,6 @@ void CaptureService::runLiveCapture()
         throw std::runtime_error(backendResult.error.value_or("capture backend could not be created"));
     }
 
-    auto dispatcher = std::make_unique<output::EventDispatcher>();
-    dispatcher->addSink(std::make_unique<storage::SQLiteWriter>(config_.sqlitePath));
-
     capture::LiveCaptureOptions liveOptions;
     liveOptions.stopRequested = [this]() {
         return stopRequested_.load(std::memory_order_relaxed);
@@ -400,13 +377,8 @@ void CaptureService::runLiveCapture()
 
     live::LivePipelineOptions pipelineOptions;
     pipelineOptions.monitorConfig = defaultMonitorConfig(*config_.interfaceName);
-    pipelineOptions.eventQueueCapacity = 1024;
-    pipelineOptions.eventCallback = [&dispatcher, this](const asset::AssetEvent& event) {
-        dispatcher->dispatch(event);
+    pipelineOptions.eventCallback = [this](const asset::AssetEvent& event) {
         publishAssetEvent(event, config_.sqlitePath, startCount_, stopCount_);
-    };
-    pipelineOptions.eventFlushCallback = [&dispatcher]() {
-        dispatcher->flush();
     };
 
     const auto liveResult = live::runLiveCapturePipeline(
@@ -433,13 +405,9 @@ void CaptureService::runPcapAnalysis()
         throw std::runtime_error(*pcapResult.error);
     }
 
-    auto dispatcher = std::make_unique<output::EventDispatcher>();
-    dispatcher->addSink(std::make_unique<storage::SQLiteWriter>(config_.sqlitePath));
-
     monitor::AssetMonitor monitor(
-        defaultMonitorConfig("pcap"),
-        [&dispatcher, this](const asset::AssetEvent& event) {
-            dispatcher->dispatch(event);
+        defaultMonitorConfig(constants::capture::PcapInterfaceName),
+        [this](const asset::AssetEvent& event) {
             publishAssetEvent(event, config_.sqlitePath, startCount_, stopCount_);
         });
 
@@ -457,8 +425,6 @@ void CaptureService::runPcapAnalysis()
             monitor.applyObservation(observation);
         }
     }
-
-    dispatcher->flush();
 
     storage::SQLiteWriter writer(config_.sqlitePath);
     if (const auto error = writer.writeAssets(monitor.assets()); error.has_value()) {

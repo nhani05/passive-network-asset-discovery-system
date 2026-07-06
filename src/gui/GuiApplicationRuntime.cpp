@@ -1,16 +1,16 @@
 #include "pnad/gui/GuiApplicationRuntime.hpp"
 
+#include "pnad/constants/GuiConstants.hpp"
+
 #include <QFileInfo>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QVariantMap>
 
-#include "pnad/gui/AnalysisSessionModel.hpp"
 #include "pnad/gui/AssetModel.hpp"
 #include "pnad/gui/CaptureController.hpp"
-#include "pnad/gui/CaptureServiceFacade.hpp"
-#include "pnad/gui/EventModel.hpp"
-#include "pnad/gui/HealthDiagnosticsModel.hpp"
 #include "pnad/gui/InterfaceModel.hpp"
+#include "pnad/gui/LogModel.hpp"
 
 namespace asset_discovery::gui {
 
@@ -18,14 +18,11 @@ GuiApplicationRuntime::GuiApplicationRuntime(QObject* parent)
     : QObject(parent)
 {
     captureController_ = std::make_unique<CaptureController>(this);
-    captureServiceFacade_ = std::make_unique<CaptureServiceFacade>(captureController_.get(), this);
     assetModel_ = std::make_unique<AssetModel>(this);
-    eventModel_ = std::make_unique<EventModel>(this);
     interfaceModel_ = std::make_unique<InterfaceModel>(this);
-    analysisSessionModel_ = std::make_unique<AnalysisSessionModel>(this);
-    healthDiagnosticsModel_ = std::make_unique<HealthDiagnosticsModel>(this);
+    logModel_ = std::make_unique<LogModel>(this);
 
-    refreshTimer_.setInterval(1000);
+    refreshTimer_.setInterval(constants::gui::RefreshIntervalMs);
     refreshTimer_.setTimerType(Qt::CoarseTimer);
 }
 
@@ -40,10 +37,6 @@ void GuiApplicationRuntime::initialize(QQmlApplicationEngine& engine)
 
 void GuiApplicationRuntime::reloadModelsFromDatabase()
 {
-    if (!captureController_->isRunning()) {
-        return;
-    }
-
     const QString dbPath = captureController_->sqlitePath();
     const QFileInfo dbInfo(dbPath);
     if (dbInfo.exists()) {
@@ -55,8 +48,6 @@ void GuiApplicationRuntime::reloadModelsFromDatabase()
     }
 
     assetModel_->reloadFromDatabase(dbPath);
-    eventModel_->reloadFromDatabase(dbPath);
-    analysisSessionModel_->reloadFromDatabase(dbPath);
 }
 
 CaptureController* GuiApplicationRuntime::captureController() const
@@ -69,37 +60,45 @@ AssetModel* GuiApplicationRuntime::assetModel() const
     return assetModel_.get();
 }
 
-EventModel* GuiApplicationRuntime::eventModel() const
-{
-    return eventModel_.get();
-}
-
 InterfaceModel* GuiApplicationRuntime::interfaceModel() const
 {
     return interfaceModel_.get();
 }
 
-AnalysisSessionModel* GuiApplicationRuntime::analysisSessionModel() const
+LogModel* GuiApplicationRuntime::logModel() const
 {
-    return analysisSessionModel_.get();
-}
-
-HealthDiagnosticsModel* GuiApplicationRuntime::healthDiagnosticsModel() const
-{
-    return healthDiagnosticsModel_.get();
+    return logModel_.get();
 }
 
 void GuiApplicationRuntime::connectRefreshMechanism()
 {
+    QObject::connect(captureController_.get(), &CaptureController::eventLogMessage,
+                     this, [this](const QString& timestamp, const QString& severity, const QString& source, const QString& message) {
+                         QVariantMap log;
+                         log.insert("timestamp", timestamp);
+                         log.insert("severity", severity);
+                         log.insert("source", source);
+                         log.insert("message", message);
+                         logModel_->appendLogDto(log);
+                     }, Qt::QueuedConnection);
+
+    QObject::connect(captureController_.get(), &CaptureController::assetDiscovered,
+                     this, [this](const QVariantMap& asset, bool) {
+                         assetModel_->applyAssetDto(asset);
+                     }, Qt::QueuedConnection);
+
     QObject::connect(captureController_.get(), &CaptureController::isRunningChanged,
                      this, [this]() {
                          if (captureController_->isRunning()) {
-                             refreshTimer_.start();
                              reloadModelsFromDatabase();
                          } else {
                              refreshTimer_.stop();
                          }
                      }, Qt::QueuedConnection);
+
+    QObject::connect(captureController_.get(), &CaptureController::captureFinished,
+                     this, &GuiApplicationRuntime::reloadModelsFromDatabase,
+                     Qt::QueuedConnection);
 
     QObject::connect(&refreshTimer_, &QTimer::timeout,
                      this, &GuiApplicationRuntime::reloadModelsFromDatabase,
@@ -109,19 +108,14 @@ void GuiApplicationRuntime::connectRefreshMechanism()
 void GuiApplicationRuntime::registerContextProperties(QQmlApplicationEngine& engine)
 {
     engine.rootContext()->setContextProperty("captureController", captureController_.get());
-    engine.rootContext()->setContextProperty("captureServiceFacade", captureServiceFacade_.get());
     engine.rootContext()->setContextProperty("assetModel", assetModel_.get());
-    engine.rootContext()->setContextProperty("eventModel", eventModel_.get());
     engine.rootContext()->setContextProperty("interfaceModel", interfaceModel_.get());
-    engine.rootContext()->setContextProperty("analysisSessionModel", analysisSessionModel_.get());
-    engine.rootContext()->setContextProperty("healthDiagnosticsModel", healthDiagnosticsModel_.get());
+    engine.rootContext()->setContextProperty("logModel", logModel_.get());
 }
 
 void GuiApplicationRuntime::loadInitialModels()
 {
     assetModel_->reloadFromDatabase(captureController_->sqlitePath());
-    eventModel_->reloadFromDatabase(captureController_->sqlitePath());
-    analysisSessionModel_->reloadFromDatabase(captureController_->sqlitePath());
 }
 
 } // namespace asset_discovery::gui

@@ -18,6 +18,9 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/RunAssetdSmokeTest.cmake"
 )
 
+add_test(NAME asset-capture-help COMMAND asset-capture --help)
+add_test(NAME asset-capture-protocol-self-test COMMAND asset-capture --self-test-protocol)
+
 add_test(
     NAME desktop-package-inspection
     COMMAND "${CMAKE_COMMAND}"
@@ -97,23 +100,11 @@ add_executable(asset-event-detector-tests
 target_link_libraries(asset-event-detector-tests PRIVATE asset_discovery_asset)
 add_test(NAME asset-event-detector-tests COMMAND asset-event-detector-tests)
 
-add_executable(event-rate-limiter-tests
-    EventRateLimiterTests.cpp
-)
-target_link_libraries(event-rate-limiter-tests PRIVATE asset_discovery_asset)
-add_test(NAME event-rate-limiter-tests COMMAND event-rate-limiter-tests)
-
 add_executable(asset-monitor-tests
     AssetMonitorTests.cpp
 )
 target_link_libraries(asset-monitor-tests PRIVATE asset_discovery_monitor)
 add_test(NAME asset-monitor-tests COMMAND asset-monitor-tests)
-
-add_executable(postgres-writer-tests
-    PostgresWriterTests.cpp
-)
-target_link_libraries(postgres-writer-tests PRIVATE asset_discovery_storage)
-add_test(NAME postgres-writer-tests COMMAND postgres-writer-tests)
 
 add_executable(sqlite-writer-tests
     SQLiteWriterTests.cpp
@@ -139,6 +130,24 @@ add_executable(capture-backend-tests
 target_link_libraries(capture-backend-tests PRIVATE asset_discovery_capture)
 add_test(NAME capture-backend-tests COMMAND capture-backend-tests)
 
+add_executable(capture-child-supervisor-tests
+    CaptureChildSupervisorTests.cpp
+)
+target_link_libraries(capture-child-supervisor-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-child-supervisor-tests COMMAND capture-child-supervisor-tests)
+
+add_executable(capture-child-protocol-tests
+    CaptureChildProtocolTests.cpp
+)
+target_link_libraries(capture-child-protocol-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-child-protocol-tests COMMAND capture-child-protocol-tests)
+
+add_executable(capture-packet-stream-tests
+    CapturePacketStreamTests.cpp
+)
+target_link_libraries(capture-packet-stream-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-packet-stream-tests COMMAND capture-packet-stream-tests)
+
 add_executable(bounded-queue-tests
     BoundedQueueTests.cpp
 )
@@ -150,6 +159,12 @@ add_executable(live-capture-pipeline-tests
 )
 target_link_libraries(live-capture-pipeline-tests PRIVATE asset_discovery_live asset_discovery_output)
 add_test(NAME live-capture-pipeline-tests COMMAND live-capture-pipeline-tests)
+
+add_executable(core-session-tests
+    CoreSessionTests.cpp
+)
+target_link_libraries(core-session-tests PRIVATE asset-core)
+add_test(NAME core-session-tests COMMAND core-session-tests)
 
 add_executable(backend-service-tests
     BackendServiceTests.cpp
@@ -292,65 +307,38 @@ if(PCAP_FOUND)
                 "${PROJECT_SOURCE_DIR}/samples/multi-asset.pcap"
         )
 
-        add_test(
-            NAME asset-discovery-pcap-event-ndjson
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateEventNdjsonOutput.py"
-                "$<TARGET_FILE:asset-discovery>"
-                "${MAC_CHANGE_PCAP_PATH}"
-        )
     endif()
-
-    add_test(
-        NAME asset-discovery-postgres-write
-        COMMAND "${CMAKE_COMMAND}"
-            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
-            "-DPCAP_PATH=${PROJECT_SOURCE_DIR}/samples/arp.pcap"
-            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/dotenv-postgres-write"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/ValidatePostgresWrite.cmake"
-    )
 endif()
 
-if(ASSET_DISCOVERY_BUILD_GUI)
-    add_executable(gui-model-tests
-        GuiModelTests.cpp
-        ../src/gui/AssetModel.cpp
-        ../src/gui/EventModel.cpp
-        ../src/gui/InterfaceModel.cpp
-        ../src/gui/AnalysisSessionModel.cpp
-        ../src/gui/HealthDiagnosticsModel.cpp
-        ../src/gui/DesktopRunConfig.cpp
-        ../src/gui/CaptureController.cpp
-        ../src/gui/CaptureServiceFacade.cpp
-        ../include/pnad/gui/AssetModel.hpp
-        ../include/pnad/gui/EventModel.hpp
-        ../include/pnad/gui/InterfaceModel.hpp
-        ../include/pnad/gui/AnalysisSessionModel.hpp
-        ../include/pnad/gui/HealthDiagnosticsModel.hpp
-        ../include/pnad/gui/DesktopRunConfig.hpp
-        ../include/pnad/gui/CaptureController.hpp
-        ../include/pnad/gui/CaptureServiceFacade.hpp
-    )
-    set_target_properties(gui-model-tests PROPERTIES AUTOMOC ON)
-    target_include_directories(gui-model-tests PRIVATE ../include)
-    target_compile_definitions(gui-model-tests PRIVATE PNAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-    target_link_libraries(gui-model-tests PRIVATE
-        asset_discovery_storage
-        asset_discovery_live
-        asset_discovery_output
-        asset_discovery_config
-        ${QT_LIBRARIES}
-    )
-    add_test(NAME gui-model-tests COMMAND gui-model-tests)
+add_executable(gui-model-tests
+    GuiModelTests.cpp
+    ../src/gui/AssetModel.cpp
+    ../src/gui/InterfaceModel.cpp
+    ../src/gui/LogModel.cpp
+    ../src/gui/DesktopRunConfig.cpp
+    ../src/gui/CaptureController.cpp
+    ../include/pnad/gui/AssetModel.hpp
+    ../include/pnad/gui/InterfaceModel.hpp
+    ../include/pnad/gui/LogModel.hpp
+    ../include/pnad/gui/DesktopRunConfig.hpp
+    ../include/pnad/gui/CaptureController.hpp
+)
+set_target_properties(gui-model-tests PROPERTIES AUTOMOC ON)
+target_include_directories(gui-model-tests PRIVATE ../include)
+target_compile_definitions(gui-model-tests PRIVATE PNAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(gui-model-tests PRIVATE
+    asset-core
+    ${QT_LIBRARIES}
+)
+add_test(NAME gui-model-tests COMMAND gui-model-tests)
 
-    add_test(
-        NAME gui-smoke-test
-        COMMAND "${CMAKE_COMMAND}"
-            "-DGUI_EXE=$<TARGET_FILE:asset-discovery-gui>"
-            "-DGUI_SMOKE_DATA_DIR=${CMAKE_CURRENT_BINARY_DIR}/gui-smoke-data"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/RunGuiSmokeTest.cmake"
-    )
-endif()
+add_test(
+    NAME gui-smoke-test
+    COMMAND "${CMAKE_COMMAND}"
+        "-DGUI_EXE=$<TARGET_FILE:asset-discovery-gui>"
+        "-DGUI_SMOKE_DATA_DIR=${CMAKE_CURRENT_BINARY_DIR}/gui-smoke-data"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/RunGuiSmokeTest.cmake"
+)
 
 if(TARGET asset-tests)
     add_dependencies(asset-tests
@@ -366,9 +354,7 @@ if(TARGET asset-tests)
         dns-plugin-tests
         asset-store-tests
         asset-event-detector-tests
-        event-rate-limiter-tests
         asset-monitor-tests
-        postgres-writer-tests
         sqlite-writer-tests
         arguments-tests
         app-config-tests
@@ -377,7 +363,5 @@ if(TARGET asset-tests)
         live-capture-pipeline-tests
         backend-service-tests
     )
-    if(TARGET gui-model-tests)
-        add_dependencies(asset-tests gui-model-tests)
-    endif()
+    add_dependencies(asset-tests gui-model-tests)
 endif()

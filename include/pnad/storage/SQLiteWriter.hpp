@@ -1,8 +1,6 @@
 #pragma once
 
-#include "pnad/event/AssetEvent.hpp"
 #include "pnad/discovery/AssetStore.hpp"
-#include "pnad/event/EventSink.hpp"
 
 #include <sqlite3.h>
 #include <string>
@@ -26,20 +24,16 @@ struct AnalysisSessionRecord {
     std::string storageContext;
 };
 
-class SQLiteWriter final : public output::EventSink {
+class SQLiteWriter final {
 public:
     explicit SQLiteWriter(const std::string& dbPath);
-    ~SQLiteWriter() override;
+    ~SQLiteWriter();
 
     // Disable copy/move
     SQLiteWriter(const SQLiteWriter&) = delete;
     SQLiteWriter& operator=(const SQLiteWriter&) = delete;
     SQLiteWriter(SQLiteWriter&&) = delete;
     SQLiteWriter& operator=(SQLiteWriter&&) = delete;
-
-    // EventSink interface
-    void write(const asset::AssetEvent& event) override;
-    void flush() override;
 
     // Asset storage helper
     std::optional<std::string> writeAssets(const std::vector<asset::Asset>& assets);
@@ -56,9 +50,6 @@ public:
         int assetCount,
         int eventCount,
         const std::string& errorSummary = "");
-    std::vector<AnalysisSessionRecord> loadRecentAnalysisSessions(
-        int limit,
-        std::optional<std::string>& error);
     std::optional<std::string> countAssets(int& count);
     std::optional<std::string> countEvents(int& count);
 

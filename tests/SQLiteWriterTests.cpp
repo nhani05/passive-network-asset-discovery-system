@@ -1,4 +1,5 @@
 #include "pnad/storage/SQLiteWriter.hpp"
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <cstdio>
@@ -7,9 +8,6 @@
 namespace {
 
 using asset_discovery::asset::Asset;
-using asset_discovery::asset::AssetEvent;
-using asset_discovery::asset::AssetEventSeverity;
-using asset_discovery::asset::AssetEventType;
 using asset_discovery::parser::sourceIdArp;
 using asset_discovery::storage::SQLiteWriter;
 using asset_discovery::storage::AnalysisSessionRecord;
@@ -40,17 +38,17 @@ void testSQLiteWriterWriteAndRead()
         expect(sqlite3_prepare_v2(db, "SELECT name FROM sqlite_master WHERE type='table';", -1, &stmt, nullptr) == SQLITE_OK, "Should query master table");
 
         bool hasAssets = false;
-        bool hasEvents = false;
+        bool hasAssetEvents = false;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             std::string name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
             if (name == "assets") hasAssets = true;
-            if (name == "asset_events") hasEvents = true;
+            if (name == "asset_events") hasAssetEvents = true;
         }
         sqlite3_finalize(stmt);
         sqlite3_close(db);
 
         expect(hasAssets, "Database should have assets table");
-        expect(hasEvents, "Database should have asset_events table");
+        expect(!hasAssetEvents, "Database should not have asset_events table");
 
         // Write an asset
         Asset asset;
@@ -62,20 +60,6 @@ void testSQLiteWriterWriteAndRead()
 
         auto writeError = writer.writeAssets({asset});
         expect(!writeError.has_value(), "writeAssets should succeed");
-
-        // Write an event
-        AssetEvent event;
-        event.timestamp = {100, 200};
-        event.type = AssetEventType::NewAsset;
-        event.severity = AssetEventSeverity::Info;
-        event.ipAddress = "192.168.1.50";
-        event.macAddress = "02:42:ac:11:00:05";
-        event.protocol = "arp";
-        event.interfaceName = "eth0";
-        event.message = "New asset discovered";
-        event.metadata["note"] = "test";
-
-        writer.write(event);
 
         // Read and verify database records
         expect(sqlite3_open(dbPath.c_str(), &db) == SQLITE_OK, "Should re-open database");
@@ -90,17 +74,9 @@ void testSQLiteWriterWriteAndRead()
         expect(ipAddrs == "[\"192.168.1.50\"]", "IP addresses should be serialized JSON array");
         expect(sources == "[\"arp\"]", "Sources should be serialized JSON array");
 
-        // Verify events serialization
-        expect(sqlite3_prepare_v2(db, "SELECT event_type, severity, message FROM asset_events WHERE mac_address='02:42:ac:11:00:05';", -1, &stmt, nullptr) == SQLITE_OK, "Should select event");
-        expect(sqlite3_step(stmt) == SQLITE_ROW, "Event should be inserted");
-        std::string eventType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        std::string severity = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        std::string message = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        expect(sqlite3_prepare_v2(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='asset_events';", -1, &stmt, nullptr) == SQLITE_OK, "Should query asset_events table absence");
+        expect(sqlite3_step(stmt) == SQLITE_DONE, "asset_events table should remain absent");
         sqlite3_finalize(stmt);
-
-        expect(eventType == "new_asset", "Event type should be stringified");
-        expect(severity == "info", "Severity should be stringified");
-        expect(message == "New asset discovered", "Message should be saved");
 
         sqlite3_close(db);
     }
@@ -114,19 +90,19 @@ void testSQLiteWriterMigrationsAndSettings()
     std::remove(dbPath.c_str());
 
     {
-        // 1. First open: should initialize database and migrate to version 3
+        // 1. First open: should initialize database and migrate to version 4
         SQLiteWriter writer(dbPath);
 
         sqlite3* db = nullptr;
         expect(sqlite3_open(dbPath.c_str(), &db) == SQLITE_OK, "Should open migrations db");
 
-        // Verify user_version is 3
+        // Verify user_version is 4
         sqlite3_stmt* stmt = nullptr;
         expect(sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nullptr) == SQLITE_OK, "Prepare version pragma");
         expect(sqlite3_step(stmt) == SQLITE_ROW, "Step version pragma");
         int version = sqlite3_column_int(stmt, 0);
         sqlite3_finalize(stmt);
-        expect(version == 3, "Database version should be migrated to 3");
+        expect(version == 4, "Database version should be migrated to 4");
 
         // Verify table exists
         expect(sqlite3_prepare_v2(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings';", -1, &stmt, nullptr) == SQLITE_OK, "Query app_settings table");
@@ -168,6 +144,8 @@ void testAnalysisSessionPersistence()
 {
     std::string dbPath = "test_sqlite_sessions_temp.db";
     std::remove(dbPath.c_str());
+    std::int64_t completedId = 0;
+    std::int64_t failedId = 0;
 
     {
         SQLiteWriter writer(dbPath);
@@ -179,21 +157,10 @@ void testAnalysisSessionPersistence()
         auto error = writer.createAnalysisSession(session);
         expect(!error.has_value(), "createAnalysisSession should succeed");
         expect(session.id > 0, "created session should have an id");
+        completedId = session.id;
 
         error = writer.finishAnalysisSession(session.id, "Completed", 3, 4);
         expect(!error.has_value(), "finishAnalysisSession should succeed");
-
-        std::optional<std::string> loadError;
-        const auto sessions = writer.loadRecentAnalysisSessions(10, loadError);
-        expect(!loadError.has_value(), "loadRecentAnalysisSessions should succeed");
-        expect(sessions.size() == 1, "one session should be loaded");
-        if (!sessions.empty()) {
-            expect(sessions[0].mode == "PCAP Analysis", "session mode should persist");
-            expect(sessions[0].source == "samples/arp.pcap", "session source should persist");
-            expect(sessions[0].status == "Completed", "session status should update");
-            expect(sessions[0].assetCount == 3, "session asset count should update");
-            expect(sessions[0].eventCount == 4, "session event count should update");
-        }
 
         AnalysisSessionRecord failed;
         failed.mode = "Live Capture";
@@ -201,17 +168,42 @@ void testAnalysisSessionPersistence()
         failed.storageContext = dbPath;
         error = writer.createAnalysisSession(failed);
         expect(!error.has_value(), "failed session create should succeed");
+        failedId = failed.id;
         error = writer.finishAnalysisSession(failed.id, "Failed", 0, 0, "Permission missing");
         expect(!error.has_value(), "failed session update should succeed");
-
-        const auto recent = writer.loadRecentAnalysisSessions(1, loadError);
-        expect(!loadError.has_value(), "limited recent session load should succeed");
-        expect(recent.size() == 1, "limit should restrict recent sessions");
-        if (!recent.empty()) {
-            expect(recent[0].status == "Failed", "most recent session should be first");
-            expect(recent[0].errorSummary == "Permission missing", "error summary should persist");
-        }
     }
+
+    sqlite3* db = nullptr;
+    expect(sqlite3_open(dbPath.c_str(), &db) == SQLITE_OK, "Should open sessions database");
+
+    sqlite3_stmt* stmt = nullptr;
+    const char* completedSql =
+        "SELECT mode, source, status, asset_count, event_count FROM analysis_sessions WHERE id = ?;";
+    expect(sqlite3_prepare_v2(db, completedSql, -1, &stmt, nullptr) == SQLITE_OK, "Prepare completed session query");
+    sqlite3_bind_int64(stmt, 1, completedId);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        expect(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) == std::string("PCAP Analysis"), "session mode should persist");
+        expect(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) == std::string("samples/arp.pcap"), "session source should persist");
+        expect(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) == std::string("Completed"), "session status should update");
+        expect(sqlite3_column_int(stmt, 3) == 3, "session asset count should update");
+        expect(sqlite3_column_int(stmt, 4) == 4, "session event count should update");
+    } else {
+        expect(false, "completed session row should exist");
+    }
+    sqlite3_finalize(stmt);
+
+    const char* failedSql =
+        "SELECT status, error_summary FROM analysis_sessions WHERE id = ?;";
+    expect(sqlite3_prepare_v2(db, failedSql, -1, &stmt, nullptr) == SQLITE_OK, "Prepare failed session query");
+    sqlite3_bind_int64(stmt, 1, failedId);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        expect(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) == std::string("Failed"), "failed session status should persist");
+        expect(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) == std::string("Permission missing"), "error summary should persist");
+    } else {
+        expect(false, "failed session row should exist");
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
 
     std::remove(dbPath.c_str());
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pnad/constants/BackendConstants.hpp"
+
 #include "pnad/backend/QueryServices.hpp"
 #include "pnad/system/BoundedQueue.hpp"
 
@@ -91,7 +93,7 @@ public:
 
     EventBus() = default;
 
-    EventQueuePtr subscribe(std::size_t capacity = 1000)
+    EventQueuePtr subscribe(std::size_t capacity = constants::backend::DefaultEventBusCapacity)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto queue = std::make_shared<EventQueue>(capacity);

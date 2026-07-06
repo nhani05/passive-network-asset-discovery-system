@@ -1,9 +1,14 @@
 #pragma once
 
 #include "pnad/config/AppConfig.hpp"
+#include "pnad/constants/BackendConstants.hpp"
+#include "pnad/constants/CaptureConstants.hpp"
+#include "pnad/constants/CliConstants.hpp"
+#include "pnad/constants/ConfigConstants.hpp"
 #include "pnad/gui/DesktopRunConfig.hpp"
 
 #include <QObject>
+#include <QVariantMap>
 #include <QString>
 #include <QStringList>
 #include <thread>
@@ -23,12 +28,6 @@ class CaptureController final : public QObject {
     Q_PROPERTY(QString captureBackend READ captureBackend WRITE setCaptureBackend NOTIFY captureBackendChanged)
     Q_PROPERTY(QString outputFormat READ outputFormat WRITE setOutputFormat NOTIFY outputFormatChanged)
     Q_PROPERTY(bool isLive READ isLive WRITE setIsLive NOTIFY isLiveChanged)
-    Q_PROPERTY(int eventRateLimitSeconds READ eventRateLimitSeconds WRITE setEventRateLimitSeconds NOTIFY eventRateLimitSecondsChanged)
-    Q_PROPERTY(int eventQueueCapacity READ eventQueueCapacity WRITE setEventQueueCapacity NOTIFY eventQueueCapacityChanged)
-    Q_PROPERTY(int flipFlopWindowSeconds READ flipFlopWindowSeconds WRITE setFlipFlopWindowSeconds NOTIFY flipFlopWindowSecondsChanged)
-    Q_PROPERTY(int reappearanceThresholdSeconds READ reappearanceThresholdSeconds WRITE setReappearanceThresholdSeconds NOTIFY reappearanceThresholdSecondsChanged)
-    Q_PROPERTY(QStringList localNetworks READ localNetworks WRITE setLocalNetworks NOTIFY localNetworksChanged)
-    Q_PROPERTY(QStringList ignoredNetworks READ ignoredNetworks WRITE setIgnoredNetworks NOTIFY ignoredNetworksChanged)
     Q_PROPERTY(QString sqlitePath READ sqlitePath WRITE setSqlitePath NOTIFY sqlitePathChanged)
     Q_PROPERTY(bool isRunning READ isRunning NOTIFY isRunningChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
@@ -55,6 +54,7 @@ public:
     Q_INVOKABLE bool validateLiveCaptureRequest();
     Q_INVOKABLE bool validatePcapAnalysisRequest();
     Q_INVOKABLE QString choosePcapFile();
+    Q_INVOKABLE QString chooseExportFile(const QString& format);
     Q_INVOKABLE QString chooseConfigFile();
 
     // Getters & Setters
@@ -77,34 +77,16 @@ public:
     void setProfileName(const QString& val) { if (profileName_ != val) { profileName_ = val; emit profileNameChanged(); } }
 
     QString packetFilter() const { return packetFilter_; }
-    void setPacketFilter(const QString& val) { if (packetFilter_ != val) { packetFilter_ = val; emit packetFilterChanged(); } }
+    void setPacketFilter(const QString& val);
 
     QString captureBackend() const { return captureBackend_; }
-    void setCaptureBackend(const QString& val) { if (captureBackend_ != val) { captureBackend_ = val; emit captureBackendChanged(); } }
+    void setCaptureBackend(const QString& val);
 
     QString outputFormat() const { return outputFormat_; }
     void setOutputFormat(const QString& val) { if (outputFormat_ != val) { outputFormat_ = val; emit outputFormatChanged(); } }
 
     bool isLive() const { return isLive_; }
     void setIsLive(bool val) { if (isLive_ != val) { isLive_ = val; emit isLiveChanged(); } }
-
-    int eventRateLimitSeconds() const { return eventRateLimitSeconds_; }
-    void setEventRateLimitSeconds(int val) { if (eventRateLimitSeconds_ != val) { eventRateLimitSeconds_ = val; emit eventRateLimitSecondsChanged(); } }
-
-    int eventQueueCapacity() const { return eventQueueCapacity_; }
-    void setEventQueueCapacity(int val) { if (eventQueueCapacity_ != val) { eventQueueCapacity_ = val; emit eventQueueCapacityChanged(); } }
-
-    int flipFlopWindowSeconds() const { return flipFlopWindowSeconds_; }
-    void setFlipFlopWindowSeconds(int val) { if (flipFlopWindowSeconds_ != val) { flipFlopWindowSeconds_ = val; emit flipFlopWindowSecondsChanged(); } }
-
-    int reappearanceThresholdSeconds() const { return reappearanceThresholdSeconds_; }
-    void setReappearanceThresholdSeconds(int val) { if (reappearanceThresholdSeconds_ != val) { reappearanceThresholdSeconds_ = val; emit reappearanceThresholdSecondsChanged(); } }
-
-    QStringList localNetworks() const { return localNetworks_; }
-    void setLocalNetworks(const QStringList& val) { if (localNetworks_ != val) { localNetworks_ = val; emit localNetworksChanged(); } }
-
-    QStringList ignoredNetworks() const { return ignoredNetworks_; }
-    void setIgnoredNetworks(const QStringList& val) { if (ignoredNetworks_ != val) { ignoredNetworks_ = val; emit ignoredNetworksChanged(); } }
 
     QString sqlitePath() const { return sqlitePath_; }
     void setSqlitePath(const QString& val) { if (sqlitePath_ != val) { sqlitePath_ = val; emit sqlitePathChanged(); } }
@@ -121,12 +103,6 @@ signals:
     void captureBackendChanged();
     void outputFormatChanged();
     void isLiveChanged();
-    void eventRateLimitSecondsChanged();
-    void eventQueueCapacityChanged();
-    void flipFlopWindowSecondsChanged();
-    void reappearanceThresholdSecondsChanged();
-    void localNetworksChanged();
-    void ignoredNetworksChanged();
     void sqlitePathChanged();
     void isRunningChanged();
     void statusTextChanged();
@@ -134,6 +110,8 @@ signals:
     void validationErrorChanged();
     void recentFailureSummaryChanged();
     void runtimeLogPathChanged();
+    void eventLogMessage(QString timestamp, QString severity, QString source, QString message);
+    void assetDiscovered(QVariantMap asset, bool isNew);
     void captureFinished();
 
 private:
@@ -142,6 +120,7 @@ private:
     DesktopRunConfig currentDesktopRunConfig() const;
     bool validateStoragePath();
     bool validatePcapSource();
+    bool validateLiveCapturePermission();
     void recordRuntimeFailure(const QString& summary);
     void setValidationError(const QString& error);
 
@@ -155,22 +134,16 @@ private:
     QString pcapPath_;
     QString configPath_;
     QString profileName_;
-    QString packetFilter_ = "arp or udp port 67 or udp port 68";
-    QString captureBackend_ = "auto";
-    QString outputFormat_ = "json";
-    bool isLive_ = true;
-    int eventRateLimitSeconds_ = 60;
-    int eventQueueCapacity_ = 1024;
-    int flipFlopWindowSeconds_ = 300;
-    int reappearanceThresholdSeconds_ = 15552000;
-    QStringList localNetworks_;
-    QStringList ignoredNetworks_;
-    QString sqlitePath_ = "pnad.db";
+    QString packetFilter_ = QString::fromLatin1(constants::capture::DefaultPacketFilter);
+    QString captureBackend_ = QString::fromLatin1(constants::capture::BackendAutoName);
+    QString outputFormat_ = QString::fromLatin1(constants::cli::OutputJson);
+    bool isLive_ = false;
+    QString sqlitePath_ = QString::fromLatin1(constants::config::DefaultSqlitePath);
     QString statusText_ = "Stopped";
     QString lastError_;
     QString validationError_;
     QString recentFailureSummary_;
-    QString runtimeLogPath_ = "logs/pnad-runtime.log";
+    QString runtimeLogPath_ = QString::fromLatin1(constants::backend::DefaultRuntimeLogPath);
 };
 
 } // namespace asset_discovery::gui

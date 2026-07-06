@@ -1,25 +1,28 @@
 #pragma once
 
-#include "pnad/event/AssetEventDetector.hpp"
 #include "pnad/discovery/AssetStore.hpp"
-#include "pnad/event/EventRateLimiter.hpp"
+#include "pnad/event/AssetEvent.hpp"
 
 #include <cstddef>
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace asset_discovery::monitor {
 
 struct AssetMonitorConfig {
-    asset::AssetEventDetectorConfig detector;
-    std::int64_t eventRateLimitSeconds = 60;
+    std::string interfaceName;
 };
 
 class AssetMonitor {
 public:
     using EventCallback = std::function<void(const asset::AssetEvent&)>;
+    using AssetCallback = std::function<void(const asset::Asset&, bool isNew)>;
 
-    explicit AssetMonitor(AssetMonitorConfig config = {}, EventCallback callback = {});
+    explicit AssetMonitor(
+        AssetMonitorConfig config = {},
+        EventCallback eventCallback = {},
+        AssetCallback assetCallback = {});
 
     void applyObservation(const parser::AssetObservation& observation);
     std::vector<asset::Asset> assets() const;
@@ -27,9 +30,9 @@ public:
 
 private:
     asset::AssetStore store_;
-    asset::AssetEventDetector detector_;
-    asset::EventRateLimiter rateLimiter_;
-    EventCallback callback_;
+    AssetMonitorConfig config_;
+    EventCallback eventCallback_;
+    AssetCallback assetCallback_;
 };
 
 } // namespace asset_discovery::monitor
