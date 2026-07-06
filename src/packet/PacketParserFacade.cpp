@@ -12,6 +12,12 @@ const ParserEngine& defaultParserEngine()
     return engine;
 }
 
+const ParserEngine& coreParserEngine()
+{
+    static const ParserEngine engine(createCoreParserRegistry());
+    return engine;
+}
+
 } // namespace
 
 std::vector<AssetObservation> parseEthernetObservations(
@@ -26,6 +32,20 @@ std::vector<AssetObservation> parseEthernetObservations(
     ObservationTimestamp timestamp)
 {
     return parseEthernetObservations(makeByteView(bytes), timestamp);
+}
+
+std::vector<AssetObservation> parseCoreEthernetObservations(
+    ByteView bytes,
+    ObservationTimestamp timestamp)
+{
+    return coreParserEngine().parse(bytes, timestamp);
+}
+
+std::vector<AssetObservation> parseCoreEthernetObservations(
+    const std::vector<std::uint8_t>& bytes,
+    ObservationTimestamp timestamp)
+{
+    return parseCoreEthernetObservations(makeByteView(bytes), timestamp);
 }
 
 } // namespace asset_discovery::parser

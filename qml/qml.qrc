@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>AppShell.qml</file>
+        <file>DashboardPage.qml</file>
+        <file>CapturePage.qml</file>
+        <file>AssetsPage.qml</file>
+        <file>EventsPage.qml</file>
+        <file>SettingsPage.qml</file>
+        <file>CoreDiscoveryView.qml</file>
+    </qresource>
+</RCC>

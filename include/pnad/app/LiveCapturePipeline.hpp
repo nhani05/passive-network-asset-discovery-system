@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pnad/constants/CaptureConstants.hpp"
 #include "pnad/discovery/AssetMonitor.hpp"
 #include "pnad/event/AssetEvent.hpp"
 #include "pnad/discovery/AssetObservation.hpp"
@@ -24,13 +25,14 @@ struct ObservationBatch {
 };
 
 struct LivePipelineOptions {
-    std::size_t packetBatchSize = 128;
-    std::size_t packetQueueCapacity = 1024;
-    std::size_t observationQueueCapacity = 1024;
-    std::size_t eventQueueCapacity = 1024;
+    std::size_t packetBatchSize = constants::capture::DefaultPacketBatchSize;
+    std::size_t packetQueueCapacity = constants::capture::DefaultQueueCapacity;
+    std::size_t observationQueueCapacity = constants::capture::DefaultQueueCapacity;
     std::size_t parserWorkerCount = 0;
+    bool coreParsersOnly = false;
     monitor::AssetMonitorConfig monitorConfig;
     std::function<void(const asset::AssetEvent&)> eventCallback;
+    std::function<void(const asset::Asset&, bool isNew)> assetCallback;
     std::function<void()> eventFlushCallback;
 };
 
@@ -42,11 +44,8 @@ struct LivePipelineStats {
     std::uint64_t observationsProduced = 0;
     std::uint64_t observationsApplied = 0;
     std::uint64_t eventsProduced = 0;
-    std::uint64_t eventsEnqueued = 0;
-    std::uint64_t eventsDroppedQueueFull = 0;
     std::size_t packetQueueHighWatermark = 0;
     std::size_t observationQueueHighWatermark = 0;
-    std::size_t eventQueueHighWatermark = 0;
     double elapsedSeconds = 0.0;
     bool backendStatsAvailable = false;
     std::string backendRequested;
@@ -62,7 +61,6 @@ struct LivePipelineStats {
     std::size_t packetBatchSize = 0;
     std::size_t packetQueueCapacity = 0;
     std::size_t observationQueueCapacity = 0;
-    std::size_t eventQueueCapacity = 0;
     std::size_t parserWorkerCount = 0;
 };
 

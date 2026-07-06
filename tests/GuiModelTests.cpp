@@ -1,0 +1,296 @@
+#include "pnad/gui/AssetModel.hpp"
+#include "pnad/gui/InterfaceModel.hpp"
+#include "pnad/gui/LogModel.hpp"
+#include "pnad/gui/CaptureController.hpp"
+#include "pnad/storage/SQLiteWriter.hpp"
+
+#include <QSettings>
+
+#include <chrono>
+#include <cstdio>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <thread>
+
+namespace {
+
+int failures = 0;
+
+void expect(bool condition, const std::string& message)
+{
+    if (!condition) {
+        std::cerr << "FAIL: " << message << "\n";
+        ++failures;
+    }
+}
+
+void expectDebug(bool condition, const std::string& message, const std::string& detail)
+{
+    if (!condition) {
+        std::cerr << "FAIL: " << message << " (" << detail << ")\n";
+        ++failures;
+    }
+}
+
+bool fileContains(const std::string& path, const std::string& needle)
+{
+    std::ifstream file(path);
+    const std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return contents.find(needle) != std::string::npos;
+}
+
+void testCoreGuiModelsAndController()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    asset_discovery::gui::CaptureController controller;
+    expect(!controller.isLive(), "Default mode should be PCAP analysis");
+    expect(controller.packetFilter().toStdString() == "arp or udp port 67 or udp port 68", "Default core BPF filter");
+    expect(!controller.sqlitePath().isEmpty(), "Default database path should be resolved");
+
+    asset_discovery::gui::AssetModel assetModel;
+    expect(assetModel.rowCount() == 0, "AssetModel should be initially empty");
+
+    QVariantMap dtoAsset;
+    dtoAsset.insert("macAddress", "aa:bb:cc:dd:ee:ff");
+    dtoAsset.insert("ipAddresses", QStringList({"10.10.10.5"}));
+    dtoAsset.insert("hostname", "dto-host");
+    dtoAsset.insert("firstSeen", "1700000000");
+    dtoAsset.insert("lastSeen", "1700000000");
+    dtoAsset.insert("discoverySources", QStringList({"arp"}));
+    assetModel.loadAssetDtos({dtoAsset});
+    expect(assetModel.rowCount() == 1, "AssetModel should load direct DTO assets");
+    expect(assetModel.data(assetModel.index(0, 0), asset_discovery::gui::AssetModel::MacRole).toString() == "aa:bb:cc:dd:ee:ff",
+        "AssetModel direct DTO MAC should match");
+    dtoAsset.insert("hostname", "dto-host-updated");
+    assetModel.applyAssetDto(dtoAsset);
+    expect(assetModel.data(assetModel.index(0, 0), asset_discovery::gui::AssetModel::HostnameRole).toString() == "dto-host-updated",
+        "AssetModel direct DTO update should replace matching asset");
+
+    asset_discovery::gui::LogModel logModel;
+    QVariantMap dtoLog;
+    dtoLog.insert("timestamp", "2026-01-01T00:00:00Z");
+    dtoLog.insert("severity", "info");
+    dtoLog.insert("source", "core");
+    dtoLog.insert("message", "Capture started");
+    logModel.loadLogDtos({dtoLog});
+    expect(logModel.rowCount() == 1, "LogModel should load direct DTO logs");
+    dtoLog.insert("message", "New packet batch");
+    logModel.appendLogDto(dtoLog);
+    expect(logModel.rowCount() == 2, "LogModel should append direct DTO logs");
+    expect(logModel.data(logModel.index(0, 0), asset_discovery::gui::LogModel::MessageRole).toString() == "New packet batch",
+        "LogModel append should insert newest first");
+
+    const std::string testDb = "test_gui_models.db";
+    std::remove(testDb.c_str());
+    {
+        asset_discovery::storage::SQLiteWriter writer(testDb);
+
+        asset_discovery::asset::Asset asset;
+        asset.macAddress = "00:11:22:33:44:55";
+        asset.ipAddresses.insert("10.0.0.1");
+        asset.firstSeen = {100, 200};
+        asset.lastSeen = {100, 200};
+        asset.sources.insert("arp");
+
+        asset_discovery::asset::Asset activeAsset;
+        activeAsset.macAddress = "66:77:88:99:aa:bb";
+        activeAsset.ipAddresses.insert("10.0.0.2");
+        const auto nowSeconds = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        activeAsset.firstSeen = {static_cast<long>(nowSeconds), 0};
+        activeAsset.lastSeen = {static_cast<long>(nowSeconds), 0};
+        activeAsset.sources.insert("dhcp");
+        writer.writeAssets({asset, activeAsset});
+    }
+
+    assetModel.reloadFromDatabase(QString::fromStdString(testDb));
+    expect(assetModel.rowCount() == 2, "AssetModel should load 2 assets from db");
+    const QModelIndex idx = assetModel.index(0, 0);
+    expect(assetModel.data(idx, asset_discovery::gui::AssetModel::MacRole).toString() == "00:11:22:33:44:55", "Asset MAC should match");
+    expect(assetModel.data(idx, asset_discovery::gui::AssetModel::IpsRole).toStringList().contains("10.0.0.1"), "Asset IP list should contain 10.0.0.1");
+    expect(assetModel.get(0).value("macAddress").toString() == "00:11:22:33:44:55", "Asset get should expose current row");
+    expect(assetModel.exportToFile("test_assets_export.csv", "csv"), "Asset export should write CSV");
+    expect(fileContains("test_assets_export.csv", "ip,mac,hostname,first_seen,last_seen,protocols"), "Asset CSV export should include core asset fields");
+    expect(!assetModel.exportToFile("/proc/test_assets_export.csv", "csv"), "Asset export should report write failures");
+
+    std::remove("test_assets_export.csv");
+    std::remove(testDb.c_str());
+}
+
+void testUiNativeRunValidation()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    asset_discovery::gui::CaptureController controller;
+    controller.setSqlitePath("test_gui_validation.db");
+    const std::string testPcap = "test_gui_validation.pcap";
+    {
+        std::ofstream file(testPcap, std::ios::binary);
+        file.write("\xd4\xc3\xb2\xa1\x02\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x00\x00\x01\x00\x00\x00", 24);
+    }
+
+    controller.setPcapPath("");
+    expectDebug(!controller.validatePcapAnalysisRequest(), "PCAP Analysis validation should require a PCAP file", controller.validationError().toStdString());
+    expect(controller.validationError().toStdString().find("PCAP file") != std::string::npos,
+        "PCAP Analysis validation should use product language");
+
+    controller.setPcapPath("missing-capture.pcap");
+    expectDebug(!controller.validatePcapAnalysisRequest(), "PCAP Analysis validation should reject a missing source file", controller.validationError().toStdString());
+    expect(controller.validationError().toStdString().find("readable PCAP") != std::string::npos,
+        "Missing PCAP validation should ask for a readable file");
+    expect(!controller.isRunning(), "Controller should not enter running state for an invalid PCAP source");
+
+    const std::string unsupportedFile = "test_gui_validation.txt";
+    {
+        std::ofstream file(unsupportedFile);
+        file << "not a capture";
+    }
+    controller.setPcapPath(QString::fromStdString(unsupportedFile));
+    expectDebug(!controller.validatePcapAnalysisRequest(), "PCAP Analysis validation should reject unsupported file extensions", controller.validationError().toStdString());
+    expect(controller.validationError().toStdString().find("PCAPNG") != std::string::npos,
+        "Unsupported source validation should mention supported PCAP formats");
+
+    controller.setPcapPath(QString::fromStdString(testPcap));
+    expectDebug(controller.validatePcapAnalysisRequest(), "PCAP Analysis validation should accept a selected PCAP file", controller.validationError().toStdString());
+
+    controller.setPcapPath("");
+    controller.setInterfaceName("test0");
+    expectDebug(controller.validateLiveCaptureRequest(), "Live Capture config validation should not require a PCAP file", controller.validationError().toStdString());
+
+    std::remove("test_gui_validation.db");
+    std::remove(testPcap.c_str());
+    std::remove(unsupportedFile.c_str());
+}
+
+void testSharedConfigValidation()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    asset_discovery::gui::CaptureController controller;
+    controller.setSqlitePath("test_gui_validation.db");
+    const std::string testPcap = "test_gui_validation.pcap";
+    {
+        std::ofstream file(testPcap, std::ios::binary);
+        file.write("\xd4\xc3\xb2\xa1\x02\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x00\x00\x01\x00\x00\x00", 24);
+    }
+    controller.setPcapPath(QString::fromStdString(testPcap));
+
+    controller.setOutputFormat("xml");
+    expect(!controller.validateSettings(), "Unsupported GUI output format should be rejected");
+    const auto outputError = controller.validationError().toStdString();
+    expect(outputError.find("format") != std::string::npos,
+        "Validation error should mention unsupported export format");
+    expect(outputError.find("--") == std::string::npos,
+        "Desktop validation error should not expose command flags");
+
+    std::remove("test_gui_validation.db");
+    std::remove(testPcap.c_str());
+}
+
+void testPreferenceValidationAndRestore()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    const std::string testDb = "test_gui_preferences.db";
+    std::remove(testDb.c_str());
+
+    asset_discovery::gui::CaptureController controller;
+    controller.setSqlitePath(QString::fromStdString(testDb));
+    controller.setPacketFilter("arp");
+    controller.setCaptureBackend("auto");
+    controller.setOutputFormat("csv");
+    expectDebug(controller.validatePreferences(), "Valid Preferences should pass validation", controller.validationError().toStdString());
+    controller.saveSettingsToDb();
+
+    asset_discovery::gui::CaptureController restored;
+    restored.setSqlitePath(QString::fromStdString(testDb));
+    restored.loadSettingsFromDb();
+    expect(restored.packetFilter().toStdString() == "arp or udp port 67 or udp port 68", "Preferences should keep fixed core ARP/DHCP filter");
+    expect(restored.outputFormat().toStdString() == "csv", "Preferences should restore export format");
+
+    controller.setCaptureBackend("af-packet");
+    expect(controller.captureBackend().toStdString() == "auto", "Removed backend preferences should fall back to auto");
+    controller.setCaptureBackend("");
+    expect(controller.captureBackend().toStdString() == "auto", "Empty backend preferences should fall back to auto");
+
+    controller.setSqlitePath("/proc/pnad.db");
+    expectDebug(!controller.validatePreferences(), "Preferences should reject unwritable local database paths", controller.validationError().toStdString());
+    expect(controller.validationError().toStdString().find("writable local database") != std::string::npos,
+        "Invalid database validation should explain writable storage");
+
+    std::remove(testDb.c_str());
+}
+
+void testPcapAnalysisPersistsAssets()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    const std::string testDb = "test_gui_pcap_session.db";
+    std::remove(testDb.c_str());
+
+    asset_discovery::gui::CaptureController controller;
+    controller.setSqlitePath(QString::fromStdString(testDb));
+    controller.setPcapPath(QString(PNAD_SOURCE_DIR) + "/samples/multi-asset.pcap");
+    controller.setPacketFilter("arp or (udp and (port 67 or port 68))");
+
+    controller.startPcapAnalysis();
+    for (int i = 0; i < 300; ++i) {
+        if (!controller.isRunning() && controller.statusText() != "Stopped") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    expectDebug(!controller.isRunning(), "PCAP Analysis should finish in the controller test", controller.lastError().toStdString());
+    expectDebug(controller.lastError().isEmpty(), "PCAP Analysis should finish without controller error", controller.lastError().toStdString());
+
+    asset_discovery::gui::AssetModel assets;
+    assets.reloadFromDatabase(QString::fromStdString(testDb));
+    expect(assets.rowCount() > 0, "PCAP Analysis should persist discovered assets");
+
+    asset_discovery::gui::AssetModel restoredAssets;
+    restoredAssets.reloadFromDatabase(QString::fromStdString(testDb));
+    expect(restoredAssets.rowCount() == assets.rowCount(), "Restart restore should reload persisted assets");
+
+    std::remove(testDb.c_str());
+}
+
+void testInterfaceModel()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    asset_discovery::gui::InterfaceModel model;
+    model.refresh();
+
+    if (model.rowCount() > 0) {
+        const QString systemName = model.systemNameAt(0);
+        expect(!systemName.isEmpty(), "Interface model systemNameAt should return a name");
+        expect(model.findBySystemName(systemName) == 0, "Interface model should find the first interface by system name");
+
+        const auto row = model.get(0);
+        expect(row.contains("systemName"), "Interface row map should include systemName");
+        expect(row.contains("addresses"), "Interface row map should include addresses");
+
+        asset_discovery::gui::CaptureController controller;
+        controller.setInterfaceName(systemName);
+        expect(controller.interfaceName() == systemName, "Controller should accept exact interface system name from picker");
+    }
+}
+
+} // namespace
+
+int main()
+{
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, ".");
+    QSettings("PNAD", "PNAD Desktop").clear();
+
+    testCoreGuiModelsAndController();
+    testUiNativeRunValidation();
+    testSharedConfigValidation();
+    testPreferenceValidationAndRestore();
+    testPcapAnalysisPersistsAssets();
+    testInterfaceModel();
+
+    if (failures > 0) {
+        std::cerr << failures << " GUI Model test expectation(s) failed\n";
+        return 1;
+    }
+    std::cout << "All core GUI model/controller tests passed successfully!\n";
+    return 0;
+}

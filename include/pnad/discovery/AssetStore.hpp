@@ -30,6 +30,7 @@ std::string formatTimestamp(const ObservationTimestamp& timestamp);
 class AssetStore {
 public:
     void applyObservation(const parser::AssetObservation& observation);
+    std::optional<Asset> findByMacAddress(const std::string& macAddress) const;
     std::vector<Asset> assets() const;
     std::size_t size() const;
 

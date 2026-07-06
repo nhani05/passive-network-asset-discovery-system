@@ -23,4 +23,12 @@ ParserRegistry createDefaultParserRegistry()
     return registry;
 }
 
+ParserRegistry createCoreParserRegistry()
+{
+    ParserRegistry registry;
+    registry.registerParser(std::make_unique<ArpPlugin>());
+    registry.registerParser(std::make_unique<DhcpPlugin>());
+    return registry;
+}
+
 } // namespace asset_discovery::parser

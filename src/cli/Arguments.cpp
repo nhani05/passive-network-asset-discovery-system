@@ -1,6 +1,8 @@
 #include "pnad/cli/Arguments.hpp"
 
-#include <charconv>
+#include "pnad/constants/CliConstants.hpp"
+#include "pnad/constants/CaptureConstants.hpp"
+
 #include <sstream>
 
 #ifndef ASSET_DISCOVERY_VERSION
@@ -9,18 +11,6 @@
 
 namespace asset_discovery::cli {
 namespace {
-
-std::optional<int> parsePositiveInteger(const std::string& value)
-{
-    int parsed = 0;
-    const auto* begin = value.data();
-    const auto* end = value.data() + value.size();
-    const auto result = std::from_chars(begin, end, parsed);
-    if (result.ec != std::errc() || result.ptr != end || parsed <= 0) {
-        return std::nullopt;
-    }
-    return parsed;
-}
 
 bool needsValue(const std::string& option, std::size_t index, std::size_t size)
 {
@@ -35,10 +25,22 @@ bool isOptionOrAssignment(const std::string& argument, const std::string& option
 std::optional<std::string> removedOptionError(const std::string& argument)
 {
     if (isOptionOrAssignment(argument, "--duration")) {
-        return "--duration has been removed; live capture now runs until interrupted";
+        return "--duration has been removed; capture uses PCAP files only";
     }
     if (isOptionOrAssignment(argument, "--live")) {
-        return "--live is no longer required; --interface starts live capture";
+        return "--live has been removed; use --pcap <file>";
+    }
+    if (isOptionOrAssignment(argument, "--interface")) {
+        return "--interface has been removed; use --pcap <file>";
+    }
+    if (isOptionOrAssignment(argument, "--capture-backend")) {
+        return "--capture-backend has been removed; capture uses PCAP files only";
+    }
+    if (isOptionOrAssignment(argument, "--config")) {
+        return "--config has been removed; configs/default.yaml is loaded automatically";
+    }
+    if (isOptionOrAssignment(argument, "--profile")) {
+        return "--profile has been removed; configs/default.yaml is the only YAML config";
     }
     if (isOptionOrAssignment(argument, "--idle-timeout")) {
         return "--idle-timeout has been removed; live capture no longer stops on idle timeout";
@@ -47,33 +49,37 @@ std::optional<std::string> removedOptionError(const std::string& argument)
         return "--max-assets has been removed; live capture no longer stops after an asset count";
     }
     if (isOptionOrAssignment(argument, "--db-url")) {
-        return "--db-url has been removed; configure PostgreSQL with .env, DATABASE_URL, PG*, or DB_* environment variables";
+        return "--db-url has been removed; configure SQLite with --sqlite or SQLITE_DATABASE_PATH";
     }
     if (isOptionOrAssignment(argument, "--events")) {
         return "--events has been removed; realtime stdout events are enabled by default";
     }
     if (isOptionOrAssignment(argument, "--events-json")) {
-        return "--events-json has been removed; NDJSON event output is enabled by default; set ASSET_DISCOVERY_EVENTS_JSON to change the path";
+        return "--events-json has been removed; event file output is no longer supported";
     }
     if (isOptionOrAssignment(argument, "--syslog")) {
-        return "--syslog has been removed; syslog events are auto-enabled when supported";
+        return "--syslog has been removed; syslog event output is no longer supported";
     }
     if (isOptionOrAssignment(argument, "--events-db")) {
-        return "--events-db has been removed; database event writes are enabled when database environment exists";
+        return "--events-db has been removed; database writes persist assets only";
     }
-    return std::nullopt;
-}
-
-std::optional<capture::CaptureBackendSelection> parseBackendSelection(const std::string& value)
-{
-    if (value == "auto") {
-        return capture::CaptureBackendSelection::Auto;
+    if (isOptionOrAssignment(argument, "--event-rate-limit")) {
+        return "--event-rate-limit has been removed; only new_asset events are emitted";
     }
-    if (value == "pcap") {
-        return capture::CaptureBackendSelection::Pcap;
+    if (isOptionOrAssignment(argument, "--event-queue-capacity")) {
+        return "--event-queue-capacity has been removed; PCAP analysis uses the built-in event path";
     }
-    if (value == "af-packet") {
-        return capture::CaptureBackendSelection::AfPacket;
+    if (isOptionOrAssignment(argument, "--flip-flop-window")) {
+        return "--flip-flop-window has been removed; database last_seen tracks asset updates";
+    }
+    if (isOptionOrAssignment(argument, "--reappearance-threshold")) {
+        return "--reappearance-threshold has been removed; database last_seen tracks asset updates";
+    }
+    if (isOptionOrAssignment(argument, "--local-net")) {
+        return "--local-net has been removed; non-local source events are no longer emitted";
+    }
+    if (isOptionOrAssignment(argument, "--ignore-net")) {
+        return "--ignore-net has been removed; non-local source events are no longer emitted";
     }
     return std::nullopt;
 }
@@ -87,12 +93,12 @@ ParseResult parseArguments(const std::vector<std::string>& args)
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto& arg = args[i];
 
-        if (arg == "--help" || arg == "-h") {
+        if (arg == constants::cli::HelpOption || arg == constants::cli::ShortHelpOption) {
             options.helpRequested = true;
             return {options, std::nullopt};
         }
 
-        if (arg == "--version") {
+        if (arg == constants::cli::VersionOption) {
             options.versionRequested = true;
             return {options, std::nullopt};
         }
@@ -101,7 +107,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             return {options, *error};
         }
 
-        if (arg == "--pcap") {
+        if (arg == constants::cli::PcapOption) {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--pcap requires a file path"};
             }
@@ -109,31 +115,7 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
-        if (arg == "--interface") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--interface requires an interface name"};
-            }
-            options.interfaceName = args[++i];
-            continue;
-        }
-
-        if (arg == "--config") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--config requires a file path"};
-            }
-            options.configPath = args[++i];
-            continue;
-        }
-
-        if (arg == "--profile") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--profile requires a profile name"};
-            }
-            options.profileName = args[++i];
-            continue;
-        }
-
-        if (arg == "--filter") {
+        if (arg == constants::cli::FilterOption) {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--filter requires a BPF expression"};
             }
@@ -145,30 +127,24 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
-        if (arg == "--capture-backend") {
+        if (arg == constants::cli::SqliteOption) {
             if (needsValue(arg, i, args.size())) {
-                return {options, "--capture-backend requires one of: auto, pcap, af-packet"};
+                return {options, "--sqlite requires a database file path"};
             }
-            const auto value = args[++i];
-            const auto backend = parseBackendSelection(value);
-            if (!backend.has_value()) {
-                return {options, "capture backend '" + value + "' is not supported; expected one of: auto, pcap, af-packet"};
-            }
-            options.captureBackend = *backend;
-            options.captureBackendProvided = true;
+            options.sqlitePath = args[++i];
             continue;
         }
 
-        if (arg == "--output") {
+        if (arg == constants::cli::OutputOption) {
             if (needsValue(arg, i, args.size())) {
                 return {options, "--output requires one of: table, json, csv"};
             }
             const auto value = args[++i];
-            if (value == "table") {
+            if (value == constants::cli::OutputTable) {
                 options.outputFormat = OutputFormat::Table;
-            } else if (value == "json") {
+            } else if (value == constants::cli::OutputJson) {
                 options.outputFormat = OutputFormat::Json;
-            } else if (value == "csv") {
+            } else if (value == constants::cli::OutputCsv) {
                 options.outputFormat = OutputFormat::Csv;
             } else {
                 return {options, "output format '" + value + "' is not supported; expected one of: table, json, csv"};
@@ -177,94 +153,11 @@ ParseResult parseArguments(const std::vector<std::string>& args)
             continue;
         }
 
-        if (arg == "--event-rate-limit") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--event-rate-limit requires a positive number of seconds"};
-            }
-            const auto parsed = parsePositiveInteger(args[++i]);
-            if (!parsed.has_value()) {
-                return {options, "--event-rate-limit must be a positive integer"};
-            }
-            options.eventRateLimitSeconds = *parsed;
-            continue;
-        }
-
-        if (arg == "--event-queue-capacity") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--event-queue-capacity requires a positive event count"};
-            }
-            const auto parsed = parsePositiveInteger(args[++i]);
-            if (!parsed.has_value()) {
-                return {options, "--event-queue-capacity must be a positive integer"};
-            }
-            options.eventQueueCapacity = *parsed;
-            continue;
-        }
-
-        if (arg == "--flip-flop-window") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--flip-flop-window requires a positive number of seconds"};
-            }
-            const auto parsed = parsePositiveInteger(args[++i]);
-            if (!parsed.has_value()) {
-                return {options, "--flip-flop-window must be a positive integer"};
-            }
-            options.flipFlopWindowSeconds = *parsed;
-            continue;
-        }
-
-        if (arg == "--reappearance-threshold") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--reappearance-threshold requires a positive number of seconds"};
-            }
-            const auto parsed = parsePositiveInteger(args[++i]);
-            if (!parsed.has_value()) {
-                return {options, "--reappearance-threshold must be a positive integer"};
-            }
-            options.reappearanceThresholdSeconds = *parsed;
-            continue;
-        }
-
-        if (arg == "--local-net") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--local-net requires an IPv4 CIDR value"};
-            }
-            const auto value = args[++i];
-            const auto network = asset::parseIpv4Network(value);
-            if (!network.has_value()) {
-                return {options, "--local-net requires a valid IPv4 CIDR value"};
-            }
-            options.localNetworks.push_back(*network);
-            continue;
-        }
-
-        if (arg == "--ignore-net") {
-            if (needsValue(arg, i, args.size())) {
-                return {options, "--ignore-net requires an IPv4 CIDR value"};
-            }
-            const auto value = args[++i];
-            const auto network = asset::parseIpv4Network(value);
-            if (!network.has_value()) {
-                return {options, "--ignore-net requires a valid IPv4 CIDR value"};
-            }
-            options.ignoredNetworks.push_back(*network);
-            continue;
-        }
-
         return {options, "unknown argument '" + arg + "'"};
     }
 
-    if (options.configPath.has_value() && options.profileName.has_value()) {
-        return {options, "--config and --profile cannot be combined"};
-    }
-
-    if (options.pcapPath.has_value() && !options.interfaceName.has_value()) {
+    if (options.pcapPath.has_value()) {
         options.captureMode = CaptureMode::PcapOffline;
-        return {options, std::nullopt};
-    }
-
-    if (options.interfaceName.has_value() && !options.pcapPath.has_value()) {
-        options.captureMode = CaptureMode::Live;
     }
 
     return {options, std::nullopt};
@@ -274,29 +167,17 @@ std::string usageText(const std::string& executableName)
 {
     std::ostringstream output;
     output << "Usage:\n"
-           << "  " << executableName << " --pcap <file> [--config <file>|--profile <name>] [--filter <bpf>] [--output table|json|csv]\n"
-           << "  " << executableName << " --interface <name> [--config <file>|--profile <name>] [--filter <bpf>] [--capture-backend auto|pcap|af-packet]\n"
+           << "  " << executableName << " --pcap <file> [--filter <bpf>] [--sqlite <file>] [--output table|json|csv]\n"
            << "  " << executableName << " --version\n"
            << "\nCommon options:\n"
            << "  --pcap <file>              Read packets from a PCAP file.\n"
-           << "  --interface <name>         Capture packets from a live interface until SIGINT or SIGTERM.\n"
-           << "  --config <file>            Load policy/runtime defaults from a YAML config file.\n"
-           << "  --profile <name>           Load configs/<name>.yaml. Cannot be combined with --config.\n"
-           << "  --filter <bpf>             Filter packets with a BPF expression, for example: arp or udp port 67 or udp port 68.\n"
-           << "  --capture-backend <name>   Live capture backend: auto, pcap, or af-packet. Defaults to auto.\n"
+           << "  --filter <bpf>             Filter packets with a BPF expression, for example: "
+           << constants::capture::DefaultPacketFilter << ".\n"
+           << "  --sqlite <file>            Save assets in a local SQLite database file.\n"
            << "  --output table|json|csv    Output format. Defaults to json.\n"
            << "  --version                  Show version information.\n"
-           << "\nAdvanced overrides:\n"
-           << "  --event-rate-limit <sec>   Suppress duplicate low-value events within this window.\n"
-           << "  --event-queue-capacity <n> Live event queue capacity. Defaults to 1024.\n"
-           << "  --flip-flop-window <sec>   Window for detecting IP/MAC flip-flop events.\n"
-           << "  --reappearance-threshold <sec> Threshold for asset_reappeared events.\n"
-           << "  --local-net <cidr>         Local IPv4 network for non-local source detection. Repeatable.\n"
-           << "  --ignore-net <cidr>        Ignored IPv4 network for non-local source detection. Repeatable.\n"
            << "\nDefault outputs:\n"
-           << "  Realtime events are written to stdout, syslog when supported, and NDJSON at\n"
-           << "  ASSET_DISCOVERY_EVENTS_JSON or logs/events.ndjson. PostgreSQL writes use\n"
-           << "  .env, DATABASE_URL, PG*, or DB_* environment variables when present.\n"
+           << "  New asset events are written to stdout. SQLite persists asset inventory only.\n"
            << "\n"
            << "  -h, --help                 Show this help text.\n";
     return output.str();
@@ -311,13 +192,13 @@ std::string outputFormatName(OutputFormat format)
 {
     switch (format) {
     case OutputFormat::Table:
-        return "table";
+        return constants::cli::OutputTable;
     case OutputFormat::Json:
-        return "json";
+        return constants::cli::OutputJson;
     case OutputFormat::Csv:
-        return "csv";
+        return constants::cli::OutputCsv;
     }
-    return "table";
+    return constants::cli::OutputTable;
 }
 
 } // namespace asset_discovery::cli

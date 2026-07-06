@@ -14,18 +14,7 @@ file(MAKE_DIRECTORY "${WORK_DIR}")
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env
-        "DATABASE_URL="
-        "PGHOST="
-        "PGPORT="
-        "PGDATABASE="
-        "PGUSER="
-        "PGPASSWORD="
-        "PGSERVICE="
-        "DB_HOST="
-        "DB_PORT="
-        "DB_NAME="
-        "DB_USER="
-        "DB_PASSWORD="
+        "SQLITE_DATABASE_PATH="
         "${ASSET_DISCOVERY_EXE}" --pcap "${PCAP_PATH}"
     WORKING_DIRECTORY "${WORK_DIR}"
     RESULT_VARIABLE command_result
@@ -38,7 +27,7 @@ if(command_result EQUAL 0)
 endif()
 
 set(combined_output "${command_output}${command_error}")
-string(FIND "${combined_output}" "PostgreSQL configuration is required" error_position)
+string(FIND "${combined_output}" "SQLite configuration is required" error_position)
 if(error_position EQUAL -1)
     message(FATAL_ERROR "Expected required database configuration error, got: ${combined_output}")
 endif()
