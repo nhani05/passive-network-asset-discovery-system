@@ -10,7 +10,7 @@ Hệ thống hiện đã có nền tảng tốt cho một project C++17:
 - Hỗ trợ BPF filter để giảm traffic trước khi parse.
 - Có pipeline live capture kiểu producer-consumer với bounded queue, parser worker pool, aggregator single-writer, và metrics cơ bản.
 - Parser được tổ chức theo plugin tĩnh cho ARP, DHCP, DNS.
-- Asset state được gộp theo MAC address và xuất ra table, JSON, CSV, hoặc PostgreSQL.
+- Asset state được gộp theo MAC address, xuất ra table/JSON/CSV, và lưu SQLite.
 - Có test CTest, sample PCAP, Dockerfile, Docker Compose, và tài liệu build/deploy/demo.
 
 Điểm cần cải tiến không phải là thay toàn bộ kiến trúc, mà là nâng từng tầng theo hướng hệ thống hơn: ít copy hơn, ít lock contention hơn, đo được bottleneck, chịu lỗi tốt hơn, và có cơ chế kiểm thử parser nghiêm ngặt hơn.
@@ -37,7 +37,7 @@ Libpcap là baseline tốt vì portable và dễ demo. Tuy nhiên, để dự á
 - Thêm Linux backend dùng `AF_PACKET` với `PACKET_RX_RING`/`TPACKET_V3`.
 - Dùng memory-mapped ring buffer để giảm syscall và giảm copy khi đọc packet.
 - Duy trì thống kê per-backend: packet received, packet copied, kernel drops, queue drops, batch drops.
-- Cho phép chọn backend bằng CLI hoặc config: `pcap`, `af-packet`, `auto`.
+- Cho phép chọn backend bằng CLI hoặc config: `pcap`, `auto`.
 
 Lợi ích:
 
@@ -136,14 +136,14 @@ Lợi ích:
 
 ## Hướng 6: Storage Và Durability
 
-PostgreSQL writer hiện ghi qua `psql`, phù hợp demo và giảm dependency C++. Để production hơn, nên tách storage thành pipeline bất đồng bộ.
+SQLite writer hiện ghi asset inventory local và phù hợp demo PCAP/desktop. Để production hơn, nên tách storage thành pipeline bất đồng bộ.
 
 Đề xuất:
 
 - Tạo `AssetSink` interface cho output/storage.
 - Thêm batch writer: gom nhiều asset trước khi upsert.
-- Dùng native PostgreSQL client library ở giai đoạn sau nếu muốn loại bỏ phụ thuộc shell `psql`.
-- Có retry/backoff khi database tạm thời không reachable.
+- Nếu sau này cần remote storage, thêm sink riêng thay vì đưa lại event log vào database asset hiện tại.
+- Có retry/backoff khi storage tạm thời không writable/reachable.
 - Có local spool file dạng append-only khi database down, sau đó replay.
 - Tách output stdout khỏi storage side effect để CLI dễ kiểm soát hơn.
 
@@ -151,7 +151,7 @@ Lợi ích:
 
 - Không để database chậm làm ảnh hưởng capture path.
 - Có câu chuyện rõ ràng về durability khi chạy dài hạn.
-- Dễ thêm sink mới như file NDJSON, Kafka, hoặc HTTP collector.
+- Dễ thêm sink mới như HTTP collector hoặc queue nội bộ mà không làm bẩn contract SQLite asset-only.
 
 ## Hướng 7: Observability, Benchmark Và Profiling
 

@@ -11,7 +11,7 @@ File `samples/arp.pcap` chỉ chứa 1 gói tin ARP request duy nhất từ đ�
 ### 1.1. Định dạng đầu ra Bảng (Table Output)
 
 ```bash
-./build/asset-discovery --pcap samples/arp.pcap --output table
+./build/asset-discovery --pcap samples/arp.pcap --sqlite pnad.db --output table
 ```
 
 * **Kỳ vọng output:**
@@ -25,7 +25,7 @@ File `samples/arp.pcap` chỉ chứa 1 gói tin ARP request duy nhất từ đ�
 ### 1.2. Định dạng đầu ra JSON (JSON Output)
 
 ```bash
-./build/asset-discovery --pcap samples/arp.pcap --output json
+./build/asset-discovery --pcap samples/arp.pcap --sqlite pnad.db --output json
 ```
 
 * **Kỳ vọng output:**
@@ -44,7 +44,7 @@ File `samples/arp.pcap` chỉ chứa 1 gói tin ARP request duy nhất từ đ�
 ### 1.3. Định dạng đầu ra CSV (CSV Output)
 
 ```bash
-./build/asset-discovery --pcap samples/arp.pcap --output csv
+./build/asset-discovery --pcap samples/arp.pcap --sqlite pnad.db --output csv
 ```
 
 * **Kỳ vọng output:**
@@ -62,7 +62,7 @@ File `samples/multi-asset.pcap` chứa luồng gói tin phức tạp hơn, bao g
 ### 2.1. Chạy xuất định dạng Bảng
 
 ```bash
-./build/asset-discovery --pcap samples/multi-asset.pcap --output table
+./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --output table
 ```
 
 * **Kỳ vọng output:**
@@ -84,13 +84,13 @@ File `samples/multi-asset.pcap` chứa luồng gói tin phức tạp hơn, bao g
 ### 2.2. Chạy xuất định dạng JSON
 
 ```bash
-./build/asset-discovery --pcap samples/multi-asset.pcap --output json
+./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --output json
 ```
 
 ### 2.3. Chạy xuất định dạng CSV
 
 ```bash
-./build/asset-discovery --pcap samples/multi-asset.pcap --output csv
+./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --output csv
 ```
 
 ---
@@ -102,7 +102,7 @@ Bộ lọc BPF cho phép lọc trực tiếp các gói tin ở tầng thấp tr�
 ### 3.1. Chỉ phân tích các gói tin ARP
 
 ```bash
-./build/asset-discovery --pcap samples/multi-asset.pcap --filter "arp" --output table
+./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --filter "arp" --output table
 ```
 
 * **Kỳ vọng:** Bảng kết quả chỉ chứa các thiết bị được phát hiện từ ARP. Thiết bị `02:42:ac:11:00:04` (chỉ có trong DHCP) sẽ biến mất. Nguồn phát hiện của thiết bị `02:42:ac:11:00:03` chỉ còn lại `arp`.
@@ -111,6 +111,7 @@ Bộ lọc BPF cho phép lọc trực tiếp các gói tin ở tầng thấp tr�
 
 ```bash
 ./build/asset-discovery --pcap samples/multi-asset.pcap \
+  --sqlite pnad.db \
   --filter "arp or udp port 67 or udp port 68" \
   --output table
 ```
@@ -119,22 +120,15 @@ Bộ lọc BPF cho phép lọc trực tiếp các gói tin ở tầng thấp tr�
 
 ---
 
-## 4. Theo Dõi Sự Kiện Realtime (Event Replay NDJSON)
+## 4. Theo Dõi Sự Kiện Realtime Trên Stdout
 
-Trong lúc chương trình chạy phân tích PCAP, các sự kiện phát hiện thay đổi trạng thái của thiết bị (như phát hiện thiết bị mới, thiết bị đổi IP, thay đổi MAC) sẽ tự động in ra màn hình và ghi nhận vào file log NDJSON mặc định (`logs/events.ndjson`):
+Trong lúc chương trình chạy phân tích PCAP, chỉ event phát hiện asset mới được in ra màn hình. Không còn ghi `logs/events.ndjson`, `events.json`, syslog, hoặc bảng event trong database.
 
 ```bash
-# Xóa file log cũ nếu có
-rm -f logs/events.ndjson
-
-# Chạy phân tích PCAP
-./build/asset-discovery --pcap samples/multi-asset.pcap --output table
-
-# Kiểm tra log sự kiện đã ghi nhận
-cat logs/events.ndjson
+./build/asset-discovery --pcap samples/multi-asset.pcap --sqlite pnad.db --output table
 ```
 
-* **Kỳ vọng:** File `logs/events.ndjson` chứa danh sách các JSON line mô tả sự kiện phát hiện thiết bị theo trình tự thời gian, ví dụ:
-  ```json
-  {"event_time":1699606800.0,"event_type":"new_asset","severity":"info","mac_address":"02:42:ac:11:00:02","ip_address":"192.168.1.10","discovery_source":"arp","message":"New asset discovered: ip=192.168.1.10 mac=02:42:ac:11:00:02 source=arp"}
+* **Kỳ vọng:** Trước summary cuối, terminal có các dòng event dạng:
+  ```text
+  [EVENT] ts=1699606800.000000 severity=INFO type=new_asset ip=192.168.1.10 mac=02:42:ac:11:00:02 iface=pcap protocol=arp message="New asset discovered"
   ```

@@ -17,40 +17,9 @@ def expect_asset(asset, expected):
     return True
 
 
-def stub_database_env(work_dir: str) -> dict:
-    bin_dir = os.path.join(work_dir, "bin")
-    os.makedirs(bin_dir, exist_ok=True)
-    psql_path = os.path.join(bin_dir, "psql")
-    with open(psql_path, "w", encoding="utf-8") as output:
-        output.write(
-            "#!/bin/sh\n"
-            "set -eu\n"
-            "while [ \"$#\" -gt 0 ]; do\n"
-            "  if [ \"$1\" = \"-f\" ]; then\n"
-            "    shift\n"
-            "    cat \"$1\" > /dev/null\n"
-            "    exit 0\n"
-            "  fi\n"
-            "  shift\n"
-            "done\n"
-            "exit 0\n"
-        )
-    os.chmod(psql_path, 0o755)
-
+def sqlite_env(work_dir: str) -> dict:
     env = os.environ.copy()
-    env.update(
-        {
-            "PATH": f"{bin_dir}:{env.get('PATH', '')}",
-            "DATABASE_URL": "",
-            "PGHOST": "localhost",
-            "PGPORT": "5432",
-            "PGDATABASE": "asset_discovery",
-            "PGUSER": "postgres",
-            "PGPASSWORD": "postgres",
-            "PGSERVICE": "",
-            "ASSET_DISCOVERY_EVENTS_JSON": os.path.join(work_dir, "events.ndjson"),
-        }
-    )
+    env["SQLITE_DATABASE_PATH"] = os.path.join(work_dir, "assets.db")
     return env
 
 
@@ -73,7 +42,7 @@ def main() -> int:
             check=False,
             capture_output=True,
             text=True,
-            env=stub_database_env(work_dir),
+            env=sqlite_env(work_dir),
             cwd=work_dir,
         )
     if result.returncode != 0:

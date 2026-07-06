@@ -16,4 +16,12 @@ std::vector<AssetObservation> parseEthernetObservations(
     const std::vector<std::uint8_t>& bytes,
     ObservationTimestamp timestamp);
 
+std::vector<AssetObservation> parseCoreEthernetObservations(
+    ByteView bytes,
+    ObservationTimestamp timestamp);
+
+std::vector<AssetObservation> parseCoreEthernetObservations(
+    const std::vector<std::uint8_t>& bytes,
+    ObservationTimestamp timestamp);
+
 } // namespace asset_discovery::parser

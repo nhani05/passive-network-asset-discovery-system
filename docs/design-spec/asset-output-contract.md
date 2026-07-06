@@ -1,6 +1,6 @@
 # Contract Output Asset
 
-Tài liệu này định nghĩa các field asset dùng chung cho output table, JSON, CSV, và PostgreSQL.
+Tài liệu này định nghĩa các field asset dùng chung cho output table, JSON, CSV, và SQLite.
 
 ## Field Asset
 
@@ -51,20 +51,23 @@ mac_address,ip_addresses,hostname,first_seen,last_seen,discovery_sources
 
 Field có nhiều giá trị dùng `;` bên trong field CSV. Escape CSV dùng quy tắc quote chuẩn cho dấu phẩy, dấu quote, và ký tự xuống dòng.
 
-## PostgreSQL
+## SQLite
 
-Schema chuẩn nằm trong `db/schema.sql`:
+Schema runtime được migrate trong `src/storage/SQLiteWriter.cpp`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS assets (
     mac_address TEXT PRIMARY KEY,
-    ip_addresses TEXT[] NOT NULL DEFAULT '{}',
+    ip_addresses TEXT NOT NULL DEFAULT '[]',
     hostname TEXT,
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL,
-    discovery_sources TEXT[] NOT NULL DEFAULT '{}',
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    discovery_sources TEXT NOT NULL DEFAULT '[]',
+    observed_metadata TEXT NOT NULL DEFAULT '{}',
+    reference_metadata TEXT NOT NULL DEFAULT '{}',
+    derived_hints TEXT NOT NULL DEFAULT '[]',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-Phần triển khai hiện tại ghi PostgreSQL qua `psql` bằng `.env`, `DATABASE_URL`, các biến môi trường chuẩn của `psql` (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSERVICE`), hoặc alias `DB_*`. CLI không hỗ trợ `--db-url` để tránh lộ secret qua shell history hoặc process list.
+Các field dạng tập hợp được lưu dưới dạng JSON text ổn định. CLI ghi SQLite qua `--sqlite <file>` hoặc `SQLITE_DATABASE_PATH`. Database không lưu event log và migration sẽ drop bảng `asset_events` nếu database cũ còn tồn tại.

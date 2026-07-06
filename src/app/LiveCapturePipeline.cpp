@@ -1,5 +1,6 @@
 #include "pnad/app/LiveCapturePipeline.hpp"
 
+#include "pnad/constants/CaptureConstants.hpp"
 #include "pnad/system/BoundedQueue.hpp"
 #include "pnad/packet/PacketParserFacade.hpp"
 
@@ -28,8 +29,6 @@ struct AtomicPipelineStats {
     std::atomic<std::uint64_t> observationsProduced{0};
     std::atomic<std::uint64_t> observationsApplied{0};
     std::atomic<std::uint64_t> eventsProduced{0};
-    std::atomic<std::uint64_t> eventsEnqueued{0};
-    std::atomic<std::uint64_t> eventsDroppedQueueFull{0};
     std::atomic<std::uint64_t> packetBatchesDropped{0};
 };
 
@@ -41,10 +40,10 @@ parser::ObservationTimestamp toObservationTimestamp(const capture::PacketTimesta
 std::size_t defaultWorkerCount()
 {
     const auto hardwareThreads = std::thread::hardware_concurrency();
-    if (hardwareThreads <= 2) {
+    if (hardwareThreads <= 4) {
         return 1;
     }
-    return static_cast<std::size_t>(hardwareThreads - 1);
+    return 2;
 }
 
 std::string firstError(const std::optional<std::string>& left, const std::optional<std::string>& right)
@@ -65,14 +64,18 @@ public:
         : options_(normalizeLivePipelineOptions(options)),
           packetQueue_(options_.packetQueueCapacity),
           observationQueue_(options_.observationQueueCapacity),
-          eventQueue_(options_.eventQueueCapacity),
           assetMonitor_(
               options_.monitorConfig,
               options_.eventCallback
                   ? monitor::AssetMonitor::EventCallback([this](const asset::AssetEvent& event) {
-                        enqueueEvent(event);
+                        dispatchEvent(event);
                     })
-                  : monitor::AssetMonitor::EventCallback{})
+                  : monitor::AssetMonitor::EventCallback{},
+              options_.assetCallback
+                  ? monitor::AssetMonitor::AssetCallback([this](const asset::Asset& asset, bool isNew) {
+                        options_.assetCallback(asset, isNew);
+                    })
+                  : monitor::AssetMonitor::AssetCallback{})
     {
     }
 
@@ -80,7 +83,6 @@ public:
     LivePipelineResult run(Producer producer)
     {
         const auto startTime = Clock::now();
-        startEventWriter();
         startAggregator();
         startParserWorkers();
 
@@ -99,9 +101,8 @@ public:
         if (aggregatorThread_.joinable()) {
             aggregatorThread_.join();
         }
-        eventQueue_.close();
-        if (eventWriterThread_.joinable()) {
-            eventWriterThread_.join();
+        if (options_.eventCallback && options_.eventFlushCallback) {
+            options_.eventFlushCallback();
         }
 
         const auto endTime = Clock::now();
@@ -150,33 +151,6 @@ private:
         });
     }
 
-    void startEventWriter()
-    {
-        if (!options_.eventCallback) {
-            return;
-        }
-
-        eventWriterThread_ = std::thread([this] {
-            try {
-                asset::AssetEvent event;
-                while (eventQueue_.waitPop(event)) {
-                    options_.eventCallback(event);
-                }
-                if (options_.eventFlushCallback) {
-                    options_.eventFlushCallback();
-                }
-            } catch (const std::exception& error) {
-                setError(std::string("event writer failed: ") + error.what());
-                packetQueue_.close();
-                observationQueue_.close();
-            } catch (...) {
-                setError("event writer failed with an unknown error");
-                packetQueue_.close();
-                observationQueue_.close();
-            }
-        });
-    }
-
     void startParserWorkers()
     {
         parserWorkers_.reserve(options_.parserWorkerCount);
@@ -199,9 +173,13 @@ private:
                         continue;
                     }
 
-                    auto observations = parser::parseEthernetObservations(
-                        packet.bytes,
-                        toObservationTimestamp(packet.timestamp));
+                    auto observations = options_.coreParsersOnly
+                        ? parser::parseCoreEthernetObservations(
+                              packet.bytes,
+                              toObservationTimestamp(packet.timestamp))
+                        : parser::parseEthernetObservations(
+                              packet.bytes,
+                              toObservationTimestamp(packet.timestamp));
                     counters_.observationsProduced.fetch_add(
                         static_cast<std::uint64_t>(observations.size()),
                         std::memory_order_relaxed);
@@ -261,15 +239,10 @@ private:
         pendingPacketBatch_.packets.reserve(options_.packetBatchSize);
     }
 
-    void enqueueEvent(const asset::AssetEvent& event)
+    void dispatchEvent(const asset::AssetEvent& event)
     {
         counters_.eventsProduced.fetch_add(1, std::memory_order_relaxed);
-        const auto result = eventQueue_.tryPush(event);
-        if (result == QueuePushResult::Pushed) {
-            counters_.eventsEnqueued.fetch_add(1, std::memory_order_relaxed);
-        } else if (result == QueuePushResult::Full) {
-            counters_.eventsDroppedQueueFull.fetch_add(1, std::memory_order_relaxed);
-        }
+        options_.eventCallback(event);
     }
 
     void setError(std::string message)
@@ -296,15 +269,11 @@ private:
         stats.observationsProduced = counters_.observationsProduced.load(std::memory_order_relaxed);
         stats.observationsApplied = counters_.observationsApplied.load(std::memory_order_relaxed);
         stats.eventsProduced = counters_.eventsProduced.load(std::memory_order_relaxed);
-        stats.eventsEnqueued = counters_.eventsEnqueued.load(std::memory_order_relaxed);
-        stats.eventsDroppedQueueFull = counters_.eventsDroppedQueueFull.load(std::memory_order_relaxed);
         stats.packetQueueHighWatermark = packetQueue_.highWatermark();
         stats.observationQueueHighWatermark = observationQueue_.highWatermark();
-        stats.eventQueueHighWatermark = eventQueue_.highWatermark();
         stats.packetBatchSize = options_.packetBatchSize;
         stats.packetQueueCapacity = options_.packetQueueCapacity;
         stats.observationQueueCapacity = options_.observationQueueCapacity;
-        stats.eventQueueCapacity = options_.eventQueueCapacity;
         stats.parserWorkerCount = options_.parserWorkerCount;
         stats.backendStatsAvailable = backendStats_.available;
         stats.backendRequested = backendStats_.requestedBackend;
@@ -323,13 +292,11 @@ private:
     LivePipelineOptions options_;
     BoundedQueue<PacketBatch> packetQueue_;
     BoundedQueue<ObservationBatch> observationQueue_;
-    BoundedQueue<asset::AssetEvent> eventQueue_;
     AtomicPipelineStats counters_;
     capture::BackendStats backendStats_;
     PacketBatch pendingPacketBatch_;
     std::vector<std::thread> parserWorkers_;
     std::thread aggregatorThread_;
-    std::thread eventWriterThread_;
     monitor::AssetMonitor assetMonitor_;
     mutable std::mutex errorMutex_;
     std::optional<std::string> error_;
@@ -340,13 +307,10 @@ private:
 LivePipelineOptions normalizeLivePipelineOptions(LivePipelineOptions options)
 {
     if (options.packetBatchSize == 0) {
-        options.packetBatchSize = 128;
+        options.packetBatchSize = constants::capture::DefaultPacketBatchSize;
     }
     if (options.observationQueueCapacity == 0) {
-        options.observationQueueCapacity = 1024;
-    }
-    if (options.eventQueueCapacity == 0) {
-        options.eventQueueCapacity = 1024;
+        options.observationQueueCapacity = constants::capture::DefaultQueueCapacity;
     }
     if (options.parserWorkerCount == 0) {
         options.parserWorkerCount = defaultWorkerCount();
@@ -414,15 +378,11 @@ std::string formatLivePipelineMetrics(const LivePipelineStats& stats)
            << " observations_produced=" << stats.observationsProduced
            << " observations_applied=" << stats.observationsApplied
            << " events_produced=" << stats.eventsProduced
-           << " events_enqueued=" << stats.eventsEnqueued
-           << " events_dropped_queue_full=" << stats.eventsDroppedQueueFull
            << " packet_queue_high_watermark=" << stats.packetQueueHighWatermark
            << " observation_queue_high_watermark=" << stats.observationQueueHighWatermark
-           << " event_queue_high_watermark=" << stats.eventQueueHighWatermark
            << " packet_batch_size=" << stats.packetBatchSize
            << " packet_queue_capacity=" << stats.packetQueueCapacity
            << " observation_queue_capacity=" << stats.observationQueueCapacity
-           << " event_queue_capacity=" << stats.eventQueueCapacity
            << " parser_worker_count=" << stats.parserWorkerCount
            << " packet_batches_dropped=" << stats.packetBatchesDropped;
 

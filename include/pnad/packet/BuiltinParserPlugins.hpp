@@ -5,5 +5,6 @@
 namespace asset_discovery::parser {
 
 ParserRegistry createDefaultParserRegistry();
+ParserRegistry createCoreParserRegistry();
 
 } // namespace asset_discovery::parser

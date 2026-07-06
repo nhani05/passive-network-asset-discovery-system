@@ -2,7 +2,6 @@
 
 #include "pnad/event/AssetEvent.hpp"
 
-#include <fstream>
 #include <iosfwd>
 #include <memory>
 #include <string>
@@ -29,7 +28,6 @@ private:
 };
 
 std::string renderConsoleEvent(const asset::AssetEvent& event);
-std::string renderEventNdjson(const asset::AssetEvent& event);
 
 class ConsoleEventSink final : public EventSink {
 public:
@@ -40,37 +38,6 @@ public:
 
 private:
     std::ostream* output_;
-};
-
-class NdjsonEventSink final : public EventSink {
-public:
-    explicit NdjsonEventSink(const std::string& path);
-
-    bool ok() const;
-    std::string error() const;
-    void write(const asset::AssetEvent& event) override;
-    void flush() override;
-
-private:
-    std::string path_;
-    std::ofstream file_;
-};
-
-int syslogPriorityForSeverity(asset::AssetEventSeverity severity);
-
-class SyslogEventSink final : public EventSink {
-public:
-    explicit SyslogEventSink(std::string identifier = "asset-discovery");
-    ~SyslogEventSink() override;
-
-    static bool supported();
-    bool ok() const;
-    std::string error() const;
-    void write(const asset::AssetEvent& event) override;
-
-private:
-    std::string identifier_;
-    bool opened_ = false;
 };
 
 } // namespace asset_discovery::output
