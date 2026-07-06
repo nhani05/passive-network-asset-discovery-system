@@ -6,14 +6,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(ASSET_DISCOVERY_REQUIRE_PCAP "Stop configuration when libpcap is unavailable" OFF)
+find_package(SQLite3 REQUIRED)
+
+add_library(asset-shared INTERFACE)
+target_include_directories(asset-shared INTERFACE include)
 
 add_library(asset_discovery_domain
     src/event/AssetEvent.cpp
     src/event/AssetEventDetector.cpp
     src/discovery/AssetObservation.cpp
     src/discovery/AssetStore.cpp
-    src/event/EventRateLimiter.cpp
 )
 
 target_include_directories(asset_discovery_domain PUBLIC include)
@@ -87,23 +89,21 @@ target_include_directories(asset_discovery_output PUBLIC include)
 target_link_libraries(asset_discovery_output PUBLIC asset_discovery_domain)
 
 add_library(asset_discovery_storage
-    src/storage/PostgresWriter.cpp
+    src/storage/SQLiteWriter.cpp
 )
 
 target_include_directories(asset_discovery_storage PUBLIC include)
-target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_domain asset_discovery_output)
+target_link_libraries(asset_discovery_storage PUBLIC asset_discovery_domain asset_discovery_output SQLite::SQLite3)
 
 add_library(asset_discovery_capture
-    src/capture/AfPacketCaptureBackend.cpp
+    src/capture/CaptureChildProtocol.cpp
+    src/capture/CaptureChildSupervisor.cpp
+    src/capture/CapturePacketStream.cpp
+    src/capture/NetworkInterface.cpp
     src/capture/PacketCapture.cpp
 )
 
 target_include_directories(asset_discovery_capture PUBLIC include)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_AF_PACKET=1)
-else()
-    target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_AF_PACKET=0)
-endif()
 
 add_library(asset_discovery_cli
     src/cli/Arguments.cpp
@@ -124,14 +124,14 @@ target_link_libraries(asset_discovery_config PUBLIC
     asset_discovery_domain
 )
 
-add_executable(asset-discovery
-    src/main.cpp
+add_library(asset-core STATIC
+    src/core/CoreLibrary.cpp
 )
 
-target_include_directories(asset-discovery PRIVATE include)
-target_link_libraries(asset-discovery PRIVATE
+target_include_directories(asset-core PUBLIC include)
+target_link_libraries(asset-core PUBLIC
+    asset-shared
     asset_discovery_capture
-    asset_discovery_cli
     asset_discovery_config
     asset_discovery_domain
     asset_discovery_live
@@ -141,12 +141,44 @@ target_link_libraries(asset-discovery PRIVATE
     asset_discovery_storage
 )
 
-add_executable(asset-discovery-live-benchmark
-    benchmarks/LivePipelineBenchmark.cpp
+add_library(asset_backend
+    src/backend/BackendConfig.cpp
+    src/backend/CaptureService.cpp
+    src/backend/HttpServer.cpp
+    src/backend/QueryServices.cpp
+    src/backend/RestApi.cpp
 )
 
-target_include_directories(asset-discovery-live-benchmark PRIVATE include)
-target_link_libraries(asset-discovery-live-benchmark PRIVATE asset_discovery_live asset_discovery_capture)
+target_include_directories(asset_backend PUBLIC include)
+target_link_libraries(asset_backend PUBLIC asset-core)
+
+add_executable(asset-discovery
+    src/main.cpp
+)
+
+target_include_directories(asset-discovery PRIVATE include)
+target_link_libraries(asset-discovery PRIVATE
+    asset-core
+    asset_discovery_cli
+)
+add_custom_target(asset-cli DEPENDS asset-discovery)
+
+add_executable(assetd
+    src/backend/AssetdMain.cpp
+)
+
+target_include_directories(assetd PRIVATE include)
+target_link_libraries(assetd PRIVATE asset_backend)
+
+add_executable(asset-capture
+    src/capture/AssetCaptureMain.cpp
+)
+
+target_include_directories(asset-capture PRIVATE include)
+target_link_libraries(asset-capture PRIVATE
+    asset_discovery_capture
+    asset_discovery_cli
+)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -181,14 +213,48 @@ if(PCAP_FOUND)
     target_compile_options(asset_discovery_capture PRIVATE ${PCAP_CFLAGS_OTHER})
     target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_PCAP=1)
 else()
-    if(ASSET_DISCOVERY_REQUIRE_PCAP)
-        message(FATAL_ERROR "libpcap was not found. Install the libpcap development package or set ASSET_DISCOVERY_REQUIRE_PCAP=OFF.")
-    endif()
-    target_compile_definitions(asset_discovery_capture PRIVATE ASSET_DISCOVERY_HAS_PCAP=0)
-    message(WARNING "libpcap was not found. Building the CLI shell without a packet capture backend.")
+    message(FATAL_ERROR "libpcap was not found. Install the libpcap development package before building PNAD.")
 endif()
 
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+find_package(Qt6 COMPONENTS Core Quick Gui Qml Widgets Network WebSockets QUIET)
+if(Qt6_FOUND)
+    set(QT_LIBRARIES Qt6::Core Qt6::Quick Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Network Qt6::WebSockets)
+    message(STATUS "Found Qt6 components")
+else()
+    find_package(Qt5 COMPONENTS Core Quick Gui Qml Widgets Network WebSockets REQUIRED)
+    set(QT_LIBRARIES Qt5::Core Qt5::Quick Qt5::Gui Qt5::Qml Qt5::Widgets Qt5::Network Qt5::WebSockets)
+    message(STATUS "Found Qt5 components")
+endif()
+
+add_executable(asset-discovery-gui
+    src/gui/main.cpp
+    src/gui/AssetModel.cpp
+    src/gui/InterfaceModel.cpp
+    src/gui/LogModel.cpp
+    src/gui/DesktopRunConfig.cpp
+    src/gui/CaptureController.cpp
+    src/gui/GuiApplicationRuntime.cpp
+    include/pnad/gui/AssetModel.hpp
+    include/pnad/gui/InterfaceModel.hpp
+    include/pnad/gui/LogModel.hpp
+    include/pnad/gui/DesktopRunConfig.hpp
+    include/pnad/gui/CaptureController.hpp
+    include/pnad/gui/GuiApplicationRuntime.hpp
+    qml/qml.qrc
+)
+
+target_include_directories(asset-discovery-gui PRIVATE include)
+target_link_libraries(asset-discovery-gui PRIVATE
+    asset-core
+    ${QT_LIBRARIES}
+)
+
 include(CTest)
+add_custom_target(asset-tests)
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()

@@ -284,6 +284,15 @@ void AssetStore::applyObservation(const parser::AssetObservation& observation)
     enrichMetadata(asset);
 }
 
+std::optional<Asset> AssetStore::findByMacAddress(const std::string& macAddress) const
+{
+    const auto existing = assetsByMac_.find(normalizeMacAddress(macAddress));
+    if (existing == assetsByMac_.end()) {
+        return std::nullopt;
+    }
+    return existing->second;
+}
+
 std::vector<Asset> AssetStore::assets() const
 {
     std::vector<Asset> result;

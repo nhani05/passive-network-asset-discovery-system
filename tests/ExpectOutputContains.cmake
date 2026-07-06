@@ -16,25 +16,12 @@ if(DEFINED FILTER)
 endif()
 list(APPEND command_args --output table)
 
-set(WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/expect-output-db-stub")
-set(STUB_DIR "${WORK_DIR}/bin")
-file(MAKE_DIRECTORY "${STUB_DIR}")
-file(MAKE_DIRECTORY "${WORK_DIR}/logs")
-
-set(STUB_PSQL "${STUB_DIR}/psql")
-file(WRITE "${STUB_PSQL}" "#!/bin/sh\nset -eu\nwhile [ \"\$#\" -gt 0 ]; do\n  if [ \"\$1\" = \"-f\" ]; then\n    shift\n    cat \"\$1\" > /dev/null\n    exit 0\n  fi\n  shift\ndone\nexit 0\n")
-file(CHMOD "${STUB_PSQL}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+set(WORK_DIR "${CMAKE_CURRENT_BINARY_DIR}/expect-output-sqlite")
+file(MAKE_DIRECTORY "${WORK_DIR}")
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env
-        "PATH=${STUB_DIR}:$ENV{PATH}"
-        "DATABASE_URL="
-        "PGHOST=localhost"
-        "PGPORT=5432"
-        "PGDATABASE=asset_discovery"
-        "PGUSER=postgres"
-        "PGPASSWORD=postgres"
-        "ASSET_DISCOVERY_EVENTS_JSON=${WORK_DIR}/logs/events.ndjson"
+        "SQLITE_DATABASE_PATH=${WORK_DIR}/assets.db"
         ${command_args}
     WORKING_DIRECTORY "${WORK_DIR}"
     RESULT_VARIABLE command_result

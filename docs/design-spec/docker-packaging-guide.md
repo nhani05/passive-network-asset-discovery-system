@@ -7,7 +7,7 @@ Tài liệu này chỉ tập trung vào cách dùng Docker để đóng gói Pas
 - Docker Engine hoặc Docker Desktop.
 - Repository đã được checkout đầy đủ.
 - Chạy các lệnh từ thư mục gốc của repository.
-- Nếu cần live capture trong container, nên dùng Linux host thật; Docker Desktop trên macOS/Windows có giới hạn khác với host networking Linux.
+- Runtime container chính dùng PCAP offline và SQLite.
 
 ## Build Image
 
@@ -20,8 +20,8 @@ docker build -t passive-asset-discovery:latest .
 Dockerfile sẽ:
 
 - Dùng stage build để cài compiler, CMake, `pkg-config`, và `libpcap-dev`.
-- Build binary C++ bằng `ASSET_DISCOVERY_REQUIRE_PCAP=ON`.
-- Dùng stage runtime nhẹ hơn với `libpcap0.8`, `postgresql-client`, và binary `asset-discovery`.
+- Build binary C++; CMake bắt buộc tìm thấy `libpcap`.
+- Dùng stage runtime nhẹ hơn với `libpcap0.8`, `libsqlite3-0`, Qt runtime dependency, và các binary PNAD.
 - Chạy mặc định bằng user `asset` trong thư mục `/work`.
 
 ## Kiểm Tra Image
@@ -43,8 +43,12 @@ docker run --rm passive-asset-discovery:latest --help
 Mount thư mục `samples` vào container ở chế độ read-only:
 
 ```sh
+mkdir -p .docker-data
+chmod 777 .docker-data
 docker run --rm \
   -v "$PWD/samples:/samples:ro" \
+  -v "$PWD/.docker-data:/data" \
+  -e SQLITE_DATABASE_PATH=/data/pnad.db \
   passive-asset-discovery:latest \
   --pcap /samples/multi-asset.pcap \
   --filter "arp or udp port 67 or udp port 68" \
@@ -56,6 +60,8 @@ JSON output:
 ```sh
 docker run --rm \
   -v "$PWD/samples:/samples:ro" \
+  -v "$PWD/.docker-data:/data" \
+  -e SQLITE_DATABASE_PATH=/data/pnad.db \
   passive-asset-discovery:latest \
   --pcap /samples/multi-asset.pcap \
   --filter "arp or udp port 67 or udp port 68" \
@@ -115,7 +121,7 @@ Compose có thể build image cho các service demo:
 docker compose build
 ```
 
-Chạy demo PCAP cùng PostgreSQL:
+Chạy demo PCAP với SQLite volume:
 
 ```sh
 docker compose up --build pcap-demo
@@ -126,30 +132,11 @@ Service `pcap-demo` sẽ:
 - Build image từ `Dockerfile`.
 - Mount `./samples` vào `/samples:ro`.
 - Chạy `asset-discovery` với `samples/multi-asset.pcap`.
-- Ghi kết quả vào PostgreSQL service nếu database sẵn sàng.
+- Ghi kết quả vào SQLite ở `/work/data/pnad.db` trong volume `pcap-demo-data`.
 
 ## Live Capture Trong Container
 
-Live capture cần quyền mạng đặc biệt và Linux host:
-
-```sh
-CAPTURE_INTERFACE=eth0 \
-docker compose --profile live run --rm live-capture
-```
-
-Hoặc chạy trực tiếp:
-
-```sh
-docker run --rm --user 0:0 --net=host \
-  --cap-add=NET_ADMIN \
-  --cap-add=NET_RAW \
-  passive-asset-discovery:latest \
-  --interface eth0 \
-  --filter "arp or udp port 67 or udp port 68" \
-  --output table
-```
-
-Đổi `eth0` theo interface thật trên host.
+Live capture không còn là workflow đóng gói của CLI chính; image chạy PCAP offline bằng `--pcap`.
 
 ## Dọn Dẹp
 

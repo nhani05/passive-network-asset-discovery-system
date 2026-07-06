@@ -2,6 +2,32 @@ add_test(NAME asset-discovery-help COMMAND asset-discovery --help)
 add_test(NAME asset-discovery-missing-input COMMAND asset-discovery)
 set_tests_properties(asset-discovery-missing-input PROPERTIES WILL_FAIL TRUE)
 
+add_test(
+    NAME asset-core-boundary
+    COMMAND "${CMAKE_COMMAND}"
+        "-DTARGET_NAME=asset-core"
+        "-DLINK_LIBRARIES=$<TARGET_PROPERTY:asset-core,INTERFACE_LINK_LIBRARIES>"
+        "-DFORBIDDEN_PATTERNS=Qt;Qml;Quick;WebSocket;Network;http;websocket"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/CheckTargetBoundary.cmake"
+)
+
+add_test(
+    NAME assetd-smoke-test
+    COMMAND "${CMAKE_COMMAND}"
+        "-DASSETD_EXE=$<TARGET_FILE:assetd>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/RunAssetdSmokeTest.cmake"
+)
+
+add_test(NAME asset-capture-help COMMAND asset-capture --help)
+add_test(NAME asset-capture-protocol-self-test COMMAND asset-capture --self-test-protocol)
+
+add_test(
+    NAME desktop-package-inspection
+    COMMAND "${CMAKE_COMMAND}"
+        "-DPACKAGE_DIR=${PROJECT_SOURCE_DIR}/release/pnad-desktop"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/InspectDesktopPackage.cmake"
+)
+
 add_executable(table-renderer-tests
     TableRendererTests.cpp
 )
@@ -74,23 +100,17 @@ add_executable(asset-event-detector-tests
 target_link_libraries(asset-event-detector-tests PRIVATE asset_discovery_asset)
 add_test(NAME asset-event-detector-tests COMMAND asset-event-detector-tests)
 
-add_executable(event-rate-limiter-tests
-    EventRateLimiterTests.cpp
-)
-target_link_libraries(event-rate-limiter-tests PRIVATE asset_discovery_asset)
-add_test(NAME event-rate-limiter-tests COMMAND event-rate-limiter-tests)
-
 add_executable(asset-monitor-tests
     AssetMonitorTests.cpp
 )
 target_link_libraries(asset-monitor-tests PRIVATE asset_discovery_monitor)
 add_test(NAME asset-monitor-tests COMMAND asset-monitor-tests)
 
-add_executable(postgres-writer-tests
-    PostgresWriterTests.cpp
+add_executable(sqlite-writer-tests
+    SQLiteWriterTests.cpp
 )
-target_link_libraries(postgres-writer-tests PRIVATE asset_discovery_storage)
-add_test(NAME postgres-writer-tests COMMAND postgres-writer-tests)
+target_link_libraries(sqlite-writer-tests PRIVATE asset_discovery_storage)
+add_test(NAME sqlite-writer-tests COMMAND sqlite-writer-tests)
 
 add_executable(arguments-tests
     ArgumentsTests.cpp
@@ -110,6 +130,24 @@ add_executable(capture-backend-tests
 target_link_libraries(capture-backend-tests PRIVATE asset_discovery_capture)
 add_test(NAME capture-backend-tests COMMAND capture-backend-tests)
 
+add_executable(capture-child-supervisor-tests
+    CaptureChildSupervisorTests.cpp
+)
+target_link_libraries(capture-child-supervisor-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-child-supervisor-tests COMMAND capture-child-supervisor-tests)
+
+add_executable(capture-child-protocol-tests
+    CaptureChildProtocolTests.cpp
+)
+target_link_libraries(capture-child-protocol-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-child-protocol-tests COMMAND capture-child-protocol-tests)
+
+add_executable(capture-packet-stream-tests
+    CapturePacketStreamTests.cpp
+)
+target_link_libraries(capture-packet-stream-tests PRIVATE asset_discovery_capture)
+add_test(NAME capture-packet-stream-tests COMMAND capture-packet-stream-tests)
+
 add_executable(bounded-queue-tests
     BoundedQueueTests.cpp
 )
@@ -121,6 +159,19 @@ add_executable(live-capture-pipeline-tests
 )
 target_link_libraries(live-capture-pipeline-tests PRIVATE asset_discovery_live asset_discovery_output)
 add_test(NAME live-capture-pipeline-tests COMMAND live-capture-pipeline-tests)
+
+add_executable(core-session-tests
+    CoreSessionTests.cpp
+)
+target_link_libraries(core-session-tests PRIVATE asset-core)
+add_test(NAME core-session-tests COMMAND core-session-tests)
+
+add_executable(backend-service-tests
+    BackendServiceTests.cpp
+)
+target_compile_definitions(backend-service-tests PRIVATE PNAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(backend-service-tests PRIVATE asset_backend)
+add_test(NAME backend-service-tests COMMAND backend-service-tests)
 
 if(PCAP_FOUND)
     set(EMPTY_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcap")
@@ -218,6 +269,21 @@ if(PCAP_FOUND)
 
     if(Python3_FOUND)
         add_test(
+            NAME assetd-rest-integration-tests
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/RunAssetdRestTests.py"
+                "$<TARGET_FILE:assetd>"
+        )
+
+        add_test(
+            NAME assetd-websocket-integration-tests
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/RunAssetdWebSocketTests.py"
+                "$<TARGET_FILE:assetd>"
+                "${PROJECT_SOURCE_DIR}/samples/arp.pcap"
+        )
+
+        add_test(
             NAME asset-discovery-pcap-json
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ValidateJsonOutput.py"
@@ -241,21 +307,61 @@ if(PCAP_FOUND)
                 "${PROJECT_SOURCE_DIR}/samples/multi-asset.pcap"
         )
 
-        add_test(
-            NAME asset-discovery-pcap-event-ndjson
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateEventNdjsonOutput.py"
-                "$<TARGET_FILE:asset-discovery>"
-                "${MAC_CHANGE_PCAP_PATH}"
-        )
     endif()
+endif()
 
-    add_test(
-        NAME asset-discovery-postgres-write
-        COMMAND "${CMAKE_COMMAND}"
-            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
-            "-DPCAP_PATH=${PROJECT_SOURCE_DIR}/samples/arp.pcap"
-            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/dotenv-postgres-write"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/ValidatePostgresWrite.cmake"
+add_executable(gui-model-tests
+    GuiModelTests.cpp
+    ../src/gui/AssetModel.cpp
+    ../src/gui/InterfaceModel.cpp
+    ../src/gui/LogModel.cpp
+    ../src/gui/DesktopRunConfig.cpp
+    ../src/gui/CaptureController.cpp
+    ../include/pnad/gui/AssetModel.hpp
+    ../include/pnad/gui/InterfaceModel.hpp
+    ../include/pnad/gui/LogModel.hpp
+    ../include/pnad/gui/DesktopRunConfig.hpp
+    ../include/pnad/gui/CaptureController.hpp
+)
+set_target_properties(gui-model-tests PROPERTIES AUTOMOC ON)
+target_include_directories(gui-model-tests PRIVATE ../include)
+target_compile_definitions(gui-model-tests PRIVATE PNAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(gui-model-tests PRIVATE
+    asset-core
+    ${QT_LIBRARIES}
+)
+add_test(NAME gui-model-tests COMMAND gui-model-tests)
+
+add_test(
+    NAME gui-smoke-test
+    COMMAND "${CMAKE_COMMAND}"
+        "-DGUI_EXE=$<TARGET_FILE:asset-discovery-gui>"
+        "-DGUI_SMOKE_DATA_DIR=${CMAKE_CURRENT_BINARY_DIR}/gui-smoke-data"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/RunGuiSmokeTest.cmake"
+)
+
+if(TARGET asset-tests)
+    add_dependencies(asset-tests
+        table-renderer-tests
+        json-renderer-tests
+        csv-renderer-tests
+        event-sink-tests
+        ethernet-frame-tests
+        arp-packet-tests
+        packet-parser-tests
+        packet-context-tests
+        parser-engine-tests
+        dns-plugin-tests
+        asset-store-tests
+        asset-event-detector-tests
+        asset-monitor-tests
+        sqlite-writer-tests
+        arguments-tests
+        app-config-tests
+        capture-backend-tests
+        bounded-queue-tests
+        live-capture-pipeline-tests
+        backend-service-tests
     )
+    add_dependencies(asset-tests gui-model-tests)
 endif()
