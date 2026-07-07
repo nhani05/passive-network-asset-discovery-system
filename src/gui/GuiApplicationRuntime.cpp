@@ -36,7 +36,7 @@ void GuiApplicationRuntime::initialize(QQmlApplicationEngine& engine)
 {
     registerContextProperties(engine);
     connectRefreshMechanism();
-    clearApplicationData();
+    // clearApplicationData();
     loadInitialModels();
 }
 

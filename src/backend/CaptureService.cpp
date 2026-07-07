@@ -74,10 +74,10 @@ asset_discovery::backend::BackendAssetRecord assetRecordFromEvent(const asset_di
         record.ipAddressesJson = "[]";
     }
     record.hostname = event.hostname.value_or("");
+    record.displayName = event.hostname.value_or("");
     record.firstSeen = asset_discovery::asset::formatEventTimestamp(event.timestamp);
     record.lastSeen = asset_discovery::asset::formatEventTimestamp(event.timestamp);
     record.discoverySourcesJson = "[\"" + event.protocol + "\"]";
-    record.observedMetadataJson = "{}";
     return record;
 }
 

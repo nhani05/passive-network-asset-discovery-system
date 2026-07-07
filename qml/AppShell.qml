@@ -13,8 +13,9 @@ Item {
     property string exportFormat: "json"
     property string exportStatus: ""
     property int smokePageIndex: 0
-    readonly property string fixedFilter: "arp or (udp and (port 67 or port 68))"
+    readonly property string fixedFilter: "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353"
     readonly property string supportedProtocols: "ARP, DHCP, DNS, mDNS, LLMNR, NetBIOS, SSDP, TCP"
+    readonly property string supportedCaptureFiles: ".pcap, .pcapng"
 
     readonly property var pages: [
         { title: "Dashboard" },
@@ -99,7 +100,15 @@ Item {
         var ip = primaryIp(asset).toLowerCase();
         var mac = (asset.macAddress || "").toLowerCase();
         var hostname = (asset.hostname || "").toLowerCase();
-        return ip.indexOf(query) !== -1 || mac.indexOf(query) !== -1 || hostname.indexOf(query) !== -1;
+        var displayName = (asset.displayName || "").toLowerCase();
+        var vendor = (asset.vendor || "").toLowerCase();
+        var osHint = (asset.osHint || "").toLowerCase();
+        var deviceType = (asset.deviceType || "").toLowerCase();
+        var modelHint = (asset.modelHint || "").toLowerCase();
+        return ip.indexOf(query) !== -1 || mac.indexOf(query) !== -1 || hostname.indexOf(query) !== -1
+                || displayName.indexOf(query) !== -1 || vendor.indexOf(query) !== -1
+                || osHint.indexOf(query) !== -1 || deviceType.indexOf(query) !== -1
+                || modelHint.indexOf(query) !== -1;
     }
 
     function choosePcap() {

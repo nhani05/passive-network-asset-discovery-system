@@ -10,7 +10,7 @@ Item {
     property var selectedAsset: ({})
     property string searchQuery: ""
     property string exportFormat: "json"
-    readonly property string fixedFilter: "arp or (udp and (port 67 or port 68))"
+    readonly property string fixedFilter: "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353"
     readonly property string supportedProtocols: "ARP, DHCP, DNS, mDNS, LLMNR, NetBIOS, SSDP, TCP"
 
     function primaryIp(asset) {
@@ -33,6 +33,30 @@ Item {
         window.selectedAssetIdentity = selectedAsset.macAddress || "";
     }
 
+    function selectAssetByMac(macAddress) {
+        var row = assetModel.rowForMac(macAddress);
+        if (row >= 0) {
+            selectAsset(row);
+            return true;
+        }
+        return false;
+    }
+
+    function sortHeaderText(label, column) {
+        if (assetModel.sortColumn !== column) {
+            return label;
+        }
+        return label + (assetModel.sortAscending ? " ^" : " v");
+    }
+
+    function sortAssetsBy(column) {
+        var selectedMac = window.selectedAssetIdentity || "";
+        assetModel.sortByColumn(column);
+        if (selectedMac !== "") {
+            selectAssetByMac(selectedMac);
+        }
+    }
+
     function rowMatches(row) {
         var query = searchQuery.trim().toLowerCase();
         if (query === "") {
@@ -42,7 +66,15 @@ Item {
         var ip = primaryIp(asset).toLowerCase();
         var mac = (asset.macAddress || "").toLowerCase();
         var hostname = (asset.hostname || "").toLowerCase();
-        return ip.indexOf(query) !== -1 || mac.indexOf(query) !== -1 || hostname.indexOf(query) !== -1;
+        var displayName = (asset.displayName || "").toLowerCase();
+        var vendor = (asset.vendor || "").toLowerCase();
+        var osHint = (asset.osHint || "").toLowerCase();
+        var deviceType = (asset.deviceType || "").toLowerCase();
+        var modelHint = (asset.modelHint || "").toLowerCase();
+        return ip.indexOf(query) !== -1 || mac.indexOf(query) !== -1 || hostname.indexOf(query) !== -1
+                || displayName.indexOf(query) !== -1 || vendor.indexOf(query) !== -1
+                || osHint.indexOf(query) !== -1 || deviceType.indexOf(query) !== -1
+                || modelHint.indexOf(query) !== -1;
     }
 
     function choosePcap() {
@@ -77,13 +109,18 @@ Item {
     Connections {
         target: assetModel
         function onAssetsChanged() {
+            var selectedMac = window.selectedAssetIdentity || "";
+            if (selectedMac !== "" && coreView.selectAssetByMac(selectedMac)) {
+                return;
+            }
             if (selectedRow >= 0 && selectedRow < assetModel.rowCount()) {
-                selectedAsset = assetModel.get(selectedRow);
+                coreView.selectAsset(selectedRow);
             } else if (assetModel.rowCount() > 0) {
-                selectAsset(0);
+                coreView.selectAsset(0);
             } else {
                 selectedRow = -1;
                 selectedAsset = ({});
+                window.selectedAssetIdentity = "";
             }
         }
     }
@@ -183,13 +220,13 @@ Item {
                     TextField {
                         text: captureController.pcapPath
                         enabled: modeCombo.currentIndex === 1 && !captureController.isRunning
-                        placeholderText: "PCAP file"
+                        placeholderText: "PCAP/PCAPNG file"
                         color: window.colorTextMain
                         Layout.fillWidth: true
                         onEditingFinished: captureController.pcapPath = text
                     }
                     Button {
-                        text: "PCAP..."
+                        text: "PCAP/NG..."
                         enabled: modeCombo.currentIndex === 1 && !captureController.isRunning
                         onClicked: choosePcap()
                     }
@@ -287,10 +324,49 @@ Item {
                             anchors.rightMargin: 10
                             spacing: 8
                             Text { text: "IP"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 150 }
-                            Text { text: "MAC"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 155 }
+                            Button {
+                                text: coreView.sortHeaderText("MAC", "macAddress")
+                                flat: true
+                                Layout.preferredWidth: 155
+                                Layout.fillHeight: true
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: assetModel.sortColumn === "macAddress" ? window.colorAccent : window.colorTextMain
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: coreView.sortAssetsBy("macAddress")
+                            }
                             Text { text: "Hostname"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 130 }
-                            Text { text: "First Seen"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 135 }
-                            Text { text: "Last Seen"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 135 }
+                            Button {
+                                text: coreView.sortHeaderText("First Seen", "firstSeen")
+                                flat: true
+                                Layout.preferredWidth: 135
+                                Layout.fillHeight: true
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: assetModel.sortColumn === "firstSeen" ? window.colorAccent : window.colorTextMain
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: coreView.sortAssetsBy("firstSeen")
+                            }
+                            Button {
+                                text: coreView.sortHeaderText("Last Seen", "lastSeen")
+                                flat: true
+                                Layout.preferredWidth: 135
+                                Layout.fillHeight: true
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: assetModel.sortColumn === "lastSeen" ? window.colorAccent : window.colorTextMain
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: coreView.sortAssetsBy("lastSeen")
+                            }
                             Text { text: "Protocols"; color: window.colorTextMain; font.bold: true; Layout.fillWidth: true }
                         }
                     }
@@ -320,7 +396,9 @@ Item {
                                 spacing: 8
                                 Text { text: ipAddresses && ipAddresses.length > 0 ? ipAddresses.join(", ") : "-"; color: window.colorTextMain; Layout.preferredWidth: 150; elide: Text.ElideRight }
                                 Text { text: macAddress; color: window.colorTextMain; font.family: "monospace"; Layout.preferredWidth: 155; elide: Text.ElideRight }
-                                Text { text: hostname; color: window.colorTextMain; Layout.preferredWidth: 130; elide: Text.ElideRight }
+                                Text { text: displayName && displayName !== "-" ? displayName : hostname; color: window.colorTextMain; Layout.preferredWidth: 130; elide: Text.ElideRight }
+                                Text { text: vendor; color: window.colorTextMain; Layout.preferredWidth: 105; elide: Text.ElideRight }
+                                Text { text: deviceType; color: window.colorTextMain; Layout.preferredWidth: 90; elide: Text.ElideRight }
                                 Text { text: firstSeen; color: window.colorTextMuted; Layout.preferredWidth: 135; elide: Text.ElideRight }
                                 Text { text: lastSeen; color: window.colorTextMuted; Layout.preferredWidth: 135; elide: Text.ElideRight }
                                 Text { text: discoverySources && discoverySources.length > 0 ? discoverySources.join(", ") : "-"; color: window.colorAccent; Layout.fillWidth: true; elide: Text.ElideRight }
@@ -355,6 +433,11 @@ Item {
                             { label: "IP", value: coreView.primaryIp(coreView.selectedAsset) },
                             { label: "MAC", value: coreView.selectedAsset.macAddress || "-" },
                             { label: "Hostname", value: coreView.selectedAsset.hostname || "-" },
+                            { label: "Display Name", value: coreView.selectedAsset.displayName || "-" },
+                            { label: "Vendor", value: coreView.selectedAsset.vendor || "-" },
+                            { label: "OS", value: coreView.selectedAsset.osHint || "-" },
+                            { label: "Device Type", value: coreView.selectedAsset.deviceType || "-" },
+                            { label: "Model", value: coreView.selectedAsset.modelHint || "-" },
                             { label: "First Seen", value: coreView.selectedAsset.firstSeen || "-" },
                             { label: "Last Seen", value: coreView.selectedAsset.lastSeen || "-" },
                             { label: "Protocols", value: coreView.protocols(coreView.selectedAsset) }

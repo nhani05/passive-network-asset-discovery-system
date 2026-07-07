@@ -67,8 +67,8 @@ std::vector<BackendAssetRecord> AssetQueryService::listAssets(int limit) const
     SqliteHandle db(sqlitePath_);
     sqlite3_stmt* statement = nullptr;
     const char* sql =
-        "SELECT mac_address, ip_addresses, hostname, first_seen, last_seen, "
-        "discovery_sources, observed_metadata FROM assets ORDER BY mac_address LIMIT ?;";
+        "SELECT mac_address, ip_addresses, hostname, display_name, vendor, os_hint, device_type, model_hint, "
+        "first_seen, last_seen, discovery_sources FROM assets ORDER BY mac_address LIMIT ?;";
     if (sqlite3_prepare_v2(db.get(), sql, -1, &statement, nullptr) != SQLITE_OK) {
         throw std::runtime_error(sqlite3_errmsg(db.get()));
     }
@@ -81,10 +81,14 @@ std::vector<BackendAssetRecord> AssetQueryService::listAssets(int limit) const
         record.macAddress = textColumn(statement, 0);
         record.ipAddressesJson = textColumn(statement, 1);
         record.hostname = textColumn(statement, 2);
-        record.firstSeen = textColumn(statement, 3);
-        record.lastSeen = textColumn(statement, 4);
-        record.discoverySourcesJson = textColumn(statement, 5);
-        record.observedMetadataJson = textColumn(statement, 6);
+        record.displayName = textColumn(statement, 3);
+        record.vendor = textColumn(statement, 4);
+        record.osHint = textColumn(statement, 5);
+        record.deviceType = textColumn(statement, 6);
+        record.modelHint = textColumn(statement, 7);
+        record.firstSeen = textColumn(statement, 8);
+        record.lastSeen = textColumn(statement, 9);
+        record.discoverySourcesJson = textColumn(statement, 10);
         records.push_back(std::move(record));
     }
     sqlite3_finalize(statement);

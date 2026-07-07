@@ -103,11 +103,6 @@ QString defaultGuiSqlitePath()
     return projectPath.isEmpty() ? appDataSqlitePath() : projectPath;
 }
 
-bool isAppDataSqlitePath(const QString& path)
-{
-    return QFileInfo(path).absoluteFilePath() == QFileInfo(appDataSqlitePath()).absoluteFilePath();
-}
-
 QString trimWhitespace(QString value)
 {
     return value.trimmed();
@@ -198,13 +193,14 @@ QVariantMap assetToDto(const asset::Asset& asset)
     dto.insert("macAddress", QString::fromStdString(asset.macAddress));
     dto.insert("ipAddresses", toStringList(asset.ipAddresses));
     dto.insert("hostname", asset.hostname.has_value() ? QString::fromStdString(*asset.hostname) : QString());
+    dto.insert("displayName", asset.displayName.has_value() ? QString::fromStdString(*asset.displayName) : QString());
+    dto.insert("vendor", asset.vendor.has_value() ? QString::fromStdString(*asset.vendor) : QString());
+    dto.insert("osHint", asset.osHint.has_value() ? QString::fromStdString(*asset.osHint) : QString());
+    dto.insert("deviceType", asset.deviceType.has_value() ? QString::fromStdString(*asset.deviceType) : QString());
+    dto.insert("modelHint", asset.modelHint.has_value() ? QString::fromStdString(*asset.modelHint) : QString());
     dto.insert("firstSeen", QString::fromStdString(asset::formatTimestamp(asset.firstSeen)));
     dto.insert("lastSeen", QString::fromStdString(asset::formatTimestamp(asset.lastSeen)));
     dto.insert("discoverySources", toStringList(asset.sources));
-    dto.insert("vendor", "Unknown");
-    dto.insert("deviceType", "Unknown");
-    dto.insert("os", "Unknown");
-    dto.insert("rawObservedMetadata", QString::fromStdString(mapToJson(asset.metadata)));
     dto.insert("risk", "Normal");
     return dto;
 }
@@ -626,8 +622,7 @@ void CaptureController::loadSettingsFromDb()
     QSettings settings("PNAD", "PNAD Desktop");
     if (settings.contains("sqlitePath")) {
         const QString storedPath = settings.value("sqlitePath").toString();
-        const QString projectPath = projectSqlitePathIfPresent();
-        if (projectPath.isEmpty() || !isAppDataSqlitePath(storedPath)) {
+        if (!storedPath.trimmed().isEmpty()) {
             setSqlitePath(storedPath);
         }
     }
@@ -768,9 +763,9 @@ QString CaptureController::choosePcapFile()
 {
     return QFileDialog::getOpenFileName(
         nullptr,
-        "Select PCAP File for Analysis",
+        "Select PCAP or PCAPNG File for Analysis",
         pcapPath_.isEmpty() ? QDir::homePath() : pcapPath_,
-        "PCAP Files (*.pcap *.pcapng);;All Files (*)");
+        QString::fromLatin1(constants::capture::SupportedCaptureFileDialogFilter));
 }
 
 QString CaptureController::chooseExportFile(const QString& format)
