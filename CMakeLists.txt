@@ -142,17 +142,6 @@ target_link_libraries(asset-core PUBLIC
     asset_discovery_storage
 )
 
-add_library(asset_backend
-    src/backend/BackendConfig.cpp
-    src/backend/CaptureService.cpp
-    src/backend/HttpServer.cpp
-    src/backend/QueryServices.cpp
-    src/backend/RestApi.cpp
-)
-
-target_include_directories(asset_backend PUBLIC include)
-target_link_libraries(asset_backend PUBLIC asset-core)
-
 add_executable(asset-discovery
     src/main.cpp
 )
@@ -163,13 +152,6 @@ target_link_libraries(asset-discovery PRIVATE
     asset_discovery_cli
 )
 add_custom_target(asset-cli DEPENDS asset-discovery)
-
-add_executable(assetd
-    src/backend/AssetdMain.cpp
-)
-
-target_include_directories(assetd PRIVATE include)
-target_link_libraries(assetd PRIVATE asset_backend)
 
 add_executable(asset-capture
     src/capture/AssetCaptureMain.cpp
@@ -221,13 +203,13 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 COMPONENTS Core Quick Gui Qml Widgets Network WebSockets QUIET)
+find_package(Qt6 COMPONENTS Core Quick Gui Qml Widgets Network QUIET)
 if(Qt6_FOUND)
-    set(QT_LIBRARIES Qt6::Core Qt6::Quick Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Network Qt6::WebSockets)
+    set(QT_LIBRARIES Qt6::Core Qt6::Quick Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Network)
     message(STATUS "Found Qt6 components")
 else()
-    find_package(Qt5 COMPONENTS Core Quick Gui Qml Widgets Network WebSockets REQUIRED)
-    set(QT_LIBRARIES Qt5::Core Qt5::Quick Qt5::Gui Qt5::Qml Qt5::Widgets Qt5::Network Qt5::WebSockets)
+    find_package(Qt5 COMPONENTS Core Quick Gui Qml Widgets Network REQUIRED)
+    set(QT_LIBRARIES Qt5::Core Qt5::Quick Qt5::Gui Qt5::Qml Qt5::Widgets Qt5::Network)
     message(STATUS "Found Qt5 components")
 endif()
 

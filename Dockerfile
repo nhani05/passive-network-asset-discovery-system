@@ -12,7 +12,6 @@ RUN apt-get update \
         libsqlite3-dev \
         qtbase5-dev \
         qtdeclarative5-dev \
-        libqt5websockets5-dev \
         qtquickcontrols2-5-dev \
         qml-module-qtquick-controls2 \
         qml-module-qtquick-dialogs \
@@ -40,7 +39,6 @@ RUN apt-get update \
         libqt5qml5 \
         libqt5quick5 \
         libqt5quickcontrols2-5 \
-        libqt5websockets5 \
         qml-module-qtquick-controls2 \
         qml-module-qtquick-dialogs \
         qml-module-qtquick-layouts \
@@ -52,7 +50,6 @@ RUN mkdir -p /work/data /work/logs /data && chown -R asset:asset /work /data
 
 COPY --from=build /src/build/asset-discovery /usr/local/bin/asset-discovery
 COPY --from=build /src/build/asset-discovery-gui /usr/local/bin/asset-discovery-gui
-COPY --from=build /src/build/assetd /usr/local/bin/assetd
 COPY --from=build /src/build/asset-capture /usr/local/bin/asset-capture
 COPY --from=build --chown=asset:asset /src/configs /work/configs
 
