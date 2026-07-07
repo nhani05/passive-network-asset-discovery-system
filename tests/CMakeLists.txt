@@ -29,145 +29,145 @@ add_test(
 )
 
 add_executable(table-renderer-tests
-    TableRendererTests.cpp
+    discovery/output/TableRendererTests.cpp
 )
 target_link_libraries(table-renderer-tests PRIVATE asset_discovery_output)
 add_test(NAME table-renderer-tests COMMAND table-renderer-tests)
 
 add_executable(json-renderer-tests
-    JsonRendererTests.cpp
+    discovery/output/JsonRendererTests.cpp
 )
 target_link_libraries(json-renderer-tests PRIVATE asset_discovery_output)
 add_test(NAME json-renderer-tests COMMAND json-renderer-tests)
 
 add_executable(csv-renderer-tests
-    CsvRendererTests.cpp
+    discovery/output/CsvRendererTests.cpp
 )
 target_link_libraries(csv-renderer-tests PRIVATE asset_discovery_output)
 add_test(NAME csv-renderer-tests COMMAND csv-renderer-tests)
 
 add_executable(event-sink-tests
-    EventSinkTests.cpp
+    event/EventSinkTests.cpp
 )
 target_link_libraries(event-sink-tests PRIVATE asset_discovery_output)
 add_test(NAME event-sink-tests COMMAND event-sink-tests)
 
 add_executable(ethernet-frame-tests
-    EthernetFrameTests.cpp
+    packet/primitives/EthernetFrameTests.cpp
 )
 target_link_libraries(ethernet-frame-tests PRIVATE asset_discovery_parser)
 add_test(NAME ethernet-frame-tests COMMAND ethernet-frame-tests)
 
 add_executable(arp-packet-tests
-    ArpPacketTests.cpp
+    packet/primitives/ArpPacketTests.cpp
 )
 target_link_libraries(arp-packet-tests PRIVATE asset_discovery_parser)
 add_test(NAME arp-packet-tests COMMAND arp-packet-tests)
 
 add_executable(packet-parser-tests
-    PacketParserTests.cpp
+    packet/facade/PacketParserTests.cpp
 )
 target_link_libraries(packet-parser-tests PRIVATE asset_discovery_parser)
 add_test(NAME packet-parser-tests COMMAND packet-parser-tests)
 
 add_executable(packet-context-tests
-    PacketContextTests.cpp
+    packet/parser-core/PacketContextTests.cpp
 )
 target_link_libraries(packet-context-tests PRIVATE asset_discovery_parser)
 add_test(NAME packet-context-tests COMMAND packet-context-tests)
 
 add_executable(parser-engine-tests
-    ParserEngineTests.cpp
+    packet/parser-core/ParserEngineTests.cpp
 )
 target_link_libraries(parser-engine-tests PRIVATE asset_discovery_parser)
 add_test(NAME parser-engine-tests COMMAND parser-engine-tests)
 
 add_executable(dns-plugin-tests
-    DnsPluginTests.cpp
+    packet/parser-plugins/DnsPluginTests.cpp
 )
 target_link_libraries(dns-plugin-tests PRIVATE asset_discovery_parser)
 add_test(NAME dns-plugin-tests COMMAND dns-plugin-tests)
 
 add_executable(asset-store-tests
-    AssetStoreTests.cpp
+    discovery/domain/AssetStoreTests.cpp
 )
 target_link_libraries(asset-store-tests PRIVATE asset_discovery_asset)
 add_test(NAME asset-store-tests COMMAND asset-store-tests)
 
 add_executable(asset-event-detector-tests
-    AssetEventDetectorTests.cpp
+    event/AssetEventDetectorTests.cpp
 )
 target_link_libraries(asset-event-detector-tests PRIVATE asset_discovery_asset)
 add_test(NAME asset-event-detector-tests COMMAND asset-event-detector-tests)
 
 add_executable(asset-monitor-tests
-    AssetMonitorTests.cpp
+    discovery/monitor/AssetMonitorTests.cpp
 )
 target_link_libraries(asset-monitor-tests PRIVATE asset_discovery_monitor)
 add_test(NAME asset-monitor-tests COMMAND asset-monitor-tests)
 
 add_executable(sqlite-writer-tests
-    SQLiteWriterTests.cpp
+    storage/SQLiteWriterTests.cpp
 )
 target_link_libraries(sqlite-writer-tests PRIVATE asset_discovery_storage)
 add_test(NAME sqlite-writer-tests COMMAND sqlite-writer-tests)
 
 add_executable(arguments-tests
-    ArgumentsTests.cpp
+    cli/ArgumentsTests.cpp
 )
 target_link_libraries(arguments-tests PRIVATE asset_discovery_cli)
 add_test(NAME arguments-tests COMMAND arguments-tests)
 
 add_executable(app-config-tests
-    AppConfigTests.cpp
+    config/AppConfigTests.cpp
 )
 target_link_libraries(app-config-tests PRIVATE asset_discovery_config)
 add_test(NAME app-config-tests COMMAND app-config-tests)
 
 add_executable(capture-backend-tests
-    CaptureBackendTests.cpp
+    capture/CaptureBackendTests.cpp
 )
 target_link_libraries(capture-backend-tests PRIVATE asset_discovery_capture)
 add_test(NAME capture-backend-tests COMMAND capture-backend-tests)
 
 add_executable(capture-child-supervisor-tests
-    CaptureChildSupervisorTests.cpp
+    capture/CaptureChildSupervisorTests.cpp
 )
 target_link_libraries(capture-child-supervisor-tests PRIVATE asset_discovery_capture)
 add_test(NAME capture-child-supervisor-tests COMMAND capture-child-supervisor-tests)
 
 add_executable(capture-child-protocol-tests
-    CaptureChildProtocolTests.cpp
+    capture/CaptureChildProtocolTests.cpp
 )
 target_link_libraries(capture-child-protocol-tests PRIVATE asset_discovery_capture)
 add_test(NAME capture-child-protocol-tests COMMAND capture-child-protocol-tests)
 
 add_executable(capture-packet-stream-tests
-    CapturePacketStreamTests.cpp
+    capture/CapturePacketStreamTests.cpp
 )
 target_link_libraries(capture-packet-stream-tests PRIVATE asset_discovery_capture)
 add_test(NAME capture-packet-stream-tests COMMAND capture-packet-stream-tests)
 
 add_executable(bounded-queue-tests
-    BoundedQueueTests.cpp
+    system/BoundedQueueTests.cpp
 )
 target_link_libraries(bounded-queue-tests PRIVATE asset_discovery_live)
 add_test(NAME bounded-queue-tests COMMAND bounded-queue-tests)
 
 add_executable(live-capture-pipeline-tests
-    LiveCapturePipelineTests.cpp
+    app/LiveCapturePipelineTests.cpp
 )
 target_link_libraries(live-capture-pipeline-tests PRIVATE asset_discovery_live asset_discovery_output)
 add_test(NAME live-capture-pipeline-tests COMMAND live-capture-pipeline-tests)
 
 add_executable(core-session-tests
-    CoreSessionTests.cpp
+    core/CoreSessionTests.cpp
 )
 target_link_libraries(core-session-tests PRIVATE asset-core)
 add_test(NAME core-session-tests COMMAND core-session-tests)
 
 add_executable(backend-service-tests
-    BackendServiceTests.cpp
+    backend/BackendServiceTests.cpp
 )
 target_compile_definitions(backend-service-tests PRIVATE PNAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_link_libraries(backend-service-tests PRIVATE asset_backend)
@@ -351,7 +351,7 @@ if(PCAP_FOUND)
 endif()
 
 add_executable(gui-model-tests
-    GuiModelTests.cpp
+    gui/GuiModelTests.cpp
     ../src/gui/AssetModel.cpp
     ../src/gui/InterfaceModel.cpp
     ../src/gui/LogModel.cpp
