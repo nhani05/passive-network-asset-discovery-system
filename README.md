@@ -49,7 +49,6 @@ arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353
 | `src/storage/` | SQLite writer. |
 | `tests/` | Test được chia theo module tương ứng với source tree. |
 | `samples/` | PCAP/PCAPNG fixture dùng cho demo và test. |
-| `scripts/` | Script build smoke, Docker verification và đóng gói release. |
 
 ## Yêu Cầu Hệ Thống
 
@@ -234,12 +233,6 @@ docker run --rm \
   --output json
 ```
 
-Kiểm tra runtime Docker đầy đủ:
-
-```sh
-./scripts/verify-docker-runtime.sh
-```
-
 ## Test
 
 Chạy toàn bộ test sau khi build:
@@ -248,29 +241,7 @@ Chạy toàn bộ test sau khi build:
 ctest --test-dir build --output-on-failure
 ```
 
-Chạy smoke build dành cho CI/dev:
-
-```sh
-./scripts/ci-smoke-build.sh
-```
-
 Test hiện được chia theo module trong `tests/`, gồm parser, discovery, capture, storage, config, core, GUI model, GUI smoke và các kiểm tra PCAP fixture.
-
-## Đóng Gói Desktop
-
-Tạo gói desktop Linux:
-
-```sh
-./scripts/package-release.sh
-```
-
-Kết quả:
-
-```text
-release/pnad-desktop-linux.tar.gz
-```
-
-Gói desktop chỉ ship GUI, launcher, icon và file `.env` mặc định. CLI không nằm trong desktop release package.
 
 ## Sample PCAP
 

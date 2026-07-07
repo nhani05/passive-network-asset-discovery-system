@@ -21,13 +21,6 @@ add_test(
 add_test(NAME asset-capture-help COMMAND asset-capture --help)
 add_test(NAME asset-capture-protocol-self-test COMMAND asset-capture --self-test-protocol)
 
-add_test(
-    NAME desktop-package-inspection
-    COMMAND "${CMAKE_COMMAND}"
-        "-DPACKAGE_DIR=${PROJECT_SOURCE_DIR}/release/pnad-desktop"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/InspectDesktopPackage.cmake"
-)
-
 add_executable(table-renderer-tests
     discovery/output/TableRendererTests.cpp
 )
