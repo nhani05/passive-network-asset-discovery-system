@@ -42,6 +42,27 @@ bool fileContains(const std::string& path, const std::string& needle)
     return contents.find(needle) != std::string::npos;
 }
 
+QVariantMap assetDto(
+    const QString& macAddress,
+    const QString& firstSeen,
+    const QString& lastSeen,
+    const QString& hostname = QString())
+{
+    QVariantMap dto;
+    dto.insert("macAddress", macAddress);
+    dto.insert("ipAddresses", QStringList({"10.0.0.1"}));
+    dto.insert("hostname", hostname.isEmpty() ? macAddress : hostname);
+    dto.insert("firstSeen", firstSeen);
+    dto.insert("lastSeen", lastSeen);
+    dto.insert("discoverySources", QStringList({"arp"}));
+    return dto;
+}
+
+QString modelMacAt(const asset_discovery::gui::AssetModel& model, int row)
+{
+    return model.data(model.index(row, 0), asset_discovery::gui::AssetModel::MacRole).toString();
+}
+
 class FakeMailSender final : public asset_discovery::gui::MailSender {
 public:
     std::optional<QString> send(
@@ -163,15 +184,60 @@ void testCoreGuiModelsAndController()
     std::remove(testDb.c_str());
 }
 
+void testAssetModelSorting()
+{
+    using asset_discovery::gui::AssetModel;
+
+    AssetModel macModel;
+    macModel.loadAssetDtos({
+        assetDto("bb:00:00:00:00:00", "100.0", "100.0"),
+        assetDto("AA:00:00:00:00:00", "300.0", "300.0"),
+        assetDto("01:00:00:00:00:00", "200.0", "200.0")
+    });
+    macModel.sortByColumn("macAddress");
+    expect(macModel.sortColumn() == "macAddress", "AssetModel should expose active MAC sort column");
+    expect(macModel.sortAscending(), "MAC sort should be ascending");
+    expect(modelMacAt(macModel, 0) == "01:00:00:00:00:00", "MAC sort should put lowest MAC first");
+    expect(modelMacAt(macModel, 1) == "AA:00:00:00:00:00", "MAC sort should compare case-insensitively");
+    expect(modelMacAt(macModel, 2) == "bb:00:00:00:00:00", "MAC sort should put highest MAC last");
+
+    AssetModel timeModel;
+    timeModel.loadAssetDtos({
+        assetDto("00:00:00:00:00:01", "100.900000", "400.0"),
+        assetDto("00:00:00:00:00:02", "300.0", "200.0"),
+        assetDto("00:00:00:00:00:03", "200.0", "600.0")
+    });
+    timeModel.sortByColumn("firstSeen");
+    expect(!timeModel.sortAscending(), "First seen sort should default to newest first");
+    expect(modelMacAt(timeModel, 0) == "00:00:00:00:00:02", "First seen sort should use raw chronological values");
+    expect(modelMacAt(timeModel, 2) == "00:00:00:00:00:01", "First seen sort should put oldest timestamp last by default");
+    timeModel.sortByColumn("firstSeen");
+    expect(timeModel.sortAscending(), "First seen sort should toggle to oldest first");
+    expect(modelMacAt(timeModel, 0) == "00:00:00:00:00:01", "First seen ascending sort should put oldest timestamp first");
+
+    timeModel.sortByColumn("lastSeen");
+    expect(modelMacAt(timeModel, 0) == "00:00:00:00:00:03", "Last seen sort should use raw chronological values");
+    timeModel.applyAssetDto(assetDto("00:00:00:00:00:02", "300.0", "900.0"));
+    expect(modelMacAt(timeModel, 0) == "00:00:00:00:00:02", "Active last seen sort should reorder updated assets");
+    timeModel.applyAssetDto(assetDto("00:00:00:00:00:04", "500.0", "950.0"));
+    expect(modelMacAt(timeModel, 0) == "00:00:00:00:00:04", "Active last seen sort should include inserted assets in order");
+    expect(timeModel.rowForMac("00:00:00:00:00:02") >= 0, "AssetModel should find selected assets by MAC after sorting");
+}
+
 void testUiNativeRunValidation()
 {
     QSettings("PNAD", "PNAD Desktop").clear();
     asset_discovery::gui::CaptureController controller;
     controller.setSqlitePath("test_gui_validation.db");
     const std::string testPcap = "test_gui_validation.pcap";
+    const std::string testPcapng = "test_gui_validation.pcapng";
     {
         std::ofstream file(testPcap, std::ios::binary);
         file.write("\xd4\xc3\xb2\xa1\x02\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x00\x00\x01\x00\x00\x00", 24);
+    }
+    {
+        std::ofstream file(testPcapng, std::ios::binary);
+        file.write("\x0a\x0d\x0d\x0a\x1c\x00\x00\x00\x4d\x3c\x2b\x1a\x01\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff\x1c\x00\x00\x00\x01\x00\x00\x00\x14\x00\x00\x00\x01\x00\x00\x00\xff\xff\x00\x00\x14\x00\x00\x00", 48);
     }
 
     controller.setPcapPath("");
@@ -198,12 +264,16 @@ void testUiNativeRunValidation()
     controller.setPcapPath(QString::fromStdString(testPcap));
     expectDebug(controller.validatePcapAnalysisRequest(), "PCAP Analysis validation should accept a selected PCAP file", controller.validationError().toStdString());
 
+    controller.setPcapPath(QString::fromStdString(testPcapng));
+    expectDebug(controller.validatePcapAnalysisRequest(), "PCAP Analysis validation should accept a selected PCAPNG file", controller.validationError().toStdString());
+
     controller.setPcapPath("");
     controller.setInterfaceName("test0");
     expectDebug(controller.validateLiveCaptureRequest(), "Live Capture config validation should not require a PCAP file", controller.validationError().toStdString());
 
     std::remove("test_gui_validation.db");
     std::remove(testPcap.c_str());
+    std::remove(testPcapng.c_str());
     std::remove(unsupportedFile.c_str());
 }
 
@@ -229,6 +299,33 @@ void testSharedConfigValidation()
 
     std::remove("test_gui_validation.db");
     std::remove(testPcap.c_str());
+}
+
+void testStoredSqlitePathSurvivesProjectDatabase()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    const std::string projectDb = "pnad.db";
+    const std::string storedDb = "test_gui_stored_settings.db";
+    std::remove(storedDb.c_str());
+
+    const bool projectDbAlreadyExisted = static_cast<bool>(std::ifstream(projectDb, std::ios::binary));
+    if (!projectDbAlreadyExisted) {
+        std::ofstream file(projectDb, std::ios::binary);
+        file << "placeholder";
+    }
+
+    QSettings settings("PNAD", "PNAD Desktop");
+    settings.setValue("sqlitePath", QString::fromStdString(storedDb));
+    settings.sync();
+
+    asset_discovery::gui::CaptureController controller;
+    expect(controller.sqlitePath().toStdString() == storedDb,
+        "Controller restart should keep the stored SQLite path even when project pnad.db exists");
+
+    if (!projectDbAlreadyExisted) {
+        std::remove(projectDb.c_str());
+    }
+    std::remove(storedDb.c_str());
 }
 
 void testPreferenceValidationAndRestore()
@@ -399,8 +496,10 @@ int main()
     QSettings("PNAD", "PNAD Desktop").clear();
 
     testCoreGuiModelsAndController();
+    testAssetModelSorting();
     testUiNativeRunValidation();
     testSharedConfigValidation();
+    testStoredSqlitePathSurvivesProjectDatabase();
     testPreferenceValidationAndRestore();
     testEmailAlertNotifier();
     testPcapAnalysisPersistsAssets();

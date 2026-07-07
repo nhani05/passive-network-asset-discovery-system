@@ -103,11 +103,6 @@ QString defaultGuiSqlitePath()
     return projectPath.isEmpty() ? appDataSqlitePath() : projectPath;
 }
 
-bool isAppDataSqlitePath(const QString& path)
-{
-    return QFileInfo(path).absoluteFilePath() == QFileInfo(appDataSqlitePath()).absoluteFilePath();
-}
-
 QString trimWhitespace(QString value)
 {
     return value.trimmed();
@@ -627,8 +622,7 @@ void CaptureController::loadSettingsFromDb()
     QSettings settings("PNAD", "PNAD Desktop");
     if (settings.contains("sqlitePath")) {
         const QString storedPath = settings.value("sqlitePath").toString();
-        const QString projectPath = projectSqlitePathIfPresent();
-        if (projectPath.isEmpty() || !isAppDataSqlitePath(storedPath)) {
+        if (!storedPath.trimmed().isEmpty()) {
             setSqlitePath(storedPath);
         }
     }
@@ -769,9 +763,9 @@ QString CaptureController::choosePcapFile()
 {
     return QFileDialog::getOpenFileName(
         nullptr,
-        "Select PCAP File for Analysis",
+        "Select PCAP or PCAPNG File for Analysis",
         pcapPath_.isEmpty() ? QDir::homePath() : pcapPath_,
-        "PCAP Files (*.pcap *.pcapng);;All Files (*)");
+        QString::fromLatin1(constants::capture::SupportedCaptureFileDialogFilter));
 }
 
 QString CaptureController::chooseExportFile(const QString& format)

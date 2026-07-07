@@ -180,6 +180,8 @@ void usageShowsSimplifiedForms()
     const auto usage = usageText("asset-discovery");
     expect(usage.find("--pcap <file> [--filter <bpf>]") != std::string::npos,
         "usage should show pcap-only form");
+    expect(usage.find(".pcap, .pcapng") != std::string::npos,
+        "usage should document supported capture file formats");
     expect(usage.find("--interface") == std::string::npos,
         "usage should not show live capture");
     expect(usage.find("--config") == std::string::npos,

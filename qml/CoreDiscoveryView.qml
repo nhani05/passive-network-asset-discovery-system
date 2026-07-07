@@ -33,6 +33,30 @@ Item {
         window.selectedAssetIdentity = selectedAsset.macAddress || "";
     }
 
+    function selectAssetByMac(macAddress) {
+        var row = assetModel.rowForMac(macAddress);
+        if (row >= 0) {
+            selectAsset(row);
+            return true;
+        }
+        return false;
+    }
+
+    function sortHeaderText(label, column) {
+        if (assetModel.sortColumn !== column) {
+            return label;
+        }
+        return label + (assetModel.sortAscending ? " ^" : " v");
+    }
+
+    function sortAssetsBy(column) {
+        var selectedMac = window.selectedAssetIdentity || "";
+        assetModel.sortByColumn(column);
+        if (selectedMac !== "") {
+            selectAssetByMac(selectedMac);
+        }
+    }
+
     function rowMatches(row) {
         var query = searchQuery.trim().toLowerCase();
         if (query === "") {
@@ -85,13 +109,18 @@ Item {
     Connections {
         target: assetModel
         function onAssetsChanged() {
+            var selectedMac = window.selectedAssetIdentity || "";
+            if (selectedMac !== "" && coreView.selectAssetByMac(selectedMac)) {
+                return;
+            }
             if (selectedRow >= 0 && selectedRow < assetModel.rowCount()) {
-                selectedAsset = assetModel.get(selectedRow);
+                coreView.selectAsset(selectedRow);
             } else if (assetModel.rowCount() > 0) {
-                selectAsset(0);
+                coreView.selectAsset(0);
             } else {
                 selectedRow = -1;
                 selectedAsset = ({});
+                window.selectedAssetIdentity = "";
             }
         }
     }
@@ -191,13 +220,13 @@ Item {
                     TextField {
                         text: captureController.pcapPath
                         enabled: modeCombo.currentIndex === 1 && !captureController.isRunning
-                        placeholderText: "PCAP file"
+                        placeholderText: "PCAP/PCAPNG file"
                         color: window.colorTextMain
                         Layout.fillWidth: true
                         onEditingFinished: captureController.pcapPath = text
                     }
                     Button {
-                        text: "PCAP..."
+                        text: "PCAP/NG..."
                         enabled: modeCombo.currentIndex === 1 && !captureController.isRunning
                         onClicked: choosePcap()
                     }
@@ -295,10 +324,49 @@ Item {
                             anchors.rightMargin: 10
                             spacing: 8
                             Text { text: "IP"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 150 }
-                            Text { text: "MAC"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 155 }
+                            Button {
+                                text: coreView.sortHeaderText("MAC", "macAddress")
+                                flat: true
+                                Layout.preferredWidth: 155
+                                Layout.fillHeight: true
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: assetModel.sortColumn === "macAddress" ? window.colorAccent : window.colorTextMain
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: coreView.sortAssetsBy("macAddress")
+                            }
                             Text { text: "Hostname"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 130 }
-                            Text { text: "First Seen"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 135 }
-                            Text { text: "Last Seen"; color: window.colorTextMain; font.bold: true; Layout.preferredWidth: 135 }
+                            Button {
+                                text: coreView.sortHeaderText("First Seen", "firstSeen")
+                                flat: true
+                                Layout.preferredWidth: 135
+                                Layout.fillHeight: true
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: assetModel.sortColumn === "firstSeen" ? window.colorAccent : window.colorTextMain
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: coreView.sortAssetsBy("firstSeen")
+                            }
+                            Button {
+                                text: coreView.sortHeaderText("Last Seen", "lastSeen")
+                                flat: true
+                                Layout.preferredWidth: 135
+                                Layout.fillHeight: true
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: assetModel.sortColumn === "lastSeen" ? window.colorAccent : window.colorTextMain
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: coreView.sortAssetsBy("lastSeen")
+                            }
                             Text { text: "Protocols"; color: window.colorTextMain; font.bold: true; Layout.fillWidth: true }
                         }
                     }

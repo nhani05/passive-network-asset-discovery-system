@@ -43,7 +43,7 @@ Item {
                         captureController.isLive = currentIndex === 0;
                     }
                     TabButton { text: "Live Capture" }
-                    TabButton { text: "PCAP File" }
+                    TabButton { text: "PCAP/PCAPNG" }
                 }
 
                 ColumnLayout {
@@ -117,11 +117,11 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        Text { text: "PCAP file"; color: window.colorTextMuted; Layout.preferredWidth: 92 }
+                        Text { text: "Capture file"; color: window.colorTextMuted; Layout.preferredWidth: 92 }
                         TextField {
                             text: captureController.pcapPath
                             enabled: !captureController.isRunning
-                            placeholderText: "PCAP file"
+                            placeholderText: "PCAP/PCAPNG file"
                             color: window.colorTextMain
                             Layout.fillWidth: true
                             onEditingFinished: captureController.pcapPath = text
@@ -130,6 +130,18 @@ Item {
                             text: "Browse"
                             enabled: !captureController.isRunning
                             onClicked: shell.choosePcap()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Text { text: "File types"; color: window.colorTextMuted; Layout.preferredWidth: 92 }
+                        Text {
+                            text: shell.supportedCaptureFiles
+                            color: window.colorTextMain
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                         }
                     }
 

@@ -15,6 +15,7 @@ Item {
     property int smokePageIndex: 0
     readonly property string fixedFilter: "arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353"
     readonly property string supportedProtocols: "ARP, DHCP, DNS, mDNS, LLMNR, NetBIOS, SSDP, TCP"
+    readonly property string supportedCaptureFiles: ".pcap, .pcapng"
 
     readonly property var pages: [
         { title: "Dashboard" },

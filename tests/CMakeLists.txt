@@ -175,6 +175,7 @@ add_test(NAME backend-service-tests COMMAND backend-service-tests)
 
 if(PCAP_FOUND)
     set(EMPTY_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcap")
+    set(EMPTY_PCAPNG_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcapng")
     add_custom_command(
         OUTPUT "${EMPTY_PCAP_PATH}"
         COMMAND "${CMAKE_COMMAND}"
@@ -183,8 +184,18 @@ if(PCAP_FOUND)
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEmptyPcap.cmake"
         VERBATIM
     )
+    add_custom_command(
+        OUTPUT "${EMPTY_PCAPNG_PATH}"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DOUTPUT_PATH=${EMPTY_PCAPNG_PATH}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEmptyPcapng.cmake"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEmptyPcapng.cmake"
+        VERBATIM
+    )
     add_custom_target(empty-pcap-fixture DEPENDS "${EMPTY_PCAP_PATH}")
+    add_custom_target(empty-pcapng-fixture DEPENDS "${EMPTY_PCAPNG_PATH}")
     add_dependencies(asset-discovery empty-pcap-fixture)
+    add_dependencies(asset-discovery empty-pcapng-fixture)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_FOUND)
@@ -258,6 +269,15 @@ if(PCAP_FOUND)
         COMMAND "${CMAKE_COMMAND}"
             "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
             "-DPCAP_PATH=${EMPTY_PCAP_PATH}"
+            "-DEXPECTED_OUTPUT=No assets discovered."
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectOutputContains.cmake"
+    )
+
+    add_test(
+        NAME asset-discovery-pcapng-empty-table
+        COMMAND "${CMAKE_COMMAND}"
+            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
+            "-DPCAP_PATH=${EMPTY_PCAPNG_PATH}"
             "-DEXPECTED_OUTPUT=No assets discovered."
             -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectOutputContains.cmake"
     )

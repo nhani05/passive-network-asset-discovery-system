@@ -360,16 +360,16 @@ int main(int argc, char** argv)
     }
 
     const auto& config = parsed.config;
-    try {
-        asset_discovery::storage::SQLiteWriter database(config.sqlitePath);
-        if (const auto error = database.clearApplicationData(); error.has_value()) {
-            std::cerr << "assetd: " << *error << '\n';
-            return 4;
-        }
-    } catch (const std::exception& error) {
-        std::cerr << "assetd: failed to initialize database: " << error.what() << '\n';
-        return 4;
-    }
+    // try {
+    //     asset_discovery::storage::SQLiteWriter database(config.sqlitePath);
+    //     if (const auto error = database.clearApplicationData(); error.has_value()) {
+    //         std::cerr << "assetd: " << *error << '\n';
+    //         return 4;
+    //     }
+    // } catch (const std::exception& error) {
+    //     std::cerr << "assetd: failed to initialize database: " << error.what() << '\n';
+    //     return 4;
+    // }
 
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "assetd backend service started.");
     asset_discovery::backend::logBackendMessage(config.runtimeLogPath, "status: healthy");

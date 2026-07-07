@@ -3,6 +3,8 @@
 #include "pnad/constants/CliConstants.hpp"
 
 #include <sqlite3.h>
+#include <algorithm>
+#include <QDateTime>
 #include <QDebug>
 #include <QFile>
 #include <QJsonArray>
@@ -14,6 +16,7 @@ namespace asset_discovery::gui {
 namespace {
 
 QString formatRelativeTime(const QString& timestampStr);
+qint64 parseTimestampSortValue(const QString& timestampStr);
 
 QStringList parseJsonStringArray(const char* jsonStr)
 {
@@ -54,10 +57,50 @@ AssetItem assetItemFromDto(const QVariantMap& dto)
     item.deviceType = dto.value("deviceType").toString();
     item.modelHint = dto.value("modelHint").toString();
 
-    item.firstSeen = formatRelativeTime(dto.value("firstSeen").toString());
-    item.lastSeen = formatRelativeTime(dto.value("lastSeen").toString());
+    const QString firstSeenRaw = dto.value("firstSeen").toString();
+    const QString lastSeenRaw = dto.value("lastSeen").toString();
+    item.firstSeenSortValue = parseTimestampSortValue(firstSeenRaw);
+    item.lastSeenSortValue = parseTimestampSortValue(lastSeenRaw);
+    item.firstSeen = formatRelativeTime(firstSeenRaw);
+    item.lastSeen = formatRelativeTime(lastSeenRaw);
     item.discoverySources = variantStringList(dto.value("discoverySources"));
     return item;
+}
+
+qint64 parseTimestampSortValue(const QString& timestampStr)
+{
+    const QString trimmed = timestampStr.trimmed();
+    if (trimmed.isEmpty()) {
+        return 0;
+    }
+
+    const qsizetype dot = trimmed.indexOf('.');
+    bool secondsOk = false;
+    const qint64 seconds = (dot >= 0 ? trimmed.left(dot) : trimmed).toLongLong(&secondsOk);
+    if (secondsOk) {
+        qint64 micros = 0;
+        if (dot >= 0) {
+            QString microText = trimmed.mid(dot + 1);
+            if (microText.size() > 6) {
+                microText = microText.left(6);
+            }
+            while (microText.size() < 6) {
+                microText.append('0');
+            }
+            bool microsOk = false;
+            micros = microText.toLongLong(&microsOk);
+            if (!microsOk) {
+                micros = 0;
+            }
+        }
+        return seconds * 1000000 + micros;
+    }
+
+    const auto formatted = QDateTime::fromString(trimmed, "yyyy-MM-dd HH:mm:ss");
+    if (formatted.isValid()) {
+        return formatted.toSecsSinceEpoch() * 1000000;
+    }
+    return 0;
 }
 
 QString formatRelativeTime(const QString& timestampStr)
@@ -178,6 +221,26 @@ QHash<int, QByteArray> AssetModel::roleNames() const
     return roles;
 }
 
+QString AssetModel::sortColumn() const
+{
+    switch (sortColumn_) {
+    case SortColumn::Mac:
+        return "macAddress";
+    case SortColumn::FirstSeen:
+        return "firstSeen";
+    case SortColumn::LastSeen:
+        return "lastSeen";
+    case SortColumn::None:
+        return "";
+    }
+    return "";
+}
+
+bool AssetModel::sortAscending() const
+{
+    return sortAscending_;
+}
+
 void AssetModel::reloadFromDatabase(const QString& dbPath)
 {
     sqlite3* db = nullptr;
@@ -217,6 +280,8 @@ void AssetModel::reloadFromDatabase(const QString& dbPath)
 
         const QString firstSeenRaw = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)));
         const QString lastSeenRaw = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
+        item.firstSeenSortValue = parseTimestampSortValue(firstSeenRaw);
+        item.lastSeenSortValue = parseTimestampSortValue(lastSeenRaw);
         item.firstSeen = formatRelativeTime(firstSeenRaw);
         item.lastSeen = formatRelativeTime(lastSeenRaw);
         item.discoverySources = parseJsonStringArray(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10)));
@@ -227,6 +292,7 @@ void AssetModel::reloadFromDatabase(const QString& dbPath)
     sqlite3_finalize(stmt);
     sqlite3_close(db);
 
+    sortAssets(newAssets);
     beginResetModel();
     assets_ = std::move(newAssets);
     endResetModel();
@@ -241,6 +307,7 @@ void AssetModel::loadAssetDtos(const QVariantList& assets)
         nextAssets.push_back(assetItemFromDto(asset.toMap()));
     }
 
+    sortAssets(nextAssets);
     beginResetModel();
     assets_ = std::move(nextAssets);
     endResetModel();
@@ -253,6 +320,11 @@ void AssetModel::applyAssetDto(const QVariantMap& asset)
     const auto normalizedMac = item.macAddress.toLower();
     for (int row = 0; row < assets_.size(); ++row) {
         if (assets_[row].macAddress.toLower() == normalizedMac) {
+            if (sortColumn_ != SortColumn::None) {
+                assets_[row] = item;
+                applyCurrentSort();
+                return;
+            }
             assets_[row] = item;
             const auto idx = index(row, 0);
             emit dataChanged(idx, idx);
@@ -264,7 +336,48 @@ void AssetModel::applyAssetDto(const QVariantMap& asset)
     beginInsertRows(QModelIndex(), assets_.size(), assets_.size());
     assets_.push_back(item);
     endInsertRows();
+    if (sortColumn_ != SortColumn::None) {
+        applyCurrentSort();
+        return;
+    }
     emit assetsChanged();
+}
+
+void AssetModel::sortByColumn(const QString& column)
+{
+    const QString normalized = column.trimmed();
+    SortColumn nextColumn = SortColumn::None;
+    if (normalized == "macAddress" || normalized == "mac") {
+        nextColumn = SortColumn::Mac;
+    } else if (normalized == "firstSeen" || normalized == "first_seen") {
+        nextColumn = SortColumn::FirstSeen;
+    } else if (normalized == "lastSeen" || normalized == "last_seen") {
+        nextColumn = SortColumn::LastSeen;
+    } else {
+        return;
+    }
+
+    if (nextColumn == SortColumn::Mac) {
+        sortAscending_ = true;
+    } else if (sortColumn_ == nextColumn) {
+        sortAscending_ = !sortAscending_;
+    } else {
+        sortAscending_ = false;
+    }
+    sortColumn_ = nextColumn;
+    emit sortChanged();
+    applyCurrentSort();
+}
+
+int AssetModel::rowForMac(const QString& macAddress) const
+{
+    const QString normalizedMac = macAddress.toLower();
+    for (int row = 0; row < assets_.size(); ++row) {
+        if (assets_[row].macAddress.toLower() == normalizedMac) {
+            return row;
+        }
+    }
+    return -1;
 }
 
 QVariantMap AssetModel::get(int row) const
@@ -318,6 +431,51 @@ bool AssetModel::exportToFile(const QString& path, const QString& format) const
                << asset.modelHint << " | " << asset.discoverySources.join(", ") << "\n";
     }
     return true;
+}
+
+void AssetModel::sortAssets(QVector<AssetItem>& assets) const
+{
+    if (sortColumn_ == SortColumn::None) {
+        return;
+    }
+
+    const auto compareText = [](const QString& left, const QString& right) {
+        return QString::compare(left, right, Qt::CaseInsensitive) < 0;
+    };
+    const bool ascending = sortAscending_;
+    const SortColumn column = sortColumn_;
+
+    std::stable_sort(assets.begin(), assets.end(), [&](const AssetItem& left, const AssetItem& right) {
+        switch (column) {
+        case SortColumn::Mac:
+            return compareText(left.macAddress, right.macAddress);
+        case SortColumn::FirstSeen:
+            if (left.firstSeenSortValue == right.firstSeenSortValue) {
+                return compareText(left.macAddress, right.macAddress);
+            }
+            return ascending
+                ? left.firstSeenSortValue < right.firstSeenSortValue
+                : left.firstSeenSortValue > right.firstSeenSortValue;
+        case SortColumn::LastSeen:
+            if (left.lastSeenSortValue == right.lastSeenSortValue) {
+                return compareText(left.macAddress, right.macAddress);
+            }
+            return ascending
+                ? left.lastSeenSortValue < right.lastSeenSortValue
+                : left.lastSeenSortValue > right.lastSeenSortValue;
+        case SortColumn::None:
+            return false;
+        }
+        return false;
+    });
+}
+
+void AssetModel::applyCurrentSort()
+{
+    beginResetModel();
+    sortAssets(assets_);
+    endResetModel();
+    emit assetsChanged();
 }
 
 } // namespace asset_discovery::gui

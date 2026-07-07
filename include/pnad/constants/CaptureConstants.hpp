@@ -13,6 +13,8 @@ inline constexpr const char* LinkTypeEthernetName = "ethernet";
 inline constexpr const char* LinkTypeUnknownName = "unknown";
 inline constexpr const char* PcapFileExtension = "pcap";
 inline constexpr const char* PcapNgFileExtension = "pcapng";
+inline constexpr const char* SupportedCaptureFileExtensions = ".pcap, .pcapng";
+inline constexpr const char* SupportedCaptureFileDialogFilter = "PCAP/PCAPNG Files (*.pcap *.pcapng);;All Files (*)";
 
 inline constexpr int LiveSnapLength = 65535;
 inline constexpr int LivePromiscuousMode = 1;
