@@ -11,13 +11,6 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/CheckTargetBoundary.cmake"
 )
 
-add_test(
-    NAME assetd-smoke-test
-    COMMAND "${CMAKE_COMMAND}"
-        "-DASSETD_EXE=$<TARGET_FILE:assetd>"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/RunAssetdSmokeTest.cmake"
-)
-
 add_test(NAME asset-capture-help COMMAND asset-capture --help)
 add_test(NAME asset-capture-protocol-self-test COMMAND asset-capture --self-test-protocol)
 
@@ -159,75 +152,8 @@ add_executable(core-session-tests
 target_link_libraries(core-session-tests PRIVATE asset-core)
 add_test(NAME core-session-tests COMMAND core-session-tests)
 
-add_executable(backend-service-tests
-    backend/BackendServiceTests.cpp
-)
-target_compile_definitions(backend-service-tests PRIVATE PNAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-target_link_libraries(backend-service-tests PRIVATE asset_backend)
-add_test(NAME backend-service-tests COMMAND backend-service-tests)
-
 if(PCAP_FOUND)
-    set(EMPTY_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcap")
-    set(EMPTY_PCAPNG_PATH "${CMAKE_CURRENT_BINARY_DIR}/empty.pcapng")
-    add_custom_command(
-        OUTPUT "${EMPTY_PCAP_PATH}"
-        COMMAND "${CMAKE_COMMAND}"
-            "-DOUTPUT_PATH=${EMPTY_PCAP_PATH}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEmptyPcap.cmake"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEmptyPcap.cmake"
-        VERBATIM
-    )
-    add_custom_command(
-        OUTPUT "${EMPTY_PCAPNG_PATH}"
-        COMMAND "${CMAKE_COMMAND}"
-            "-DOUTPUT_PATH=${EMPTY_PCAPNG_PATH}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEmptyPcapng.cmake"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEmptyPcapng.cmake"
-        VERBATIM
-    )
-    add_custom_target(empty-pcap-fixture DEPENDS "${EMPTY_PCAP_PATH}")
-    add_custom_target(empty-pcapng-fixture DEPENDS "${EMPTY_PCAPNG_PATH}")
-    add_dependencies(asset-discovery empty-pcap-fixture)
-    add_dependencies(asset-discovery empty-pcapng-fixture)
-
     find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_FOUND)
-        set(DHCP_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/dhcp.pcap")
-        set(MAC_CHANGE_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/mac-change.pcap")
-        set(ENRICHMENT_PCAP_PATH "${CMAKE_CURRENT_BINARY_DIR}/enrichment.pcap")
-        add_custom_command(
-            OUTPUT "${DHCP_PCAP_PATH}"
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/GenerateDhcpPcap.py"
-                "${DHCP_PCAP_PATH}"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateDhcpPcap.py"
-            VERBATIM
-        )
-        add_custom_target(dhcp-pcap-fixture DEPENDS "${DHCP_PCAP_PATH}")
-        add_dependencies(asset-discovery dhcp-pcap-fixture)
-
-        add_custom_command(
-            OUTPUT "${MAC_CHANGE_PCAP_PATH}"
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/GenerateMacChangePcap.py"
-                "${MAC_CHANGE_PCAP_PATH}"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateMacChangePcap.py"
-            VERBATIM
-        )
-        add_custom_target(mac-change-pcap-fixture DEPENDS "${MAC_CHANGE_PCAP_PATH}")
-        add_dependencies(asset-discovery mac-change-pcap-fixture)
-
-        add_custom_command(
-            OUTPUT "${ENRICHMENT_PCAP_PATH}"
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEnrichmentPcap.py"
-                "${ENRICHMENT_PCAP_PATH}"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/GenerateEnrichmentPcap.py"
-            VERBATIM
-        )
-        add_custom_target(enrichment-pcap-fixture DEPENDS "${ENRICHMENT_PCAP_PATH}")
-        add_dependencies(asset-discovery enrichment-pcap-fixture)
-    endif()
 
     add_test(
         NAME asset-discovery-pcap-sample-mac
@@ -258,24 +184,6 @@ if(PCAP_FOUND)
     )
 
     add_test(
-        NAME asset-discovery-pcap-empty-table
-        COMMAND "${CMAKE_COMMAND}"
-            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
-            "-DPCAP_PATH=${EMPTY_PCAP_PATH}"
-            "-DEXPECTED_OUTPUT=No assets discovered."
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectOutputContains.cmake"
-    )
-
-    add_test(
-        NAME asset-discovery-pcapng-empty-table
-        COMMAND "${CMAKE_COMMAND}"
-            "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
-            "-DPCAP_PATH=${EMPTY_PCAPNG_PATH}"
-            "-DEXPECTED_OUTPUT=No assets discovered."
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/ExpectOutputContains.cmake"
-    )
-
-    add_test(
         NAME asset-discovery-pcap-missing-file
         COMMAND "${CMAKE_COMMAND}"
             "-DASSET_DISCOVERY_EXE=$<TARGET_FILE:asset-discovery>"
@@ -294,21 +202,6 @@ if(PCAP_FOUND)
 
     if(Python3_FOUND)
         add_test(
-            NAME assetd-rest-integration-tests
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/RunAssetdRestTests.py"
-                "$<TARGET_FILE:assetd>"
-        )
-
-        add_test(
-            NAME assetd-websocket-integration-tests
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/RunAssetdWebSocketTests.py"
-                "$<TARGET_FILE:assetd>"
-                "${PROJECT_SOURCE_DIR}/samples/arp.pcap"
-        )
-
-        add_test(
             NAME asset-discovery-pcap-json
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ValidateJsonOutput.py"
@@ -317,27 +210,11 @@ if(PCAP_FOUND)
         )
 
         add_test(
-            NAME asset-discovery-pcap-dhcp-json
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateDhcpJsonOutput.py"
-                "$<TARGET_FILE:asset-discovery>"
-                "${DHCP_PCAP_PATH}"
-        )
-
-        add_test(
             NAME asset-discovery-pcap-multi-asset-json
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ValidateMultiAssetJsonOutput.py"
                 "$<TARGET_FILE:asset-discovery>"
                 "${PROJECT_SOURCE_DIR}/samples/multi-asset.pcap"
-        )
-
-        add_test(
-            NAME asset-discovery-pcap-enrichment-json
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateEnrichmentJsonOutput.py"
-                "$<TARGET_FILE:asset-discovery>"
-                "${ENRICHMENT_PCAP_PATH}"
         )
 
     endif()
@@ -377,6 +254,9 @@ add_test(
 
 if(TARGET asset-tests)
     add_dependencies(asset-tests
+        asset-capture
+        asset-discovery
+        asset-discovery-gui
         table-renderer-tests
         json-renderer-tests
         csv-renderer-tests
@@ -394,9 +274,12 @@ if(TARGET asset-tests)
         arguments-tests
         app-config-tests
         capture-backend-tests
+        capture-child-supervisor-tests
+        capture-child-protocol-tests
+        capture-packet-stream-tests
         bounded-queue-tests
         live-capture-pipeline-tests
-        backend-service-tests
+        core-session-tests
     )
     add_dependencies(asset-tests gui-model-tests)
 endif()

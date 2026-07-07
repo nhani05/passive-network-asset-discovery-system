@@ -6,7 +6,6 @@
 #include "pnad/capture/PacketCapture.hpp"
 #include "pnad/storage/SQLiteWriter.hpp"
 #include "pnad/gui/DesktopRunConfig.hpp"
-#include "pnad/constants/BackendConstants.hpp"
 #include "pnad/constants/CaptureConstants.hpp"
 #include "pnad/constants/CliConstants.hpp"
 #include "pnad/constants/ConfigConstants.hpp"
@@ -260,7 +259,7 @@ void CaptureController::loadDefaults()
     lastError_ = "";
     validationError_ = "";
     recentFailureSummary_ = "";
-    runtimeLogPath_ = QString::fromLatin1(constants::backend::DefaultRuntimeLogPath);
+    runtimeLogPath_ = QString::fromLatin1(constants::gui::DefaultRuntimeLogPath);
     emailAlertsEnabled_ = envBool("PNAD_EMAIL_ALERTS_ENABLED", false);
     emailSmtpHost_ = envValue("PNAD_EMAIL_SMTP_HOST");
     emailSmtpPort_ = envInt("PNAD_EMAIL_SMTP_PORT", 587);
