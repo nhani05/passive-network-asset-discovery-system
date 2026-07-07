@@ -2,7 +2,7 @@
 
 Passive Network Asset Discovery System (PNAD) là ứng dụng phát hiện tài sản mạng thụ động. Dự án đọc lưu lượng từ file PCAP/PCAPNG hoặc phiên capture trong GUI, phân tích các gói tin quan trọng và tạo inventory thiết bị trong mạng.
 
-PNAD tập trung vào luồng sử dụng chính: phát hiện thiết bị, xem thông tin asset, lưu dữ liệu cục bộ và xuất báo cáo. README này mô tả bản hiện tại của dự án và là tài liệu chính thức để build, chạy, test và đóng gói.
+PNAD tập trung vào luồng sử dụng chính: phát hiện thiết bị, xem thông tin asset, lưu dữ liệu cục bộ, xuất báo cáo và cung cấp backend service để tích hợp dashboard hoặc automation. README này mô tả bản hiện tại của dự án và là tài liệu chính thức để build, chạy, test và đóng gói.
 
 ## Tính Năng
 
@@ -20,7 +20,9 @@ arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353
 - Xuất inventory dạng `table`, `json` hoặc `csv`.
 - Lưu inventory vào SQLite.
 - Email alert trong GUI qua cấu hình môi trường `.env`.
+- Backend service `assetd` có REST API, WebSocket event stream, trạng thái capture, metrics và truy vấn dữ liệu SQLite.
 - Docker PCAP demo chạy bằng fixture có sẵn, không cần quyền live capture.
+- Docker service profile cho `assetd`.
 - Bộ test CTest cho core, parser, capture, discovery, storage, GUI model và smoke test.
 
 ## Thành Phần Chính
@@ -29,6 +31,7 @@ arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353
 | --- | --- |
 | `asset-discovery` | CLI phân tích PCAP/PCAPNG và in inventory. |
 | `asset-discovery-gui` | Ứng dụng desktop chính. |
+| `assetd` | Backend service cung cấp REST/WebSocket API và điều khiển capture. |
 | `asset-capture` | Capture helper dùng bởi pipeline capture. |
 | `asset-core` | Core library dùng chung cho CLI, GUI và test. |
 
@@ -38,6 +41,7 @@ arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353
 | --- | --- |
 | `include/pnad/` | Header C++ theo module. |
 | `src/app/` | Pipeline capture cấp ứng dụng. |
+| `src/backend/` | HTTP backend, REST API, query service, capture service và event stream. |
 | `src/capture/` | PCAP/live capture, network interface và capture child process. |
 | `src/cli/` | Parse tham số CLI. |
 | `src/config/` | Runtime config và default config. |
@@ -118,6 +122,65 @@ Nếu live capture trên Linux thiếu quyền, cấp capability cho binary:
 ```sh
 sudo setcap cap_net_raw,cap_net_admin=eip build/asset-discovery-gui
 ```
+
+## Chạy Backend Service
+
+`assetd` là backend HTTP đơn giản cho các workflow cần truy vấn asset/event/log, xem metrics và điều khiển capture bằng API.
+
+Xem help:
+
+```sh
+./build/assetd --help
+```
+
+Chạy service với PCAP fixture:
+
+```sh
+./build/assetd \
+  --serve \
+  --listen-address 127.0.0.1 \
+  --port 8080 \
+  --sqlite pnad.db \
+  --pcap samples/multi-asset.pcap
+```
+
+Chạy service ở live capture mode:
+
+```sh
+./build/assetd \
+  --serve \
+  --capture-mode live \
+  --interface eth0 \
+  --sqlite pnad.db
+```
+
+Endpoint chính:
+
+| Endpoint | Mục đích |
+| --- | --- |
+| `GET /api/v1/status` | Trạng thái service và capture. |
+| `GET /api/v1/assets` | Danh sách asset trong SQLite. |
+| `GET /api/v1/events?limit=100` | Danh sách event gần nhất. |
+| `GET /api/v1/logs?limit=100` | Runtime log gần nhất. |
+| `GET /api/v1/metrics` | Số asset, event và lần start/stop capture. |
+| `POST /api/v1/capture/start` | Start capture theo config hiện tại. |
+| `POST /api/v1/capture/stop` | Stop capture. |
+| `POST /api/v1/capture/restart` | Restart capture. |
+| `GET /ws/events` | WebSocket stream cho domain events. |
+
+Tùy chọn `assetd`:
+
+| Tùy chọn | Mô tả |
+| --- | --- |
+| `--listen-address <address>` | Địa chỉ bind REST/WebSocket. Mặc định `127.0.0.1`. |
+| `--port <port>` | Port REST/WebSocket. Mặc định `8080`. |
+| `--sqlite <path>` | SQLite database path. Mặc định `pnad.db`. |
+| `--capture-mode <live\|pcap>` | Capture mode cho service request. |
+| `--interface <name>` | Network interface cho live capture. |
+| `--pcap <path>` | PCAP/PCAPNG cho offline analysis. Tự đặt mode thành `pcap`. |
+| `--filter <bpf>` | BPF capture filter. |
+| `--runtime-log <path>` | Runtime log path. Mặc định `logs/pnad-runtime.log`. |
+| `--serve` | Chạy HTTP service loop. |
 
 ## Chạy CLI
 
@@ -216,6 +279,18 @@ docker compose up --build pcap-demo
 ```
 
 Demo build image, mount `samples/` read-only, phân tích `samples/multi-asset.pcap`, ghi SQLite vào Docker volume và in inventory dạng bảng.
+
+Chạy backend service bằng Docker Compose profile:
+
+```sh
+docker compose --profile service up --build assetd
+```
+
+Mặc định service bind container port `8080` ra host port `8080`. Có thể đổi host port bằng `ASSETD_HOST_PORT`:
+
+```sh
+ASSETD_HOST_PORT=18080 docker compose --profile service up --build assetd
+```
 
 Build image thủ công:
 
