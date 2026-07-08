@@ -1,23 +1,111 @@
+x-pnad-runtime-build: &pnad-runtime-build
+  context: .
+  target: runtime
+  args:
+    PNAD_UID: ${PNAD_UID:-1000}
+    PNAD_GID: ${PNAD_GID:-1000}
+
+x-pnad-runtime-image: &pnad-runtime-image
+  image: ${IMAGE_NAME:-passive-asset-discovery}
+  build: *pnad-runtime-build
+
+x-pnad-gui-environment: &pnad-gui-environment
+  DISPLAY: ${DISPLAY:-:0}
+  PNAD_GUI_SQLITE_PATH: /data/pnad.db
+  PNAD_GUI_PCAP_PATH: /samples/multi-asset.pcap
+  PNAD_GUI_EXPORT_DIR: /out
+  PNAD_DOCKER_RUNTIME: "1"
+  PNAD_EMAIL_ALERTS_ENABLED: ${PNAD_EMAIL_ALERTS_ENABLED:-false}
+  PNAD_EMAIL_SMTP_HOST: ${PNAD_EMAIL_SMTP_HOST:-}
+  PNAD_EMAIL_SMTP_PORT: ${PNAD_EMAIL_SMTP_PORT:-587}
+  PNAD_EMAIL_TLS_MODE: ${PNAD_EMAIL_TLS_MODE:-starttls}
+  PNAD_EMAIL_USERNAME: ${PNAD_EMAIL_USERNAME:-}
+  PNAD_EMAIL_PASSWORD_ENV: ${PNAD_EMAIL_PASSWORD_ENV:-PNAD_SMTP_PASSWORD}
+  PNAD_EMAIL_PASSWORD: ${PNAD_EMAIL_PASSWORD:-}
+  PNAD_SMTP_PASSWORD: ${PNAD_SMTP_PASSWORD:-}
+  PNAD_EMAIL_FROM: ${PNAD_EMAIL_FROM:-}
+  PNAD_EMAIL_RECIPIENTS: ${PNAD_EMAIL_RECIPIENTS:-}
+  QT_X11_NO_MITSHM: "1"
+  QT_QUICK_BACKEND: software
+  LIBGL_ALWAYS_SOFTWARE: "1"
+
+x-pnad-gui-volumes: &pnad-gui-volumes
+  - /tmp/.X11-unix:/tmp/.X11-unix:rw
+  - ./samples:/samples:ro
+  - ./data:/data
+  - ./out:/out
+
+x-pnad-gui-common: &pnad-gui-common
+  <<: *pnad-runtime-image
+  environment: *pnad-gui-environment
+  volumes: *pnad-gui-volumes
+  restart: "no"
+
 services:
-  pcap-demo:
-    image: ${IMAGE_NAME:-passive-asset-discovery}
-    build: .
-    restart: "no"
+  pnad-gui:
+    <<: *pnad-gui-common
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+
+  pnad-gui-live:
+    <<: *pnad-gui-common
     environment:
-      SQLITE_DATABASE_PATH: /work/data/pnad.db
-    volumes:
-      - ./samples:/samples:ro
-      - pcap-demo-data:/work/data
+      <<: *pnad-gui-environment
+      PNAD_ENABLE_LIVE_CAPTURE: "1"
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+  debug-cli:
+    <<: *pnad-runtime-image
+    profiles:
+      - debug
     entrypoint:
-      - /bin/sh
-      - -c
+      - asset-discovery
+    user: "${PNAD_UID:-1000}:${PNAD_GID:-1000}"
     command:
-      - |
-        asset-discovery --pcap /samples/multi-asset.pcap --sqlite /work/data/pnad.db --output table
+      - --help
+    restart: "no"
 
-networks:
-  default:
-    name: asset-net
+  backend-status:
+    <<: *pnad-runtime-image
+    profiles:
+      - debug
+    entrypoint:
+      - asset-capture
+    user: "${PNAD_UID:-1000}:${PNAD_GID:-1000}"
+    command:
+      - --backend-status
+    restart: "no"
 
-volumes:
-  pcap-demo-data:
+  backend-status-live:
+    <<: *pnad-gui-common
+    profiles:
+      - debug
+    environment:
+      <<: *pnad-gui-environment
+      PNAD_ENABLE_LIVE_CAPTURE: "1"
+      PNAD_ENTRYPOINT_TARGET: /usr/local/bin/asset-capture
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    command:
+      - --backend-status
+    restart: "no"
+
+  test:
+    image: ${IMAGE_NAME:-passive-asset-discovery-test}
+    build:
+      context: .
+      target: test
+    profiles:
+      - test
+    command:
+      - ctest
+      - --test-dir
+      - /src/build
+      - --output-on-failure
+    restart: "no"

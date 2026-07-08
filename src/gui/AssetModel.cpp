@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <QDateTime>
 #include <QDebug>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -390,8 +392,21 @@ QVariantMap AssetModel::get(int row) const
 
 bool AssetModel::exportToFile(const QString& path, const QString& format) const
 {
+    const QFileInfo fileInfo(path);
+    const QDir parentDir(fileInfo.absoluteDir());
+    if (!parentDir.exists() && !QDir().mkpath(parentDir.absolutePath())) {
+        qWarning() << "Failed to create export directory:" << parentDir.absolutePath();
+        return false;
+    }
+    const QFileInfo parentInfo(parentDir.absolutePath());
+    if (!parentInfo.exists() || !parentInfo.isDir() || !parentInfo.isWritable()) {
+        qWarning() << "Export directory is not writable:" << parentDir.absolutePath();
+        return false;
+    }
+
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        qWarning() << "Failed to open export file:" << path << file.errorString();
         return false;
     }
 
@@ -401,8 +416,7 @@ bool AssetModel::exportToFile(const QString& path, const QString& format) const
         for (const auto& asset : assets_) {
             rows.push_back(assetToJson(asset));
         }
-        file.write(QJsonDocument(rows).toJson(QJsonDocument::Indented));
-        return true;
+        return file.write(QJsonDocument(rows).toJson(QJsonDocument::Indented)) >= 0;
     }
 
     QTextStream stream(&file);
@@ -421,7 +435,7 @@ bool AssetModel::exportToFile(const QString& path, const QString& format) const
                    << csvCell(asset.lastSeen) << ","
                    << csvCell(asset.discoverySources.join("; ")) << "\n";
         }
-        return true;
+        return stream.status() == QTextStream::Ok;
     }
 
     for (const auto& asset : assets_) {
@@ -430,7 +444,7 @@ bool AssetModel::exportToFile(const QString& path, const QString& format) const
                << asset.osHint << " | " << asset.deviceType << " | "
                << asset.modelHint << " | " << asset.discoverySources.join(", ") << "\n";
     }
-    return true;
+    return stream.status() == QTextStream::Ok;
 }
 
 void AssetModel::sortAssets(QVector<AssetItem>& assets) const

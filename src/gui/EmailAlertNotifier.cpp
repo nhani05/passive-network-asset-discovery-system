@@ -189,9 +189,11 @@ std::optional<QString> EmailAlertNotifier::validateSettings(const EmailAlertSett
         return "Email alerts require at least one recipient.";
     }
     if (!trimValue(settings.username).isEmpty()
-        && trimValue(settings.passwordEnvVar).isEmpty()
         && trimValue(settings.passwordValue).isEmpty()) {
-        return "Email alerts require PNAD_EMAIL_PASSWORD or a password environment variable when SMTP username is set.";
+        const QString passwordHint = trimValue(settings.passwordEnvVar).isEmpty()
+            ? QString("PNAD_EMAIL_PASSWORD")
+            : QString("PNAD_EMAIL_PASSWORD or ") + trimValue(settings.passwordEnvVar);
+        return "Email alerts require " + passwordHint + " when SMTP username is set.";
     }
     return std::nullopt;
 }

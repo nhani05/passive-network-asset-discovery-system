@@ -10,10 +10,13 @@ namespace {
 
 using asset_discovery::capture::CaptureBackendSelection;
 using asset_discovery::capture::NetworkInterfaceInfo;
+using asset_discovery::capture::PacketCapturePermissionState;
 using asset_discovery::capture::captureBackendSelectionName;
 using asset_discovery::capture::createCaptureBackend;
 using asset_discovery::capture::listNetworkInterfaces;
+using asset_discovery::capture::packetCapturePermissionStateName;
 using asset_discovery::capture::parseCaptureBackendSelection;
+using asset_discovery::capture::probePacketCapturePermission;
 using asset_discovery::capture::sortNetworkInterfacesForDisplay;
 
 int failures = 0;
@@ -45,6 +48,20 @@ void autoSelectionReportsRequest()
     } else {
         expect(result.error.has_value(), "auto factory should report an error when no backend exists");
     }
+}
+
+void formatsPermissionStates()
+{
+    expect(packetCapturePermissionStateName(PacketCapturePermissionState::Allowed) == "allowed",
+        "allowed raw socket permission state should format");
+    expect(packetCapturePermissionStateName(PacketCapturePermissionState::Denied) == "denied",
+        "denied raw socket permission state should format");
+    expect(packetCapturePermissionStateName(PacketCapturePermissionState::Unavailable) == "unavailable",
+        "unavailable raw socket permission state should format");
+
+    const auto permission = probePacketCapturePermission();
+    expect(!packetCapturePermissionStateName(permission.state).empty(),
+        "raw socket permission probe should return a named state");
 }
 
 void interfaceSortingPrefersUsablePhysicalAdapters()
@@ -94,6 +111,7 @@ int main()
 {
     parsesBackendNames();
     autoSelectionReportsRequest();
+    formatsPermissionStates();
     interfaceSortingPrefersUsablePhysicalAdapters();
     enumeratesInterfacesWithStableShape();
 

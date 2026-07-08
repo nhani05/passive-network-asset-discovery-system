@@ -64,3 +64,9 @@ venv/
 *.tmp
 *.temp
 ~$*
+
+project-vdt.md
+data/
+out/
+
+docs/

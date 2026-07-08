@@ -101,6 +101,7 @@ asset_discovery::gui::EmailAlertSettings validEmailSettings()
     settings.tlsMode = asset_discovery::gui::EmailTlsMode::StartTls;
     settings.username = "pnad";
     settings.passwordEnvVar = "PNAD_SMTP_PASSWORD";
+    settings.passwordValue = "app-password";
     settings.senderAddress = "pnad@example.com";
     settings.recipients = QStringList({"admin@example.com"});
     return settings;
@@ -178,9 +179,13 @@ void testCoreGuiModelsAndController()
     expect(assetModel.get(0).value("macAddress").toString() == "00:11:22:33:44:55", "Asset get should expose current row");
     expect(assetModel.exportToFile("test_assets_export.csv", "csv"), "Asset export should write CSV");
     expect(fileContains("test_assets_export.csv", "ip,mac,hostname,display_name,vendor,os_hint,device_type,model_hint,first_seen,last_seen,protocols"), "Asset CSV export should include core asset fields");
+    expect(assetModel.exportToFile("test_assets_export_dir/assets.json", "json"), "Asset export should create missing parent directories");
+    expect(fileContains("test_assets_export_dir/assets.json", "00:11:22:33:44:55"), "Asset JSON export should contain model assets");
     expect(!assetModel.exportToFile("/proc/test_assets_export.csv", "csv"), "Asset export should report write failures");
 
     std::remove("test_assets_export.csv");
+    std::remove("test_assets_export_dir/assets.json");
+    std::remove("test_assets_export_dir");
     std::remove(testDb.c_str());
 }
 
@@ -328,6 +333,42 @@ void testStoredSqlitePathSurvivesProjectDatabase()
     std::remove(storedDb.c_str());
 }
 
+void testContainerGuiDefaultsFromEnvironment()
+{
+    QSettings("PNAD", "PNAD Desktop").clear();
+    QSettings settings("PNAD", "PNAD Desktop");
+    settings.setValue("sqlitePath", "old-local.db");
+    settings.setValue("pcapPath", "old-local.pcap");
+    settings.sync();
+
+    qputenv("PNAD_GUI_SQLITE_PATH", "test_container_data/pnad.db");
+    qputenv("PNAD_GUI_PCAP_PATH", "/samples/multi-asset.pcap");
+    qputenv("PNAD_GUI_EXPORT_DIR", "/out");
+    qputenv("PNAD_DOCKER_RUNTIME", "1");
+
+    asset_discovery::gui::CaptureController controller;
+    expect(controller.sqlitePath().toStdString() == "test_container_data/pnad.db",
+        "GUI SQLite path should use PNAD_GUI_SQLITE_PATH when configured even if a local path was saved");
+    expect(controller.pcapPath().toStdString() == "/samples/multi-asset.pcap",
+        "GUI PCAP path should use PNAD_GUI_PCAP_PATH when configured even if a local path was saved");
+
+    controller.setSqlitePath("user-selected.db");
+    controller.setPcapPath("user-selected.pcap");
+    expect(controller.sqlitePath().toStdString() == "user-selected.db",
+        "User-selected SQLite path should override the environment default during the session");
+    expect(controller.pcapPath().toStdString() == "user-selected.pcap",
+        "User-selected PCAP path should override the environment default during the session");
+
+    qunsetenv("PNAD_GUI_SQLITE_PATH");
+    qunsetenv("PNAD_GUI_PCAP_PATH");
+    qunsetenv("PNAD_GUI_EXPORT_DIR");
+    qunsetenv("PNAD_DOCKER_RUNTIME");
+    std::remove("test_container_data/pnad.db");
+    std::remove("test_container_data/pnad.db-shm");
+    std::remove("test_container_data/pnad.db-wal");
+    std::remove("test_container_data");
+}
+
 void testPreferenceValidationAndRestore()
 {
     QSettings("PNAD", "PNAD Desktop").clear();
@@ -340,6 +381,7 @@ void testPreferenceValidationAndRestore()
     qputenv("PNAD_EMAIL_TLS_MODE", "starttls");
     qputenv("PNAD_EMAIL_USERNAME", "pnad");
     qputenv("PNAD_EMAIL_PASSWORD_ENV", "PNAD_SMTP_PASSWORD");
+    qputenv("PNAD_SMTP_PASSWORD", "app-password");
     qputenv("PNAD_EMAIL_FROM", "pnad@example.com");
 
     asset_discovery::gui::CaptureController controller;
@@ -365,10 +407,21 @@ void testPreferenceValidationAndRestore()
     controller.setCaptureBackend("");
     expect(controller.captureBackend().toStdString() == "auto", "Empty backend preferences should fall back to auto");
 
-    controller.setSqlitePath("/proc/pnad.db");
+    controller.setSqlitePath("/dev/null/pnad.db");
     expectDebug(!controller.validatePreferences(), "Preferences should reject unwritable local database paths", controller.validationError().toStdString());
-    expect(controller.validationError().toStdString().find("writable local database") != std::string::npos,
+    expect(controller.validationError().toStdString().find("database folder") != std::string::npos,
         "Invalid database validation should explain writable storage");
+
+    qunsetenv("PNAD_SMTP_PASSWORD");
+    qunsetenv("PNAD_EMAIL_PASSWORD");
+    asset_discovery::gui::CaptureController missingPasswordController;
+    missingPasswordController.setSqlitePath(QString::fromStdString(testDb));
+    missingPasswordController.setEmailRecipients("admin@example.com");
+    expectDebug(!missingPasswordController.validatePreferences(),
+        "Email preferences should reject an SMTP username without a configured password",
+        missingPasswordController.validationError().toStdString());
+    expect(missingPasswordController.validationError().toStdString().find("PASSWORD") != std::string::npos,
+        "Missing SMTP password validation should explain password configuration");
 
     qunsetenv("PNAD_EMAIL_ALERTS_ENABLED");
     qunsetenv("PNAD_EMAIL_SMTP_HOST");
@@ -376,6 +429,8 @@ void testPreferenceValidationAndRestore()
     qunsetenv("PNAD_EMAIL_TLS_MODE");
     qunsetenv("PNAD_EMAIL_USERNAME");
     qunsetenv("PNAD_EMAIL_PASSWORD_ENV");
+    qunsetenv("PNAD_SMTP_PASSWORD");
+    qunsetenv("PNAD_EMAIL_PASSWORD");
     qunsetenv("PNAD_EMAIL_FROM");
 
     std::remove(testDb.c_str());
@@ -392,6 +447,11 @@ void testEmailAlertNotifier()
     EmailAlertSettings invalid;
     invalid.enabled = true;
     expect(EmailAlertNotifier::validateSettings(invalid).has_value(), "Enabled email alerts should require delivery settings");
+
+    auto missingPassword = validEmailSettings();
+    missingPassword.passwordValue.clear();
+    expect(EmailAlertNotifier::validateSettings(missingPassword).has_value(),
+        "SMTP username should require a resolved password value during validation");
 
     const auto event = sampleNewAssetEvent();
     auto settings = validEmailSettings();
@@ -487,6 +547,65 @@ void testInterfaceModel()
     }
 }
 
+void testInterfaceReadinessHelpers()
+{
+    using asset_discovery::capture::NetworkInterfaceInfo;
+
+    NetworkInterfaceInfo ready;
+    ready.systemName = "wlp3s0";
+    ready.displayName = "wlp3s0";
+    ready.isUp = true;
+    ready.isRunning = true;
+    ready.pcapAvailable = true;
+    ready.captureAllowed = true;
+    ready.addresses.push_back({"192.168.1.20", 24, false});
+
+    NetworkInterfaceInfo denied;
+    denied.systemName = "enp9s0";
+    denied.displayName = "enp9s0";
+    denied.isUp = true;
+    denied.isRunning = true;
+    denied.pcapAvailable = true;
+    denied.captureAllowed = false;
+    denied.permissionDiagnostic = "Live Capture requires packet capture permission before use.";
+
+    NetworkInterfaceInfo loopback;
+    loopback.systemName = "lo";
+    loopback.displayName = "lo";
+    loopback.isUp = true;
+    loopback.isRunning = true;
+    loopback.isLoopback = true;
+    loopback.pcapAvailable = true;
+    loopback.captureAllowed = false;
+
+    asset_discovery::gui::InterfaceModel model;
+    model.setInterfacesForTesting({loopback, denied, ready});
+
+    expect(model.rowCount() == 3, "Interface readiness test model should contain fake interfaces");
+    expect(model.firstCaptureAllowedRow() == 0, "Interface model should prefer the capture-ready interface after sorting");
+    expect(model.preferredSystemName("", false) == "wlp3s0",
+        "Interface model should auto-select the first capture-ready interface when nothing is selected");
+    expect(model.preferredSystemName("enp9s0", false) == "wlp3s0",
+        "Interface model should replace an unusable saved interface when auto-selecting");
+    expect(model.preferredSystemName("enp9s0", true) == "enp9s0",
+        "Interface model should preserve a manual interface selection");
+
+    const auto readyRow = model.get(0);
+    expect(readyRow.value("displayLabel").toString().contains("ready"),
+        "Interface display label should include readiness");
+    expect(readyRow.value("readiness").toString() == "ready",
+        "Interface readiness role should expose ready state");
+    expect(readyRow.value("readinessDiagnostic").toString().contains("ready"),
+        "Ready interface diagnostic should be positive");
+
+    const int deniedRowIndex = model.findBySystemName("enp9s0");
+    const auto deniedRow = model.get(deniedRowIndex);
+    expect(deniedRow.value("readiness").toString() == "permission required",
+        "Denied interface readiness should explain permission requirement");
+    expect(deniedRow.value("readinessDiagnostic").toString().contains("permission"),
+        "Denied interface diagnostic should include permission guidance");
+}
+
 } // namespace
 
 int main()
@@ -500,10 +619,12 @@ int main()
     testUiNativeRunValidation();
     testSharedConfigValidation();
     testStoredSqlitePathSurvivesProjectDatabase();
+    testContainerGuiDefaultsFromEnvironment();
     testPreferenceValidationAndRestore();
     testEmailAlertNotifier();
     testPcapAnalysisPersistsAssets();
     testInterfaceModel();
+    testInterfaceReadinessHelpers();
 
     if (failures > 0) {
         std::cerr << failures << " GUI Model test expectation(s) failed\n";

@@ -293,7 +293,7 @@ void testClearApplicationData()
 
 void testSQLiteWriterUnwritablePath()
 {
-    std::string unwritablePath = "/nonexistent_folder_abc_123/pnad.db";
+    std::string unwritablePath = "/dev/null/pnad.db";
     bool threwException = false;
     try {
         SQLiteWriter writer(unwritablePath);

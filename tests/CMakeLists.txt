@@ -12,6 +12,8 @@ add_test(
 )
 
 add_test(NAME asset-capture-help COMMAND asset-capture --help)
+add_test(NAME asset-capture-backend-status COMMAND asset-capture --backend-status)
+set_tests_properties(asset-capture-backend-status PROPERTIES PASS_REGULAR_EXPRESSION "raw_socket_permission=")
 add_test(NAME asset-capture-protocol-self-test COMMAND asset-capture --self-test-protocol)
 
 add_executable(table-renderer-tests
