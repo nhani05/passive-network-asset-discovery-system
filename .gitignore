@@ -5,8 +5,8 @@ Desktop.ini
 
 docs/*
 !docs/sprints/
-!docs/design-spec/
 !docs/demo/
+!docs/bao-cao.md
 !docs/bao-cao/
 !docs/bao-cao/**
 !docs/build-deploy-demo-guide.md
@@ -70,5 +70,3 @@ venv/
 project-vdt.md
 data/
 out/
-
-docs/

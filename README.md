@@ -57,7 +57,16 @@ arp or udp port 67 or udp port 68 or udp port 1900 or udp port 5353
 | `src/storage/` | SQLite writer và schema migration. |
 | `tests/` | Unit, integration và smoke tests theo module. |
 | `samples/` | PCAP/PCAPNG fixture dùng cho demo và test. |
-| `docs/design-spec/` | Sơ đồ và mô tả kiến trúc. |
+| `docs/bao-cao.md` | Báo cáo chi tiết 7 chương, gồm cơ sở lý thuyết, yêu cầu, thiết kế, triển khai, kiểm thử và kết luận. |
+
+## Tài Liệu
+
+| Tài liệu | Nội dung |
+| --- | --- |
+| `README.md` | Hướng dẫn build, chạy CLI/GUI, Docker, config, test và troubleshooting. |
+| `docs/bao-cao.md` | Báo cáo tổng hợp duy nhất của đề tài, thay cho các file chương rời và tài liệu thiết kế rời. |
+| `samples/README.md` | Danh sách fixture PCAP/PCAPNG và lệnh chạy mẫu. |
+| `.env.example` | Template cấu hình SQLite, Docker GUI defaults và email alert. |
 
 ## Yêu Cầu Hệ Thống
 
