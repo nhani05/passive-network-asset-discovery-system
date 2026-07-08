@@ -6,7 +6,6 @@
 #include "pnad/capture/PacketCapture.hpp"
 #include "pnad/storage/SQLiteWriter.hpp"
 #include "pnad/gui/DesktopRunConfig.hpp"
-#include "pnad/constants/BackendConstants.hpp"
 #include "pnad/constants/CaptureConstants.hpp"
 #include "pnad/constants/CliConstants.hpp"
 #include "pnad/constants/ConfigConstants.hpp"
@@ -27,6 +26,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <chrono>
+#include <initializer_list>
 #include <memory>
 #include <set>
 #include <unistd.h>
@@ -91,21 +91,48 @@ QString appDataSqlitePath()
     return QDir(dataDir).filePath(QString::fromLatin1(constants::config::DefaultSqlitePath));
 }
 
-QString projectSqlitePathIfPresent()
+QString envValue(const char* key, const QString& fallback = {})
 {
-    const QFileInfo candidate(QDir::current().filePath(QString::fromLatin1(constants::config::DefaultSqlitePath)));
-    return candidate.exists() ? candidate.absoluteFilePath() : QString();
+    const QByteArray value = qgetenv(key);
+    return value.isEmpty() ? fallback : QString::fromLocal8Bit(value);
+}
+
+bool hasConfiguredEnvValue(const char* key)
+{
+    return !envValue(key).trimmed().isEmpty();
+}
+
+QString firstConfiguredPath(std::initializer_list<const char*> keys)
+{
+    for (const char* key : keys) {
+        const QString value = envValue(key).trimmed();
+        if (!value.isEmpty()) {
+            return value;
+        }
+    }
+    return {};
+}
+
+QString localGuiSqlitePath()
+{
+    const QString dataDir = QDir::current().filePath(QString::fromLatin1(constants::config::DefaultGuiDataDirectory));
+    if (!QDir().mkpath(dataDir)) {
+        return appDataSqlitePath();
+    }
+    return QDir(dataDir).filePath(QString::fromLatin1(constants::config::DefaultSqlitePath));
 }
 
 QString defaultGuiSqlitePath()
 {
-    const QString projectPath = projectSqlitePathIfPresent();
-    return projectPath.isEmpty() ? appDataSqlitePath() : projectPath;
-}
+    const QString configuredPath = firstConfiguredPath({
+        constants::config::GuiSqliteDatabasePathEnv,
+        constants::config::SqliteDatabasePathEnv
+    });
+    if (!configuredPath.isEmpty()) {
+        return configuredPath;
+    }
 
-bool isAppDataSqlitePath(const QString& path)
-{
-    return QFileInfo(path).absoluteFilePath() == QFileInfo(appDataSqlitePath()).absoluteFilePath();
+    return localGuiSqlitePath();
 }
 
 QString trimWhitespace(QString value)
@@ -161,12 +188,6 @@ void loadGuiDotEnvFile()
     }
 }
 
-QString envValue(const char* key, const QString& fallback = {})
-{
-    const QByteArray value = qgetenv(key);
-    return value.isEmpty() ? fallback : QString::fromLocal8Bit(value);
-}
-
 bool envBool(const char* key, bool fallback = false)
 {
     const QString value = envValue(key).trimmed().toLower();
@@ -181,6 +202,43 @@ int envInt(const char* key, int fallback)
     bool ok = false;
     const int value = envValue(key).toInt(&ok);
     return ok ? value : fallback;
+}
+
+bool isDockerRuntime()
+{
+    return envBool(constants::config::GuiDockerRuntimeEnv, false)
+        || QFileInfo("/.dockerenv").exists();
+}
+
+QString liveCapturePermissionFixText()
+{
+    if (isDockerRuntime()) {
+        return "Docker runtime requires host networking and NET_RAW/NET_ADMIN capabilities. "
+               "Rebuild and restart with: docker compose up --build pnad-gui-live";
+    }
+
+    return "Grant permission with:\nsudo setcap cap_net_raw,cap_net_admin=eip "
+        + QString::fromStdString(getExecutablePath());
+}
+
+QString defaultGuiExportDirectory()
+{
+    const QString configured = envValue(constants::config::GuiExportDirectoryEnv).trimmed();
+    if (!configured.isEmpty()) {
+        return QDir(configured).absolutePath();
+    }
+
+    const QString localOut = QDir::current().filePath(QString::fromLatin1(constants::config::DefaultGuiExportDirectory));
+    if (QDir().mkpath(localOut)) {
+        return QDir(localOut).absolutePath();
+    }
+
+    QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (!documents.isEmpty()) {
+        return documents;
+    }
+
+    return QDir::homePath();
 }
 
 QStringList toStringList(const std::set<std::string>& values)
@@ -198,13 +256,14 @@ QVariantMap assetToDto(const asset::Asset& asset)
     dto.insert("macAddress", QString::fromStdString(asset.macAddress));
     dto.insert("ipAddresses", toStringList(asset.ipAddresses));
     dto.insert("hostname", asset.hostname.has_value() ? QString::fromStdString(*asset.hostname) : QString());
+    dto.insert("displayName", asset.displayName.has_value() ? QString::fromStdString(*asset.displayName) : QString());
+    dto.insert("vendor", asset.vendor.has_value() ? QString::fromStdString(*asset.vendor) : QString());
+    dto.insert("osHint", asset.osHint.has_value() ? QString::fromStdString(*asset.osHint) : QString());
+    dto.insert("deviceType", asset.deviceType.has_value() ? QString::fromStdString(*asset.deviceType) : QString());
+    dto.insert("modelHint", asset.modelHint.has_value() ? QString::fromStdString(*asset.modelHint) : QString());
     dto.insert("firstSeen", QString::fromStdString(asset::formatTimestamp(asset.firstSeen)));
     dto.insert("lastSeen", QString::fromStdString(asset::formatTimestamp(asset.lastSeen)));
     dto.insert("discoverySources", toStringList(asset.sources));
-    dto.insert("vendor", "Unknown");
-    dto.insert("deviceType", "Unknown");
-    dto.insert("os", "Unknown");
-    dto.insert("rawObservedMetadata", QString::fromStdString(mapToJson(asset.metadata)));
     dto.insert("risk", "Normal");
     return dto;
 }
@@ -250,7 +309,7 @@ void CaptureController::setPacketFilter(const QString&)
 void CaptureController::loadDefaults()
 {
     interfaceName_ = "";
-    pcapPath_ = "";
+    pcapPath_ = envValue(constants::config::GuiPcapPathEnv).trimmed();
     configPath_ = "";
     profileName_ = "";
     packetFilter_ = QString::fromLatin1(constants::capture::DefaultPacketFilter);
@@ -264,7 +323,7 @@ void CaptureController::loadDefaults()
     lastError_ = "";
     validationError_ = "";
     recentFailureSummary_ = "";
-    runtimeLogPath_ = QString::fromLatin1(constants::backend::DefaultRuntimeLogPath);
+    runtimeLogPath_ = QString::fromLatin1(constants::gui::DefaultRuntimeLogPath);
     emailAlertsEnabled_ = envBool("PNAD_EMAIL_ALERTS_ENABLED", false);
     emailSmtpHost_ = envValue("PNAD_EMAIL_SMTP_HOST");
     emailSmtpPort_ = envInt("PNAD_EMAIL_SMTP_PORT", 587);
@@ -542,10 +601,12 @@ void CaptureController::runCaptureWorker()
                        errStr.find("CAP_NET_RAW") != std::string::npos ||
                        errStr.find("socket:") != std::string::npos ||
                        errStr.find("pcap_activate") != std::string::npos)) {
-            if (geteuid() != 0) {
-                std::string exePath = getExecutablePath();
-                diagnosticStr = "Capture permission denied. Grant capabilities with:\n"
-                                "sudo setcap cap_net_raw,cap_net_admin=eip " + exePath;
+            if (isDockerRuntime()) {
+                diagnosticStr = "Capture permission denied. "
+                    + liveCapturePermissionFixText().toStdString();
+            } else if (geteuid() != 0) {
+                diagnosticStr = "Capture permission denied. "
+                    + liveCapturePermissionFixText().toStdString();
             }
         }
 
@@ -623,18 +684,20 @@ void CaptureController::saveSettingsToDb()
 
 void CaptureController::loadSettingsFromDb()
 {
+    const bool sqlitePathPinnedByEnv = hasConfiguredEnvValue(constants::config::GuiSqliteDatabasePathEnv);
+    const bool pcapPathPinnedByEnv = hasConfiguredEnvValue(constants::config::GuiPcapPathEnv);
+
     QSettings settings("PNAD", "PNAD Desktop");
-    if (settings.contains("sqlitePath")) {
+    if (!sqlitePathPinnedByEnv && settings.contains("sqlitePath")) {
         const QString storedPath = settings.value("sqlitePath").toString();
-        const QString projectPath = projectSqlitePathIfPresent();
-        if (projectPath.isEmpty() || !isAppDataSqlitePath(storedPath)) {
+        if (!storedPath.trimmed().isEmpty()) {
             setSqlitePath(storedPath);
         }
     }
     if (settings.contains("interfaceName")) {
         setInterfaceName(settings.value("interfaceName").toString());
     }
-    if (settings.contains("pcapPath")) {
+    if (!pcapPathPinnedByEnv && settings.contains("pcapPath")) {
         setPcapPath(settings.value("pcapPath").toString());
     }
     if (settings.contains("configPath")) {
@@ -665,13 +728,13 @@ void CaptureController::loadSettingsFromDb()
         storage::SQLiteWriter writer(dbPath);
 
         std::string val;
-        if (!writer.getSetting("sqlitePath", val).has_value()) {
+        if (!sqlitePathPinnedByEnv && !writer.getSetting("sqlitePath", val).has_value()) {
             setSqlitePath(QString::fromStdString(val));
         }
         if (!writer.getSetting("interfaceName", val).has_value()) {
             setInterfaceName(QString::fromStdString(val));
         }
-        if (!writer.getSetting("pcapPath", val).has_value()) {
+        if (!pcapPathPinnedByEnv && !writer.getSetting("pcapPath", val).has_value()) {
             setPcapPath(QString::fromStdString(val));
         }
         if (!writer.getSetting("configPath", val).has_value()) {
@@ -768,9 +831,9 @@ QString CaptureController::choosePcapFile()
 {
     return QFileDialog::getOpenFileName(
         nullptr,
-        "Select PCAP File for Analysis",
+        "Select PCAP or PCAPNG File for Analysis",
         pcapPath_.isEmpty() ? QDir::homePath() : pcapPath_,
-        "PCAP Files (*.pcap *.pcapng);;All Files (*)");
+        QString::fromLatin1(constants::capture::SupportedCaptureFileDialogFilter));
 }
 
 QString CaptureController::chooseExportFile(const QString& format)
@@ -779,9 +842,17 @@ QString CaptureController::chooseExportFile(const QString& format)
     const bool csv = normalized == QString::fromLatin1(constants::cli::OutputCsv);
     const QString extension = csv ? ".csv" : ".json";
     const QString filter = csv ? "CSV Files (*.csv);;All Files (*)" : "JSON Files (*.json);;All Files (*)";
-    QString directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    if (directory.isEmpty()) {
-        directory = QDir::homePath();
+    const QString directory = defaultGuiExportDirectory();
+    if (!QDir().mkpath(directory)) {
+        setValidationError("Choose a writable export folder.");
+        recordRuntimeFailure("Export failed: could not create " + directory);
+        return {};
+    }
+    const QFileInfo directoryInfo(directory);
+    if (!directoryInfo.exists() || !directoryInfo.isDir() || !directoryInfo.isWritable()) {
+        setValidationError("Choose a writable export folder.");
+        recordRuntimeFailure("Export failed: folder is not writable: " + directory);
+        return {};
     }
 
     QString path = QFileDialog::getSaveFileName(
@@ -840,6 +911,10 @@ EmailAlertSettings CaptureController::currentEmailAlertSettings() const
     settings.username = emailUsername_.trimmed();
     settings.passwordEnvVar = emailPasswordEnvVar_.trimmed();
     settings.passwordValue = envValue("PNAD_EMAIL_PASSWORD").trimmed();
+    if (settings.passwordValue.isEmpty() && !settings.passwordEnvVar.isEmpty()) {
+        const QByteArray passwordEnvName = settings.passwordEnvVar.toLocal8Bit();
+        settings.passwordValue = envValue(passwordEnvName.constData()).trimmed();
+    }
     settings.senderAddress = emailSenderAddress_.trimmed();
     settings.recipients = splitEmailRecipients(emailRecipients_);
     return settings;
@@ -927,8 +1002,7 @@ bool CaptureController::validateLiveCapturePermission()
     const QString diagnostic = selected->permissionDiagnostic.empty()
         ? QString("Live Capture requires packet capture permission before use.")
         : QString::fromStdString(selected->permissionDiagnostic);
-    const QString fix = "Grant permission with:\nsudo setcap cap_net_raw,cap_net_admin=eip "
-        + QString::fromStdString(getExecutablePath());
+    const QString fix = liveCapturePermissionFixText();
 
     setValidationError(diagnostic);
     recordRuntimeFailure(diagnostic + "\n\n" + fix);

@@ -130,38 +130,6 @@ std::string numericAddress(const sockaddr* address)
 }
 #endif
 
-struct CapturePermissionProbe {
-    bool allowed = false;
-    std::string diagnostic;
-};
-
-CapturePermissionProbe probePacketCapturePermission()
-{
-#if defined(__linux__)
-    const int socketFd = ::socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-    if (socketFd >= 0) {
-        ::close(socketFd);
-        return {true, {}};
-    }
-
-    const int error = errno;
-    if (error == EPERM || error == EACCES) {
-        return {
-            false,
-            "Live Capture requires packet capture permission before use. "
-            "Grant CAP_NET_RAW/CAP_NET_ADMIN to the PNAD application binary."
-        };
-    }
-
-    return {
-        false,
-        std::string("could not verify packet capture permission: ") + std::strerror(error)
-    };
-#else
-    return {true, {}};
-#endif
-}
-
 void applyBackendDiagnostics(NetworkInterfaceInfo& interfaceInfo)
 {
     const PcapCaptureBackend pcapBackend;
@@ -173,7 +141,7 @@ void applyBackendDiagnostics(NetworkInterfaceInfo& interfaceInfo)
     interfaceInfo.captureAllowed = interfaceInfo.isUp
         && !interfaceInfo.isLoopback
         && interfaceInfo.pcapAvailable
-        && permission.allowed;
+        && permission.allowed();
 
     if (!interfaceInfo.isUp) {
         interfaceInfo.permissionDiagnostic = "interface is down";
@@ -185,12 +153,54 @@ void applyBackendDiagnostics(NetworkInterfaceInfo& interfaceInfo)
         } else {
             interfaceInfo.permissionDiagnostic = "no live capture backend is available";
         }
-    } else if (!permission.allowed) {
+    } else if (!permission.allowed()) {
         interfaceInfo.permissionDiagnostic = permission.diagnostic;
     }
 }
 
 } // namespace
+
+std::string packetCapturePermissionStateName(PacketCapturePermissionState state)
+{
+    switch (state) {
+    case PacketCapturePermissionState::Allowed:
+        return "allowed";
+    case PacketCapturePermissionState::Denied:
+        return "denied";
+    case PacketCapturePermissionState::Unavailable:
+        return "unavailable";
+    }
+    return "unavailable";
+}
+
+PacketCapturePermission probePacketCapturePermission()
+{
+#if defined(__linux__)
+    const int socketFd = ::socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    if (socketFd >= 0) {
+        ::close(socketFd);
+        return {PacketCapturePermissionState::Allowed, {}};
+    }
+
+    const int error = errno;
+    if (error == EPERM || error == EACCES) {
+        return {
+            PacketCapturePermissionState::Denied,
+            "Live Capture requires packet capture permission before use."
+        };
+    }
+
+    return {
+        PacketCapturePermissionState::Unavailable,
+        std::string("could not verify packet capture permission: ") + std::strerror(error)
+    };
+#else
+    return {
+        PacketCapturePermissionState::Unavailable,
+        "raw packet socket permission is only available on Linux"
+    };
+#endif
+}
 
 int networkInterfaceDisplayPriority(const NetworkInterfaceInfo& interfaceInfo)
 {

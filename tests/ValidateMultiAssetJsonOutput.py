@@ -67,11 +67,13 @@ def main() -> int:
         "02:42:ac:11:00:03": {
             "ip_addresses": ["192.168.1.20"],
             "hostname": "laptop-user",
+            "display_name": "laptop-user",
             "discovery_sources": ["arp", "dhcp"],
         },
         "02:42:ac:11:00:04": {
             "ip_addresses": ["192.168.1.30"],
             "hostname": "camera-01",
+            "display_name": "camera-01",
             "discovery_sources": ["dhcp"],
         },
     }
@@ -86,6 +88,10 @@ def main() -> int:
         for key in ("first_seen", "last_seen"):
             if not isinstance(asset.get(key), str) or not asset[key]:
                 print(f"expected non-empty string field {key}, got {asset.get(key)!r}", file=sys.stderr)
+                return 1
+        for key in ("display_name", "vendor", "os_hint", "device_type", "model_hint"):
+            if key not in asset:
+                print(f"expected summary field {key} on {mac_address}", file=sys.stderr)
                 return 1
 
     return 0

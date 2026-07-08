@@ -10,8 +10,10 @@ docs/*
 !docs/bao-cao/
 !docs/bao-cao/**
 !docs/build-deploy-demo-guide.md
+!docs/desktop-user-guide.md
 !docs/final-submission-checklist.md
 openspec/
+
 # Editor and IDE files
 .vscode/
 .idea/
@@ -19,28 +21,40 @@ openspec/
 *.swo
 .codex/
 .agents/
-.codex/
 .github/
+
 # Environment and secrets
 .env
 .env.*
 !.env.example
 
 # Logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Generated sample captures
-samples/generated-*.pcap
+# Runtime databases and local exports
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.csv
+assets.json
+assets.csv
+pnad.db
+live-capture-test.db
 
 # Dependencies and build output
 node_modules/
 dist/
 build*/
 coverage/
+release/
+CMakeUserPresets.json
+compile_commands.json
 
 # Python cache and virtual environments
 __pycache__/
@@ -53,5 +67,8 @@ venv/
 *.temp
 ~$*
 
-pnad.db 
-*.db
+project-vdt.md
+data/
+out/
+
+docs/

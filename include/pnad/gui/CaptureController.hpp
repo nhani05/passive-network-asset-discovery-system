@@ -1,10 +1,10 @@
 #pragma once
 
 #include "pnad/config/AppConfig.hpp"
-#include "pnad/constants/BackendConstants.hpp"
 #include "pnad/constants/CaptureConstants.hpp"
 #include "pnad/constants/CliConstants.hpp"
 #include "pnad/constants/ConfigConstants.hpp"
+#include "pnad/constants/GuiConstants.hpp"
 #include "pnad/gui/EmailAlertNotifier.hpp"
 #include "pnad/gui/DesktopRunConfig.hpp"
 
@@ -178,7 +178,7 @@ private:
     QString lastError_;
     QString validationError_;
     QString recentFailureSummary_;
-    QString runtimeLogPath_ = QString::fromLatin1(constants::backend::DefaultRuntimeLogPath);
+    QString runtimeLogPath_ = QString::fromLatin1(constants::gui::DefaultRuntimeLogPath);
     bool emailAlertsEnabled_ = false;
     QString emailSmtpHost_;
     int emailSmtpPort_ = 587;

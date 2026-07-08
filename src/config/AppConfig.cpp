@@ -246,6 +246,9 @@ ConfigPatch patchFromCliOptions(const cli::Options& options)
     ConfigPatch patch;
     patch.pcapPath = options.pcapPath;
     patch.packetFilter = options.packetFilter;
+    if (options.broadIpv4Enrichment && !patch.packetFilter.has_value()) {
+        patch.packetFilter = constants::capture::BroadIpv4EnrichmentPacketFilter;
+    }
     if (options.outputFormatProvided) {
         patch.outputFormat = options.outputFormat;
     }

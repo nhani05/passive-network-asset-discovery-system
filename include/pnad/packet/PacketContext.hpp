@@ -21,6 +21,7 @@ inline constexpr std::size_t udpHeaderLength = 8;
 struct Ipv4Packet {
     std::string sourceIp;
     std::string destinationIp;
+    std::uint8_t ttl = 0;
     std::uint8_t protocol = 0;
     std::size_t headerLength = 0;
     std::uint16_t totalLength = 0;

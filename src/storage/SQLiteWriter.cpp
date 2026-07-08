@@ -1,6 +1,5 @@
 #include "pnad/storage/SQLiteWriter.hpp"
 #include "pnad/error/AppError.hpp"
-#include "pnad/discovery/JsonRenderer.hpp"
 
 #include <filesystem>
 #include <chrono>
@@ -109,12 +108,14 @@ std::optional<std::string> SQLiteWriter::initializeDatabase()
             "    mac_address TEXT PRIMARY KEY,\n"
             "    ip_addresses TEXT NOT NULL DEFAULT '[]',\n"
             "    hostname TEXT,\n"
+            "    display_name TEXT,\n"
+            "    vendor TEXT,\n"
+            "    os_hint TEXT,\n"
+            "    device_type TEXT,\n"
+            "    model_hint TEXT,\n"
             "    first_seen TEXT NOT NULL,\n"
             "    last_seen TEXT NOT NULL,\n"
             "    discovery_sources TEXT NOT NULL DEFAULT '[]',\n"
-            "    observed_metadata TEXT NOT NULL DEFAULT '{}',\n"
-            "    reference_metadata TEXT NOT NULL DEFAULT '{}',\n"
-            "    derived_hints TEXT NOT NULL DEFAULT '[]',\n"
             "    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n"
             ");\n";
         rc = sqlite3_exec(db_, schemaSql, nullptr, nullptr, &zErrMsg);
@@ -204,6 +205,44 @@ std::optional<std::string> SQLiteWriter::initializeDatabase()
             return "Failed to set schema version to 4: " + err;
         }
         version = 4;
+    }
+
+    if (version < 5) {
+        const char* migrateAssetsSql =
+            "BEGIN TRANSACTION;\n"
+            "CREATE TABLE IF NOT EXISTS assets_new (\n"
+            "    mac_address TEXT PRIMARY KEY,\n"
+            "    ip_addresses TEXT NOT NULL DEFAULT '[]',\n"
+            "    hostname TEXT,\n"
+            "    display_name TEXT,\n"
+            "    vendor TEXT,\n"
+            "    os_hint TEXT,\n"
+            "    device_type TEXT,\n"
+            "    model_hint TEXT,\n"
+            "    first_seen TEXT NOT NULL,\n"
+            "    last_seen TEXT NOT NULL,\n"
+            "    discovery_sources TEXT NOT NULL DEFAULT '[]',\n"
+            "    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n"
+            ");\n"
+            "INSERT OR REPLACE INTO assets_new (\n"
+            "    mac_address, ip_addresses, hostname, display_name, vendor, os_hint, device_type, model_hint,\n"
+            "    first_seen, last_seen, discovery_sources, updated_at\n"
+            ")\n"
+            "SELECT mac_address, ip_addresses, hostname, hostname, NULL, NULL, NULL, NULL,\n"
+            "       first_seen, last_seen, discovery_sources, updated_at\n"
+            "FROM assets;\n"
+            "DROP TABLE assets;\n"
+            "ALTER TABLE assets_new RENAME TO assets;\n"
+            "PRAGMA user_version = 5;\n"
+            "COMMIT;\n";
+        rc = sqlite3_exec(db_, migrateAssetsSql, nullptr, nullptr, &zErrMsg);
+        if (rc != SQLITE_OK) {
+            std::string err = zErrMsg ? zErrMsg : "unknown error";
+            sqlite3_free(zErrMsg);
+            sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+            return "Failed to migrate assets schema to version 5: " + err;
+        }
+        version = 5;
     }
 
     return std::nullopt;
@@ -433,18 +472,20 @@ std::optional<std::string> SQLiteWriter::writeAssets(const std::vector<asset::As
     }
 
     const char* sql =
-        "INSERT INTO assets (mac_address, ip_addresses, hostname, first_seen, last_seen, "
-        "discovery_sources, observed_metadata, reference_metadata, derived_hints, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
+        "INSERT INTO assets (mac_address, ip_addresses, hostname, display_name, vendor, os_hint, device_type, "
+        "model_hint, first_seen, last_seen, discovery_sources, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
         "ON CONFLICT(mac_address) DO UPDATE SET "
         "ip_addresses = excluded.ip_addresses, "
         "hostname = COALESCE(excluded.hostname, assets.hostname), "
+        "display_name = COALESCE(excluded.display_name, assets.display_name), "
+        "vendor = COALESCE(excluded.vendor, assets.vendor), "
+        "os_hint = COALESCE(excluded.os_hint, assets.os_hint), "
+        "device_type = COALESCE(excluded.device_type, assets.device_type), "
+        "model_hint = COALESCE(excluded.model_hint, assets.model_hint), "
         "first_seen = CASE WHEN excluded.first_seen < assets.first_seen THEN excluded.first_seen ELSE assets.first_seen END, "
         "last_seen = CASE WHEN excluded.last_seen > assets.last_seen THEN excluded.last_seen ELSE assets.last_seen END, "
         "discovery_sources = excluded.discovery_sources, "
-        "observed_metadata = excluded.observed_metadata, "
-        "reference_metadata = excluded.reference_metadata, "
-        "derived_hints = excluded.derived_hints, "
         "updated_at = CURRENT_TIMESTAMP;";
 
     sqlite3_stmt* stmt = nullptr;
@@ -467,23 +508,44 @@ std::optional<std::string> SQLiteWriter::writeAssets(const std::vector<asset::As
             sqlite3_bind_null(stmt, 3);
         }
 
+        if (asset.displayName.has_value()) {
+            sqlite3_bind_text(stmt, 4, asset.displayName->c_str(), -1, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(stmt, 4);
+        }
+
+        if (asset.vendor.has_value()) {
+            sqlite3_bind_text(stmt, 5, asset.vendor->c_str(), -1, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(stmt, 5);
+        }
+
+        if (asset.osHint.has_value()) {
+            sqlite3_bind_text(stmt, 6, asset.osHint->c_str(), -1, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(stmt, 6);
+        }
+
+        if (asset.deviceType.has_value()) {
+            sqlite3_bind_text(stmt, 7, asset.deviceType->c_str(), -1, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(stmt, 7);
+        }
+
+        if (asset.modelHint.has_value()) {
+            sqlite3_bind_text(stmt, 8, asset.modelHint->c_str(), -1, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(stmt, 8);
+        }
+
         std::string firstSeenStr = asset::formatTimestamp(asset.firstSeen);
-        sqlite3_bind_text(stmt, 4, firstSeenStr.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 9, firstSeenStr.c_str(), -1, SQLITE_TRANSIENT);
 
         std::string lastSeenStr = asset::formatTimestamp(asset.lastSeen);
-        sqlite3_bind_text(stmt, 5, lastSeenStr.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 10, lastSeenStr.c_str(), -1, SQLITE_TRANSIENT);
 
         std::string sourcesJson = toJsonArray(asset.sources);
-        sqlite3_bind_text(stmt, 6, sourcesJson.c_str(), -1, SQLITE_TRANSIENT);
-
-        std::string observedJson = asset_discovery::output::renderObservedMetadataJson(asset.structuredMetadata);
-        sqlite3_bind_text(stmt, 7, observedJson.c_str(), -1, SQLITE_TRANSIENT);
-
-        std::string referenceJson = asset_discovery::output::renderReferenceMetadataJson(asset.structuredMetadata);
-        sqlite3_bind_text(stmt, 8, referenceJson.c_str(), -1, SQLITE_TRANSIENT);
-
-        std::string hintsJson = asset_discovery::output::renderDerivedHintsJson(asset.structuredMetadata);
-        sqlite3_bind_text(stmt, 9, hintsJson.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 11, sourcesJson.c_str(), -1, SQLITE_TRANSIENT);
 
         rc = sqlite3_step(stmt);
         if (rc != SQLITE_DONE) {

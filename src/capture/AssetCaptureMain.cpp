@@ -1,4 +1,5 @@
 #include "pnad/capture/PacketCapture.hpp"
+#include "pnad/capture/NetworkInterface.hpp"
 #include "pnad/capture/CaptureChildProtocol.hpp"
 #include "pnad/cli/Arguments.hpp"
 #include "pnad/constants/CliConstants.hpp"
@@ -33,21 +34,44 @@ std::string usageText(const std::string& executableName)
 
 int printBackendStatus()
 {
+    const auto permission = asset_discovery::capture::probePacketCapturePermission();
+    const auto interfaces = asset_discovery::capture::listNetworkInterfaces();
+    const auto captureReadyCount = std::count_if(
+        interfaces.begin(),
+        interfaces.end(),
+        [](const auto& interfaceInfo) {
+            return interfaceInfo.captureAllowed;
+        });
+
     auto result = asset_discovery::capture::createCaptureBackend(
         asset_discovery::capture::CaptureBackendSelection::Auto);
     if (result.error.has_value() || !result.backend) {
         std::cerr << "capture_backend_status available=false reason=\""
                   << result.error.value_or("capture backend could not be created")
-                  << "\"\n";
+                  << "\" raw_socket_permission="
+                  << asset_discovery::capture::packetCapturePermissionStateName(permission.state)
+                  << " visible_interfaces=" << interfaces.size()
+                  << " capture_allowed_interfaces=" << captureReadyCount;
+        if (!permission.diagnostic.empty()) {
+            std::cerr << " raw_socket_diagnostic=\"" << permission.diagnostic << "\"";
+        }
+        std::cerr << "\n";
         return 3;
     }
 
     const auto availability = result.backend->availability();
     std::cout << "capture_backend_status"
               << " backend=" << result.backend->backendName()
-              << " available=" << (availability.available ? "true" : "false");
+              << " available=" << (availability.available ? "true" : "false")
+              << " raw_socket_permission="
+              << asset_discovery::capture::packetCapturePermissionStateName(permission.state)
+              << " visible_interfaces=" << interfaces.size()
+              << " capture_allowed_interfaces=" << captureReadyCount;
     if (!availability.reason.empty()) {
         std::cout << " reason=\"" << availability.reason << "\"";
+    }
+    if (!permission.diagnostic.empty()) {
+        std::cout << " raw_socket_diagnostic=\"" << permission.diagnostic << "\"";
     }
     std::cout << "\n";
     return availability.available ? 0 : 3;

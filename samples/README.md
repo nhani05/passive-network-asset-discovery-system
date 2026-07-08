@@ -29,42 +29,10 @@ quá trình gom nhóm asset chính xác hơn:
   `laptop-user`.
 - MAC `02:42:ac:11:00:04` xuất hiện từ DHCP với hostname `camera-01`.
 
-Tạo lại fixture bằng lệnh:
-
-```bash
-python3 samples/GenerateMultiAssetPcap.py samples/multi-asset.pcap
-```
+Fixture này được commit sẵn trong `samples/`.
 
 Chạy thử:
 
 ```bash
 ./build/asset-discovery --pcap samples/multi-asset.pcap --output json
 ```
-
-## generated-5m-arp.pcap
-
-`GenerateLargePcap.py` tạo file Ethernet PCAP lớn bằng Python chuẩn, không cần
-Scapy hoặc libpcap. Mặc định script ghi 5.000.000 ARP request, khoảng 276,6 MiB,
-và xoay vòng 4.096 asset synthetic để kiểm thử throughput mà output không quá
-lớn.
-
-Tạo file 5 triệu packet:
-
-```bash
-python3 samples/GenerateLargePcap.py samples/generated-5m-arp.pcap
-```
-
-Tạo file nhỏ để kiểm tra nhanh:
-
-```bash
-python3 samples/GenerateLargePcap.py /tmp/generated-small.pcap --count 1000
-```
-
-Nếu cần mỗi packet dùng một MAC/IP khác nhau:
-
-```bash
-python3 samples/GenerateLargePcap.py samples/generated-5m-unique-arp.pcap \
-  --asset-count 5000000
-```
-
-Không commit các file PCAP lớn được generate từ script này.

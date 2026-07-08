@@ -14,53 +14,54 @@ target_include_directories(asset-shared INTERFACE include)
 add_library(asset_discovery_domain
     src/event/AssetEvent.cpp
     src/event/AssetEventDetector.cpp
-    src/discovery/AssetObservation.cpp
-    src/discovery/AssetStore.cpp
+    src/discovery/domain/AssetObservation.cpp
+    src/discovery/domain/AssetStore.cpp
 )
 
 target_include_directories(asset_discovery_domain PUBLIC include)
 add_library(asset_discovery_asset ALIAS asset_discovery_domain)
 
 add_library(asset_discovery_packet
-    src/packet/ArpPacket.cpp
-    src/packet/EthernetFrame.cpp
+    src/packet/primitives/ArpPacket.cpp
+    src/packet/primitives/EthernetFrame.cpp
 )
 
 target_include_directories(asset_discovery_packet PUBLIC include)
 target_link_libraries(asset_discovery_packet PUBLIC asset_discovery_domain)
 
 add_library(asset_discovery_parser_core
-    src/packet/PacketContext.cpp
-    src/packet/ParserEngine.cpp
-    src/packet/ParserInterface.cpp
-    src/packet/ParserRegistry.cpp
+    src/packet/parser-core/PacketContext.cpp
+    src/packet/parser-core/ParserEngine.cpp
+    src/packet/parser-core/ParserInterface.cpp
+    src/packet/parser-core/ParserRegistry.cpp
 )
 
 target_include_directories(asset_discovery_parser_core PUBLIC include)
 target_link_libraries(asset_discovery_parser_core PUBLIC asset_discovery_domain asset_discovery_packet)
 
 add_library(asset_discovery_parser_plugins
-    src/packet/ArpPlugin.cpp
-    src/packet/BuiltinParserPlugins.cpp
-    src/packet/DhcpPlugin.cpp
-    src/packet/DnsPlugin.cpp
-    src/packet/NetbiosPlugin.cpp
-    src/packet/SsdpPlugin.cpp
-    src/packet/TcpPlugin.cpp
+    src/packet/parser-plugins/ArpPlugin.cpp
+    src/packet/parser-plugins/BuiltinParserPlugins.cpp
+    src/packet/parser-plugins/DhcpPlugin.cpp
+    src/packet/parser-plugins/DnsPlugin.cpp
+    src/packet/parser-plugins/Ipv4EndpointPlugin.cpp
+    src/packet/parser-plugins/NetbiosPlugin.cpp
+    src/packet/parser-plugins/SsdpPlugin.cpp
+    src/packet/parser-plugins/TcpPlugin.cpp
 )
 
 target_include_directories(asset_discovery_parser_plugins PUBLIC include)
 target_link_libraries(asset_discovery_parser_plugins PUBLIC asset_discovery_parser_core asset_discovery_packet)
 
 add_library(asset_discovery_parser
-    src/packet/PacketParserFacade.cpp
+    src/packet/facade/PacketParserFacade.cpp
 )
 
 target_include_directories(asset_discovery_parser PUBLIC include)
 target_link_libraries(asset_discovery_parser PUBLIC asset_discovery_parser_core asset_discovery_parser_plugins)
 
 add_library(asset_discovery_monitor
-    src/discovery/AssetMonitor.cpp
+    src/discovery/monitor/AssetMonitor.cpp
 )
 
 target_include_directories(asset_discovery_monitor PUBLIC include)
@@ -79,10 +80,10 @@ target_link_libraries(asset_discovery_live PUBLIC
 )
 
 add_library(asset_discovery_output
-    src/discovery/CsvRenderer.cpp
+    src/discovery/output/CsvRenderer.cpp
     src/event/EventSink.cpp
-    src/discovery/JsonRenderer.cpp
-    src/discovery/TableRenderer.cpp
+    src/discovery/output/JsonRenderer.cpp
+    src/discovery/output/TableRenderer.cpp
 )
 
 target_include_directories(asset_discovery_output PUBLIC include)
@@ -141,17 +142,6 @@ target_link_libraries(asset-core PUBLIC
     asset_discovery_storage
 )
 
-add_library(asset_backend
-    src/backend/BackendConfig.cpp
-    src/backend/CaptureService.cpp
-    src/backend/HttpServer.cpp
-    src/backend/QueryServices.cpp
-    src/backend/RestApi.cpp
-)
-
-target_include_directories(asset_backend PUBLIC include)
-target_link_libraries(asset_backend PUBLIC asset-core)
-
 add_executable(asset-discovery
     src/main.cpp
 )
@@ -162,13 +152,6 @@ target_link_libraries(asset-discovery PRIVATE
     asset_discovery_cli
 )
 add_custom_target(asset-cli DEPENDS asset-discovery)
-
-add_executable(assetd
-    src/backend/AssetdMain.cpp
-)
-
-target_include_directories(assetd PRIVATE include)
-target_link_libraries(assetd PRIVATE asset_backend)
 
 add_executable(asset-capture
     src/capture/AssetCaptureMain.cpp
@@ -220,13 +203,13 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 COMPONENTS Core Quick Gui Qml Widgets Network WebSockets QUIET)
+find_package(Qt6 COMPONENTS Core Quick Gui Qml Widgets Network QUIET)
 if(Qt6_FOUND)
-    set(QT_LIBRARIES Qt6::Core Qt6::Quick Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Network Qt6::WebSockets)
+    set(QT_LIBRARIES Qt6::Core Qt6::Quick Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Network)
     message(STATUS "Found Qt6 components")
 else()
-    find_package(Qt5 COMPONENTS Core Quick Gui Qml Widgets Network WebSockets REQUIRED)
-    set(QT_LIBRARIES Qt5::Core Qt5::Quick Qt5::Gui Qt5::Qml Qt5::Widgets Qt5::Network Qt5::WebSockets)
+    find_package(Qt5 COMPONENTS Core Quick Gui Qml Widgets Network REQUIRED)
+    set(QT_LIBRARIES Qt5::Core Qt5::Quick Qt5::Gui Qt5::Qml Qt5::Widgets Qt5::Network)
     message(STATUS "Found Qt5 components")
 endif()
 

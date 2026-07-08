@@ -29,6 +29,21 @@ struct NetworkInterfaceInfo {
     std::string refreshedAt;
 };
 
+enum class PacketCapturePermissionState {
+    Allowed,
+    Denied,
+    Unavailable,
+};
+
+struct PacketCapturePermission {
+    PacketCapturePermissionState state = PacketCapturePermissionState::Unavailable;
+    std::string diagnostic;
+
+    bool allowed() const { return state == PacketCapturePermissionState::Allowed; }
+};
+
+std::string packetCapturePermissionStateName(PacketCapturePermissionState state);
+PacketCapturePermission probePacketCapturePermission();
 int networkInterfaceDisplayPriority(const NetworkInterfaceInfo& interfaceInfo);
 void sortNetworkInterfacesForDisplay(std::vector<NetworkInterfaceInfo>& interfaces);
 std::vector<NetworkInterfaceInfo> listNetworkInterfaces();

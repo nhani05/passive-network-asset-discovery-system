@@ -6,6 +6,26 @@ Item {
     id: page
     property var shell
     property int captureTabIndex: captureController.isLive ? 0 : 1
+    property bool userSelectedInterface: false
+
+    function syncInterfaceSelection() {
+        var preferredName = interfaceModel.preferredSystemName(captureController.interfaceName, page.userSelectedInterface)
+        if (preferredName !== "" && preferredName !== captureController.interfaceName) {
+            captureController.interfaceName = preferredName
+        }
+        interfaceCombo.currentIndex = interfaceModel.findBySystemName(captureController.interfaceName)
+    }
+
+    function selectedInterfaceDiagnostic() {
+        if (interfaceCombo.currentIndex < 0) {
+            return "No capture interface available"
+        }
+        var row = interfaceModel.get(interfaceCombo.currentIndex)
+        if (row.readinessDiagnostic !== undefined && row.readinessDiagnostic !== "") {
+            return row.readinessDiagnostic
+        }
+        return row.permissionDiagnostic === "" ? row.readiness : row.permissionDiagnostic
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -43,7 +63,7 @@ Item {
                         captureController.isLive = currentIndex === 0;
                     }
                     TabButton { text: "Live Capture" }
-                    TabButton { text: "PCAP File" }
+                    TabButton { text: "PCAP/PCAPNG" }
                 }
 
                 ColumnLayout {
@@ -58,21 +78,36 @@ Item {
                         ComboBox {
                             id: interfaceCombo
                             model: interfaceModel
-                            textRole: "systemName"
+                            textRole: "displayLabel"
                             enabled: !captureController.isRunning
-                            Layout.preferredWidth: 260
-                            onActivated: captureController.interfaceName = interfaceModel.systemNameAt(currentIndex)
-                            Component.onCompleted: currentIndex = interfaceModel.findBySystemName(captureController.interfaceName)
+                            Layout.preferredWidth: 360
+                            onActivated: {
+                                page.userSelectedInterface = true
+                                captureController.interfaceName = interfaceModel.systemNameAt(currentIndex)
+                            }
+                            Component.onCompleted: page.syncInterfaceSelection()
                         }
                         Button {
                             text: "Refresh"
                             enabled: !captureController.isRunning
                             onClicked: {
                                 interfaceModel.refresh();
-                                interfaceCombo.currentIndex = interfaceModel.findBySystemName(captureController.interfaceName);
+                                page.syncInterfaceSelection();
                             }
                         }
                         Item { Layout.fillWidth: true }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Text { text: "Status"; color: window.colorTextMuted; Layout.preferredWidth: 92 }
+                        Text {
+                            text: page.selectedInterfaceDiagnostic()
+                            color: interfaceCombo.currentIndex >= 0 && interfaceModel.get(interfaceCombo.currentIndex).captureAllowed ? window.colorTextMain : window.colorWarn
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
                     }
 
                     RowLayout {
@@ -117,11 +152,11 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        Text { text: "PCAP file"; color: window.colorTextMuted; Layout.preferredWidth: 92 }
+                        Text { text: "Capture file"; color: window.colorTextMuted; Layout.preferredWidth: 92 }
                         TextField {
                             text: captureController.pcapPath
                             enabled: !captureController.isRunning
-                            placeholderText: "PCAP file"
+                            placeholderText: "PCAP/PCAPNG file"
                             color: window.colorTextMain
                             Layout.fillWidth: true
                             onEditingFinished: captureController.pcapPath = text
@@ -130,6 +165,18 @@ Item {
                             text: "Browse"
                             enabled: !captureController.isRunning
                             onClicked: shell.choosePcap()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Text { text: "File types"; color: window.colorTextMuted; Layout.preferredWidth: 92 }
+                        Text {
+                            text: shell.supportedCaptureFiles
+                            color: window.colorTextMain
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                         }
                     }
 

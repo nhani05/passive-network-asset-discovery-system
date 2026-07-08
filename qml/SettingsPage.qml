@@ -72,7 +72,6 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    enabled: captureController.emailAlertsEnabled
                     Text { text: "Recipients"; color: window.colorTextMuted; Layout.preferredWidth: 110 }
                     TextField {
                         text: captureController.emailRecipients
