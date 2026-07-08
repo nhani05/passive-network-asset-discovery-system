@@ -219,6 +219,14 @@ if(PCAP_FOUND)
                 "${PROJECT_SOURCE_DIR}/samples/multi-asset.pcap"
         )
 
+        add_test(
+            NAME asset-discovery-preserves-existing-database
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/ValidateCliPreservesDatabase.py"
+                "$<TARGET_FILE:asset-discovery>"
+                "${PROJECT_SOURCE_DIR}/samples/arp.pcap"
+        )
+
     endif()
 endif()
 

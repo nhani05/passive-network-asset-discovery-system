@@ -285,9 +285,6 @@ int main(int argc, char* argv[])
         if (appConfig.database.sqlitePath.has_value()) {
             databaseWriter = std::make_unique<asset_discovery::storage::SQLiteWriter>(
                 *appConfig.database.sqlitePath);
-            if (const auto error = databaseWriter->clearApplicationData(); error.has_value()) {
-                throw asset_discovery::DatabaseError(*error);
-            }
         }
 
         const auto pcapResult = backend.readPcapFile(
